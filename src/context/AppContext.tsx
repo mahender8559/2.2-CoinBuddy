@@ -65,11 +65,28 @@ interface AppContextType {
   widgets: Widget[];
   addWidget: (widget: Omit<Widget, 'id'>) => void;
   removeWidget: (id: string) => void;
+  lastUpdated: string;
   clearAllData: () => void;
   resetToDemoData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const STATE_VERSION = 'v2_demo_rules';
+
+// Helper function to load initial state safely from localStorage
+const loadInitialState = <T,>(key: string, defaultVal: T): T => {
+  try {
+    const saved = localStorage.getItem('monthly-tracker-state');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.version === STATE_VERSION && parsed[key] !== undefined) {
+        return parsed[key];
+      }
+    }
+  } catch (e) {}
+  return defaultVal;
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -88,21 +105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isWalletModalOpen, setWalletModalOpen] = useState(false);
   const [payCardModalState, setPayCardModalState] = useState<{isOpen: boolean, cardId: string | null}>({isOpen: false, cardId: null});
   
-  const STATE_VERSION = 'v2_demo_rules';
-
-  // Try to load initial state from localStorage
-  const loadInitialState = <T,>(key: string, defaultVal: T): T => {
-    try {
-      const saved = localStorage.getItem('monthly-tracker-state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.version === STATE_VERSION && parsed[key] !== undefined) {
-          return parsed[key];
-        }
-      }
-    } catch (e) {}
-    return defaultVal;
-  };
+  const [lastUpdated, setLastUpdated] = useState<string>(() => loadInitialState('lastUpdated', new Date().toISOString()));
 
   const [profile, setProfile] = useState<{ name: string; email: string; avatar: string; offlineReady: boolean }>(loadInitialState('profile', {
     name: 'Financial Sovereign',
@@ -298,14 +301,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (parsed.biometric !== undefined) setBiometric(parsed.biometric);
         if (parsed.passcode !== undefined) setPasscode(parsed.passcode);
         if (parsed.monthCycleDay !== undefined) setMonthCycleDay(parsed.monthCycleDay);
+        if (parsed.lastUpdated) setLastUpdated(parsed.lastUpdated);
       }
     } catch (e) {}
   }, []);
 
   // Persist state to localStorage on any change
   useEffect(() => {
+    const updatedTime = new Date().toISOString();
+    setLastUpdated(updatedTime);
     const state = {
       version: STATE_VERSION,
+      lastUpdated: updatedTime,
       theme, colorPalette, currency, savingsGoal, autoRecur, biometric, passcode, monthCycleDay,
       transactions, creditCards, categories, profile, accounts, widgets
     };
@@ -570,9 +577,97 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const syncOpeningBalanceTransaction = (
+    accountId: string,
+    newAccountBalance: number,
+    accountType: 'asset' | 'liability'
+  ) => {
+    setTransactions(prevTxs => {
+      // Calculate net impact of all NON-opening transactions for this account
+      let nonOpeningDelta = 0;
+      prevTxs.forEach(t => {
+        const isOpening = t.isOpeningBalance || t.category === '#opening';
+        if (isOpening) return;
+
+        const isAccountInvolved = t.account === accountId || t.toAccountId === accountId || t.fromAccountId === accountId;
+        if (!isAccountInvolved) return;
+
+        if (accountType === 'asset') {
+          if (t.type === 'income' && (t.toAccountId === accountId || t.account === accountId)) {
+            nonOpeningDelta += Math.abs(t.amount);
+          } else if (t.type === 'expense' && (t.fromAccountId === accountId || t.account === accountId)) {
+            nonOpeningDelta -= Math.abs(t.amount);
+          } else if (t.type === 'transfer') {
+            if (t.toAccountId === accountId) nonOpeningDelta += Math.abs(t.amount);
+            if (t.fromAccountId === accountId) nonOpeningDelta -= Math.abs(t.amount);
+          }
+        } else {
+          // Liability account
+          if (t.type === 'expense' && (t.fromAccountId === accountId || t.account === accountId)) {
+            nonOpeningDelta += Math.abs(t.amount); // Increases debt
+          } else if (t.type === 'income' && (t.toAccountId === accountId || t.account === accountId)) {
+            nonOpeningDelta -= Math.abs(t.amount); // Decreases debt
+          } else if (t.type === 'transfer') {
+            if (t.fromAccountId === accountId) nonOpeningDelta += Math.abs(t.amount); // Increases debt
+            if (t.toAccountId === accountId) nonOpeningDelta -= Math.abs(t.amount); // Decreases debt
+          }
+        }
+      });
+
+      const targetOpeningAmount = Math.max(0, newAccountBalance - nonOpeningDelta);
+
+      const existingOpeningIndex = prevTxs.findIndex(t => 
+        (t.isOpeningBalance || t.category === '#opening') &&
+        (t.account === accountId || t.toAccountId === accountId || t.fromAccountId === accountId)
+      );
+
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+      if (existingOpeningIndex >= 0) {
+        return prevTxs.map((t, idx) => {
+          if (idx === existingOpeningIndex) {
+            return {
+              ...t,
+              title: 'Opening Balance',
+              subtitle: `${formattedDate} • ${accountType === 'asset' ? 'Initial Balance' : 'Initial Debt'}`,
+              amount: targetOpeningAmount,
+              type: accountType === 'asset' ? ('income' as const) : ('expense' as const),
+              category: '#opening',
+              isOpeningBalance: true,
+              account: accountId,
+              toAccountId: accountType === 'asset' ? accountId : undefined,
+              fromAccountId: accountType === 'liability' ? accountId : undefined,
+            };
+          }
+          return t;
+        });
+      } else if (targetOpeningAmount > 0 || newAccountBalance > 0) {
+        const openingTx: Transaction = {
+          id: Math.random().toString(),
+          title: 'Opening Balance',
+          subtitle: `${formattedDate} • ${accountType === 'asset' ? 'Initial Balance' : 'Initial Debt'}`,
+          amount: targetOpeningAmount > 0 ? targetOpeningAmount : newAccountBalance,
+          date: now.toISOString(),
+          category: '#opening',
+          icon: accountType === 'asset' ? 'Landmark' : 'CreditCard',
+          type: accountType === 'asset' ? 'income' : 'expense',
+          account: accountId,
+          toAccountId: accountType === 'asset' ? accountId : undefined,
+          fromAccountId: accountType === 'liability' ? accountId : undefined,
+          isOpeningBalance: true
+        };
+        return [openingTx, ...prevTxs];
+      }
+
+      return prevTxs;
+    });
+  };
+
   const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
     setCreditCards(cards => cards.map(c => c.id === id ? { ...card, id } : c));
     setAccounts(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: card.balance, limit: card.limit } : a));
+    syncOpeningBalanceTransaction(id, card.balance, 'liability');
   };
 
   const addAccount = (account: Omit<Account, 'id'>) => {
@@ -623,11 +718,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateAccount = (id: string, account: Omit<Account, 'id'>) => {
     setAccounts(accs => accs.map(a => a.id === id ? { ...account, id } : a));
     setCreditCards(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: account.balance } : c));
+    syncOpeningBalanceTransaction(id, account.balance, account.type);
   };
 
   const deleteAccount = (id: string) => {
     setAccounts(accs => accs.filter(a => a.id !== id));
     setCreditCards(cards => cards.filter(c => c.id !== id));
+    setTransactions(txs => txs.filter(t => !(t.isOpeningBalance && (t.account === id || t.fromAccountId === id || t.toAccountId === id))));
   };
 
   const transferFunds = (amount: number, fromId: string, toId: string) => {
@@ -757,6 +854,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       categories, addCategory, updateCategory, deleteCategory,
       savingsGoal, setSavingsGoal, profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
+      lastUpdated,
       clearAllData, resetToDemoData
     }}>
       {children}

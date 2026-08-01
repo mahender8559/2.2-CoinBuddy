@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Download, Upload, KeyRound, Trash2, Info, Moon, Sun, DollarSign, LayoutList, PiggyBank, X, FileSpreadsheet, Palette } from 'lucide-react';
+import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Download, Upload, KeyRound, Trash2, Info, Moon, Sun, DollarSign, LayoutList, PiggyBank, X, FileSpreadsheet, Palette, Clock } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, savingsGoal, setSavingsGoal, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, clearAllData } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, savingsGoal, setSavingsGoal, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, clearAllData, lastUpdated } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isEditProfileOpen, setEditProfileOpen] = useState(false);
@@ -37,6 +37,10 @@ export function Settings() {
       reader.readAsDataURL(file);
     }
   };
+
+  const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined'
+    ? new Date(__BUILD_TIME__).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+    : new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
   return (
     <div className="space-y-8 pb-24 md:pb-0 max-w-3xl mx-auto animate-fade-in relative">
@@ -363,7 +367,7 @@ export function Settings() {
       </section>
 
       {/* Footer info */}
-      <section className="pt-8 border-t border-outline-variant/30 flex flex-col items-center gap-4">
+      <section className="pt-8 border-t border-outline-variant/30 flex flex-col items-center gap-3">
         <div className="bg-surface-container-highest px-4 py-2 rounded-full border border-outline-variant/50 flex items-center gap-3">
           <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-background" />
@@ -371,6 +375,12 @@ export function Settings() {
           <span className="text-xs font-semibold text-on-surface">Coin Buddy V1.0</span>
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
         </div>
+
+        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface-container/60 border border-outline-variant/20 text-xs font-medium text-on-surface-variant shadow-xs">
+          <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
+          <span>Installed Build Version Date: <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
+        </div>
+
         <p className="text-[10px] text-on-surface-variant text-center leading-relaxed opacity-60">
           © 2024 Fortified Financial Systems.<br/>Your data never leaves your pocket.
         </p>
