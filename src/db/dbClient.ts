@@ -1,0 +1,456 @@
+import initSqlJs from 'sql.js';
+import demoData from '../../DemoData.json';
+import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
+import { Account, Category, CreditCardInfo, LoanRevision, Transaction, Widget } from '../types';
+
+export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
+
+export interface SqlJsDatabaseDriver {
+  rawDb: any;
+  execute: (sql: string, params?: (string | number | null | undefined)[]) => Promise<void>;
+  query: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
+  exportToBase64: () => string;
+}
+
+function bufferToBase64(buffer: Uint8Array): string {
+  let binary = '';
+  const bytes = buffer;
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const len = binary.length;
+  const buffer = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    buffer[i] = binary.charCodeAt(i);
+  }
+  return buffer;
+}
+
+function createDriver(db: any): SqlJsDatabaseDriver {
+  return {
+    rawDb: db,
+    async execute(sql, params = []) {
+      if (params.length === 0) {
+        db.exec(sql);
+        return;
+      }
+      const stmt = db.prepare(sql);
+      stmt.bind(params);
+      stmt.step();
+      stmt.free();
+    },
+    async query(sql, params = []) {
+      const stmt = db.prepare(sql);
+      if (params.length > 0) {
+        stmt.bind(params);
+      }
+      const results: any[] = [];
+      while (stmt.step()) {
+        results.push(stmt.getAsObject());
+      }
+      stmt.free();
+      return results;
+    },
+    exportToBase64() {
+      return bufferToBase64(db.export());
+    }
+  };
+}
+
+export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
+  const SQL = await initSqlJs({ locateFile: (file) => file });
+  const saved = localStorage.getItem(DB_STORAGE_KEY);
+  const db = saved ? new SQL.Database(base64ToUint8Array(saved)) : new SQL.Database();
+
+  db.run(SQLITE_PRAGMA_SETUP);
+  db.run(CREATE_TABLES_SQL);
+  for (const migration of SQLITE_MIGRATIONS) {
+    try {
+      db.run(migration);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) {
+        throw error;
+      }
+    }
+  }
+
+  return createDriver(db);
+}
+
+export function persistDatabase(driver: SqlJsDatabaseDriver): void {
+  try {
+    const snapshot = driver.exportToBase64();
+    localStorage.setItem(DB_STORAGE_KEY, snapshot);
+  } catch (error) {
+    console.warn('Failed to persist database snapshot:', error);
+  }
+}
+
+export function normalizeAccountRow(row: any): Account {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type?.toLowerCase() === 'liability' ? 'liability' : 'asset',
+    balance: Number(row.cached_balance ?? 0),
+    limit: row.credit_limit ?? row.limit ?? undefined,
+    group: row.subtype ?? row.group ?? undefined,
+    is_archived: Number(row.is_archived ?? 0),
+    originalPrincipal: row.original_principal ?? row.originalPrincipal,
+    interestRate: row.interest_rate ?? row.interestRate,
+    monthlyEMI: row.monthly_emi ?? row.monthlyEMI,
+    interestCalculationType: row.interest_calculation_type ?? row.interestCalculationType,
+    paymentFrequency: row.payment_frequency ?? row.paymentFrequency,
+    tenureMonths: row.tenure_months ?? row.tenureMonths,
+    loanStartDate: row.loan_start_date ?? row.loanStartDate,
+    lateFeeFixedAmount: row.late_fee_fixed_amount ?? row.lateFeeFixedAmount,
+    lateFeeInterestRate: row.late_fee_interest_rate ?? row.lateFeeInterestRate,
+    gracePeriodDays: row.grace_period_days ?? row.gracePeriodDays,
+    nextEMIDate: row.next_emi_date ?? row.nextEMIDate,
+    monthlyInterestRate: row.monthly_interest_rate ?? row.monthlyInterestRate,
+    nextInterestDueDate: row.next_interest_due_date ?? row.nextInterestDueDate,
+    investmentMethod: row.investment_method ?? row.investmentMethod,
+    investedAmount: row.invested_amount ?? row.investedAmount,
+    monthlySIPAmount: row.monthly_sip_amount ?? row.monthlySIPAmount,
+    nextSIPDate: row.next_sip_date ?? row.nextSIPDate,
+  };
+}
+
+export function normalizeTransactionRow(row: any): Transaction {
+  const txType = row.transaction_type?.toUpperCase?.() ?? 'INCOME';
+  const normalizedType = txType === 'EXPENSE'
+    ? 'expense'
+    : txType === 'TRANSFER'
+      ? 'transfer'
+      : (txType === 'OPENING_BALANCE' ? (row.to_account_id ? 'income' : 'expense') : 'income');
+
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    subtitle: row.subtitle ?? '',
+    amount: Number(row.amount ?? 0),
+    date: new Date(Number(row.date ?? Date.now())).toISOString(),
+    category: row.category ?? '#uncategorized',
+    icon: row.icon ?? 'Wallet',
+    type: normalizedType,
+    account: row.account ?? null,
+    fromAccountId: row.from_account_id ?? null,
+    toAccountId: row.to_account_id ?? null,
+    notes: row.notes ?? null,
+    is_verified: Number(row.is_verified ?? 1),
+    isRecurring: Boolean(Number(row.is_recurring ?? 0)),
+    isOpeningBalance: Boolean(Number(row.is_opening_balance ?? 0)),
+    isInterestOnly: Boolean(Number(row.is_interest_only ?? 0)),
+    transaction_type: row.transaction_type,
+  } as Transaction;
+}
+
+export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
+  const [accountRows, txRows, categoryRows, creditCardRows, widgetRows, loanRows] = await Promise.all([
+    driver.query(`SELECT * FROM account_balances_view WHERE is_archived = 0 ORDER BY name ASC;`),
+    driver.query(`SELECT * FROM transactions ORDER BY date DESC;`),
+    driver.query(`SELECT * FROM categories ORDER BY name ASC;`),
+    driver.query(`SELECT cc.*, a.credit_limit, a.cached_balance FROM credit_cards cc LEFT JOIN account_balances_view a ON a.id = cc.account_id ORDER BY cc.id ASC;`),
+    driver.query(`SELECT * FROM widgets ORDER BY id ASC;`),
+    driver.query(`SELECT * FROM loan_revisions ORDER BY effective_date DESC;`),
+  ]);
+
+  return {
+    accounts: accountRows.map(normalizeAccountRow),
+    transactions: txRows.map(normalizeTransactionRow),
+    categories: categoryRows.map(normalizeCategoryRow),
+    creditCards: creditCardRows.map(normalizeCreditCardRow),
+    widgets: widgetRows.map(normalizeWidgetRow),
+    loanRevisions: loanRows.map(normalizeLoanRevisionRow),
+  };
+}
+
+function normalizeDemoCategoryType(type?: string): 'INCOME' | 'EXPENSE' {
+  if (!type) return 'EXPENSE';
+  const normalized = type.toString().toLowerCase();
+  if (normalized === 'income') return 'INCOME';
+  return 'EXPENSE';
+}
+
+export async function loadDemoDataFromJson(driver: SqlJsDatabaseDriver): Promise<void> {
+  await clearDatabase(driver);
+
+  const data = demoData as any;
+  const categories = Array.isArray(data.categories) ? data.categories : [];
+  for (const category of categories) {
+    await driver.execute(
+      `INSERT INTO categories (id, name, type, icon_name, budget, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [category.id, category.name, normalizeDemoCategoryType(category.type), category.icon ?? category.icon_name ?? 'Tag', Number(category.budget ?? 0), category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+    );
+  }
+
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  for (const account of accounts) {
+    const accountType = account.type?.toString().toUpperCase() === 'LIABILITY' ? 'LIABILITY' : 'ASSET';
+    await driver.execute(
+      `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
+      [account.id, account.name, accountType, account.group ?? null, account.limit ?? account.credit_limit ?? null, account.apr ?? account.interestRate ?? null, account.monthlyEMI ?? account.monthly_emi ?? null, account.interestCalculationType ?? account.interest_calculation_type ?? null, account.paymentFrequency ?? account.payment_frequency ?? null, account.tenureMonths ?? account.tenure_months ?? null, account.loanStartDate ?? account.loan_start_date ?? null, account.originalPrincipal ?? account.original_principal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null]
+    );
+  }
+
+  const txs = Array.isArray(data.transactions) ? data.transactions : [];
+  for (const rawTx of txs) {
+    const tx = {
+      ...rawTx,
+      amount: Math.abs(Number(rawTx.amount ?? 0)),
+      transaction_type: rawTx.transaction_type ?? rawTx.type?.toString().toUpperCase(),
+      is_verified: rawTx.is_verified ?? 1,
+      is_opening_balance: rawTx.isOpeningBalance ? 1 : 0,
+      is_recurring: rawTx.isRecurring ? 1 : 0,
+      is_interest_only: rawTx.isInterestOnly ? 1 : 0,
+    };
+    await insertTransactionRow(driver, tx as any);
+  }
+
+  const creditCards = Array.isArray(data.creditCards) ? data.creditCards : [];
+  for (const card of creditCards) {
+    await insertCreditCardRow(driver, {
+      id: card.id,
+      name: card.name,
+      balance: Number(card.balance ?? 0),
+      dueAmount: Number(card.dueAmount ?? 0),
+      dueDate: card.dueDate ?? '',
+      billingCycleDay: Number(card.billingCycleDay ?? 1),
+      limit: Number(card.limit ?? 0)
+    });
+  }
+
+  const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+  for (const widget of widgets) {
+    await insertWidgetRow(driver, widget);
+  }
+
+  const loanRevisions = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+  for (const revision of loanRevisions) {
+    await insertLoanRevisionRow(driver, revision);
+  }
+}
+
+export async function seedDemoData(driver: SqlJsDatabaseDriver): Promise<void> {
+  const existingAccounts = await driver.query(`SELECT COUNT(*) AS count FROM accounts;`);
+  const count = Number(existingAccounts[0]?.count ?? 0);
+  if (count > 0) return;
+
+  await loadDemoDataFromJson(driver);
+}
+
+export async function insertAccountRow(driver: SqlJsDatabaseDriver, account: Account, openingBalance: number, openingTransactionId: string = crypto.randomUUID()): Promise<void> {
+  const type = account.type === 'liability' ? 'LIABILITY' : 'ASSET';
+  await driver.execute(
+    `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [account.id, account.name, type, account.group ?? null, account.limit ?? null, account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]
+  );
+
+  if (openingBalance > 0) {
+    const now = Date.now();
+    const txType = 'OPENING_BALANCE';
+    const title = 'Opening Balance';
+    const subtitle = account.type === 'asset' ? 'Initial Balance' : 'Initial Debt';
+    const icon = account.type === 'liability' ? 'CreditCard' : 'Landmark';
+    const params = [openingTransactionId, txType, title, subtitle, openingBalance, now, '#opening', icon, account.id, account.type === 'liability' ? account.id : null, account.type === 'asset' ? account.id : null, 1, 1, 0];
+    await driver.execute(
+      `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, is_verified, is_opening_balance, is_recurring, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      params
+    );
+  }
+}
+
+export async function updateAccountRow(driver: SqlJsDatabaseDriver, account: Account): Promise<void> {
+  const type = account.type === 'liability' ? 'LIABILITY' : 'ASSET';
+  await driver.execute(
+    `UPDATE accounts SET name = ?, type = ?, subtype = ?, credit_limit = ?, interest_rate = ?, monthly_emi = ?, interest_calculation_type = ?, payment_frequency = ?, tenure_months = ?, loan_start_date = ?, original_principal = ?, next_emi_date = ?, monthly_interest_rate = ?, next_interest_due_date = ?, investment_method = ?, invested_amount = ?, monthly_sip_amount = ?, next_sip_date = ?, is_archived = ?, late_fee_fixed_amount = ?, late_fee_interest_rate = ?, grace_period_days = ? WHERE id = ?;`,
+    [account.name, type, account.group ?? null, account.limit ?? null, account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null, account.id]
+  );
+}
+
+export async function insertCategoryRow(driver: SqlJsDatabaseDriver, category: Category): Promise<void> {
+  await driver.execute(
+    `INSERT INTO categories (id, name, type, icon_name, budget, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+  );
+}
+
+export async function updateCategoryRow(driver: SqlJsDatabaseDriver, id: string, category: Category): Promise<void> {
+  await driver.execute(
+    `UPDATE categories SET name = ?, type = ?, icon_name = ?, budget = ?, tags_json = ?, group_name = ? WHERE id = ?;`,
+    [category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, id]
+  );
+}
+
+export async function deleteCategoryRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  await driver.execute(`DELETE FROM categories WHERE id = ?;`, [id]);
+}
+
+export async function insertCreditCardRow(driver: SqlJsDatabaseDriver, card: CreditCardInfo): Promise<void> {
+  await driver.execute(`INSERT INTO credit_cards (id, account_id, due_amount, due_date, billing_cycle_day) VALUES (?, ?, ?, ?, ?);`, [card.id, card.id, card.dueAmount ?? 0, card.dueDate ?? '', card.billingCycleDay ?? 1]);
+}
+
+export async function updateCreditCardRow(driver: SqlJsDatabaseDriver, card: CreditCardInfo): Promise<void> {
+  await driver.execute(`UPDATE credit_cards SET due_amount = ?, due_date = ?, billing_cycle_day = ? WHERE account_id = ?;`, [card.dueAmount ?? 0, card.dueDate ?? '', card.billingCycleDay ?? 1, card.id]);
+}
+
+export async function deleteCreditCardRow(driver: SqlJsDatabaseDriver, cardId: string): Promise<void> {
+  await driver.execute(`DELETE FROM credit_cards WHERE account_id = ?;`, [cardId]);
+}
+
+export async function insertWidgetRow(driver: SqlJsDatabaseDriver, widget: Widget): Promise<void> {
+  await driver.execute(`INSERT INTO widgets (id, type, target_id) VALUES (?, ?, ?);`, [widget.id, widget.type, widget.targetId]);
+}
+
+export async function deleteWidgetRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  await driver.execute(`DELETE FROM widgets WHERE id = ?;`, [id]);
+}
+
+export async function insertLoanRevisionRow(driver: SqlJsDatabaseDriver, revision: LoanRevision): Promise<void> {
+  await driver.execute(`INSERT INTO loan_revisions (id, account_id, effective_date, new_interest_rate, new_emi, new_tenure_months, payment_frequency) VALUES (?, ?, ?, ?, ?, ?, ?);`, [revision.id, revision.accountId, revision.effectiveDate, revision.newInterestRate, revision.newEmi, revision.newTenureMonths, revision.paymentFrequency ?? null]);
+}
+
+export async function deleteLoanRevisionRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  await driver.execute(`DELETE FROM loan_revisions WHERE id = ?;`, [id]);
+}
+
+export async function insertTransactionRow(driver: SqlJsDatabaseDriver, tx: Omit<Transaction, 'id'> & { id?: string }): Promise<string> {
+  const id = tx.id ?? crypto.randomUUID();
+  const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
+  const parsedType = transactionType === 'EXPENSE' || transactionType === 'TRANSFER' || transactionType === 'OPENING_BALANCE' ? transactionType : 'INCOME';
+  await driver.execute(
+    `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, parsedType, tx.title, tx.subtitle ?? null, tx.amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0]
+  );
+  return id;
+}
+
+export async function updateTransactionRow(driver: SqlJsDatabaseDriver, id: string, tx: Omit<Transaction, 'id'>): Promise<void> {
+  const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
+  const parsedType = transactionType === 'EXPENSE' || transactionType === 'TRANSFER' || transactionType === 'OPENING_BALANCE' ? transactionType : 'INCOME';
+  await driver.execute(
+    `UPDATE transactions SET transaction_type = ?, title = ?, subtitle = ?, amount = ?, date = ?, category = ?, icon = ?, account = ?, from_account_id = ?, to_account_id = ?, notes = ?, is_verified = ?, is_recurring = ?, is_opening_balance = ?, is_interest_only = ? WHERE id = ?;`,
+    [parsedType, tx.title, tx.subtitle ?? null, tx.amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, id]
+  );
+}
+
+export async function deleteTransactionRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  await driver.execute(`DELETE FROM transactions WHERE id = ?;`, [id]);
+}
+
+export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
+  await driver.execute(`DELETE FROM transactions; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM accounts;`);
+}
+
+export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {
+  await clearDatabase(driver);
+
+  const accounts: Account[] = Array.isArray(data.accounts) ? data.accounts : [];
+  const categories: Category[] = Array.isArray(data.categories) ? data.categories : [];
+  const transactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions : [];
+  const creditCards: CreditCardInfo[] = Array.isArray(data.creditCards) ? data.creditCards : [];
+  const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
+  const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+
+  for (const category of categories) {
+    await driver.execute(
+      `INSERT INTO categories (id, name, type, icon_name, budget, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+    );
+  }
+
+  for (const account of accounts) {
+    await insertAccountRow(driver, account, 0);
+  }
+
+  for (const tx of transactions) {
+    await insertTransactionRow(driver, tx);
+  }
+
+  for (const card of creditCards) {
+    await insertCreditCardRow(driver, card);
+  }
+
+  for (const widget of widgets) {
+    await insertWidgetRow(driver, widget);
+  }
+
+  for (const rev of loanRevisions) {
+    await insertLoanRevisionRow(driver, rev);
+  }
+}
+
+export function normalizeCategoryRow(row: any): Category {
+  let tags: string[] | undefined;
+  try {
+    tags = row.tags_json ? JSON.parse(row.tags_json) : undefined;
+  } catch {
+    tags = undefined;
+  }
+
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    icon: row.icon_name ?? row.icon ?? 'Tag',
+    budget: Number(row.budget ?? 0),
+    tags,
+    group: row.group_name ?? undefined,
+    type: row.type?.toLowerCase() === 'income' ? 'income' : 'expense',
+  };
+}
+
+export async function loadAppSettings(driver: SqlJsDatabaseDriver): Promise<Record<string, unknown>> {
+  const rows = await driver.query(`SELECT key, value_json FROM app_settings;`);
+  return rows.reduce<Record<string, unknown>>((settings, row) => {
+    try {
+      settings[row.key] = JSON.parse(row.value_json);
+    } catch {
+      // Ignore corrupted settings rows while preserving the financial ledger.
+    }
+    return settings;
+  }, {});
+}
+
+export async function upsertAppSetting(driver: SqlJsDatabaseDriver, key: string, value: unknown): Promise<void> {
+  await driver.execute(
+    `INSERT INTO app_settings (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json;`,
+    [key, JSON.stringify(value)]
+  );
+}
+
+export function normalizeCreditCardRow(row: any): CreditCardInfo {
+  return {
+    id: row.id,
+    name: row.name ?? row.card_name ?? 'Credit Card',
+    balance: Number(row.cached_balance ?? row.balance ?? 0),
+    dueAmount: Number(row.due_amount ?? row.dueAmount ?? 0),
+    dueDate: row.due_date ?? row.dueDate ?? '',
+    billingCycleDay: Number(row.billing_cycle_day ?? row.billingCycleDay ?? 1),
+    limit: Number(row.credit_limit ?? row.limit ?? row.card_limit ?? 0),
+  };
+}
+
+export function normalizeWidgetRow(row: any): Widget {
+  return {
+    id: row.id,
+    type: row.type,
+    targetId: row.target_id,
+  };
+}
+
+export function normalizeLoanRevisionRow(row: any): LoanRevision {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    effectiveDate: row.effective_date,
+    newInterestRate: Number(row.new_interest_rate ?? row.newInterestRate ?? 0),
+    newEmi: Number(row.new_emi ?? row.newEmi ?? 0),
+    newTenureMonths: Number(row.new_tenure_months ?? row.newTenureMonths ?? 0),
+    paymentFrequency: row.payment_frequency ?? row.paymentFrequency,
+  };
+}

@@ -1,0 +1,174 @@
+{
+  "version": "v2_demo_rules",
+  "lastUpdated": "2026-08-02T05:00:00.000Z",
+  "theme": "dark",
+  "colorPalette": "blue",
+  "currency": "INR",
+  "autoRecur": true,
+  "biometric": false,
+  "passcode": null,
+  "monthCycleDay": 25,
+  "profile": {
+    "name": "Demo User",
+    "email": "Demo@coinbuddy.com",
+    "avatar": "",
+    "offlineReady": true
+  },
+  "accounts": [
+    {
+      "id": "acc_cash_01",
+      "name": "Hand Cash",
+      "type": "asset",
+      "group": "Cash"
+    },
+    {
+      "id": "acc_sbi_01",
+      "name": "SBI",
+      "type": "asset",
+      "group": "Bank Account"
+    },
+    {
+      "id": "acc_idfc_01",
+      "name": "IDFC First Bank",
+      "type": "liability",
+      "group": "Credit Card",
+      "limit": 20000
+    },
+    {
+      "id": "acc_bike_loan",
+      "name": "Bike Loan",
+      "type": "liability",
+      "group": "Loan",
+      "limit": 600000,
+      "apr": 7.5
+    }
+  ],
+  "creditCards": [
+    {
+      "id": "acc_idfc_01",
+      "name": "IDFC First Bank",
+      "balance": 6618.69,
+      "dueAmount": 0,
+      "dueDate": "2026-09-01",
+      "billingCycleDay": 17,
+      "limit": 20000
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat_salary",
+      "name": "Salary",
+      "icon": "Banknote",
+      "type": "income",
+      "budget": 0,
+      "group": "Essential"
+    },
+    {
+      "id": "cat_groceries",
+      "name": "Groceries",
+      "icon": "Home",
+      "type": "expense",
+      "budget": 5000,
+      "group": "Essential"
+    },
+    {
+      "id": "cat_debt",
+      "name": "Debt Repay",
+      "icon": "Book",
+      "type": "expense",
+      "budget": 35000,
+      "group": "Essential"
+    },
+    {
+      "id": "cat_wants",
+      "name": "Wants",
+      "icon": "Gift",
+      "type": "expense",
+      "budget": 2000,
+      "group": "Essential"
+    },
+    {
+      "id": "cat_transfer",
+      "name": "Transfer",
+      "icon": "ArrowRightLeft",
+      "type": "transfer",
+      "budget": 0,
+      "group": "Essential"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "tx_open_sbi",
+      "title": "Opening Balance",
+      "subtitle": "2 Aug 2026 • Initial Balance",
+      "amount": 50000,
+      "date": "2026-08-02T03:10:51.545Z",
+      "category": "#opening",
+      "icon": "Landmark",
+      "type": "income",
+      "account": "acc_sbi_01",
+      "toAccountId": "acc_sbi_01",
+      "isOpeningBalance": true,
+      "transaction_type": "OPENING_BALANCE"
+    },
+    {
+      "id": "tx_open_loan",
+      "title": "Opening Balance",
+      "subtitle": "2 Aug 2026 • Initial Balance",
+      "amount": 600000,
+      "date": "2026-08-02T03:14:52.649Z",
+      "category": "#opening",
+      "icon": "CreditCard",
+      "type": "expense",
+      "account": "acc_bike_loan",
+      "fromAccountId": "acc_bike_loan",
+      "isOpeningBalance": true,
+      "transaction_type": "OPENING_BALANCE"
+    },
+    {
+      "id": "tx_salary",
+      "title": "July Salary",
+      "subtitle": "25 Jul 2026",
+      "amount": 57000,
+      "date": "2026-07-25T00:00:00.000Z",
+      "category": "#salary",
+      "icon": "Banknote",
+      "type": "income",
+      "account": "acc_sbi_01",
+      "isRecurring": false,
+      "isInterestOnly": false,
+      "is_verified": 1
+    },
+    {
+      "id": "tx_groceries",
+      "title": "Supermarket Groceries",
+      "subtitle": "2 Aug 2026",
+      "amount": -1250.47,
+      "date": "2026-08-02T00:00:00.000Z",
+      "category": "#groceries",
+      "icon": "Home",
+      "type": "expense",
+      "account": "acc_sbi_01",
+      "isRecurring": false,
+      "isInterestOnly": false,
+      "is_verified": 1
+    },
+    {
+      "id": "tx_liability_paydown",
+      "title": "Bike Loan Scheduled Payment",
+      "subtitle": "Principal + Interest Split",
+      "amount": -18663.73,
+      "date": "2026-08-02T04:00:00.000Z",
+      "category": "#debtrepay",
+      "icon": "ArrowRightLeft",
+      "type": "transfer",
+      "fromAccountId": "acc_sbi_01",
+      "toAccountId": "acc_bike_loan",
+      "isRecurring": false,
+      "isInterestOnly": false,
+      "is_verified": 1
+    }
+  ],
+  "widgets": [],
+  "loanRevisions": []
+}
