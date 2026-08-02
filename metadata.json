@@ -1,8 +1,0 @@
-{
-  "name": "CoinBuddyv2.0",
-  "description": "Assets and liability model",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
