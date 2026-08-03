@@ -325,24 +325,50 @@ export async function seedDemoData(driver: SqlJsDatabaseDriver): Promise<void> {
   await loadDemoDataFromJson(driver);
 }
 
-export async function insertAccountRow(driver: SqlJsDatabaseDriver, account: Account, openingBalance: number, openingTransactionId: string = crypto.randomUUID()): Promise<void> {
+export async function insertAccountRow(
+  driver: SqlJsDatabaseDriver,
+  account: Account,
+  openingBalance: number,
+  openingTransactionId: string = crypto.randomUUID(),
+  manageTransaction = true,
+): Promise<void> {
   const type = account.type === 'liability' ? 'LIABILITY' : 'ASSET';
-  await driver.execute(
-    `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    [account.id, account.name, type, account.group ?? null, account.limit ?? null, account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]
-  );
-
-  if (openingBalance > 0) {
-    const now = Date.now();
-    const txType = 'OPENING_BALANCE';
-    const title = 'Opening Balance';
-    const subtitle = account.type === 'asset' ? 'Initial Balance' : 'Initial Debt';
-    const icon = account.type === 'liability' ? 'CreditCard' : 'Landmark';
-    const params = [openingTransactionId, txType, title, subtitle, openingBalance, now, '#opening', icon, account.id, account.type === 'liability' ? account.id : null, account.type === 'asset' ? account.id : null, 1, 1, 0];
+  if (manageTransaction) await driver.execute('BEGIN TRANSACTION');
+  try {
     await driver.execute(
-      `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, is_verified, is_opening_balance, is_recurring, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      params
+      `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [account.id, account.name, type, account.group ?? null, account.limit ?? null, account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]
     );
+
+    if (openingBalance > 0) {
+      const params = [openingTransactionId, 'OPENING_BALANCE', 'Opening Balance', account.type === 'asset' ? 'Initial Balance' : 'Initial Debt', openingBalance, Date.now(), '#opening', account.type === 'liability' ? 'CreditCard' : 'Landmark', account.id, account.type === 'liability' ? account.id : null, account.type === 'asset' ? account.id : null, 1, 1, 0, 0];
+      await driver.execute(
+        `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, is_verified, is_opening_balance, is_recurring, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        params
+      );
+    }
+    if (manageTransaction) await driver.execute('COMMIT');
+  } catch (error) {
+    if (manageTransaction) await driver.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function insertCreditCardAccount(
+  driver: SqlJsDatabaseDriver,
+  account: Account,
+  card: CreditCardInfo,
+  openingBalance: number,
+  openingTransactionId?: string,
+): Promise<void> {
+  await driver.execute('BEGIN TRANSACTION');
+  try {
+    await insertAccountRow(driver, account, openingBalance, openingTransactionId, false);
+    await insertCreditCardRow(driver, card);
+    await driver.execute('COMMIT');
+  } catch (error) {
+    await driver.execute('ROLLBACK');
+    throw error;
   }
 }
 

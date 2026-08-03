@@ -335,6 +335,8 @@ export function AddAccountModal() {
     <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center bg-background/80 backdrop-blur-sm p-3 sm:px-4 overflow-y-auto">
       <div className="bg-surface-container rounded-3xl w-full max-w-md p-4 sm:p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative modal-scroll my-auto">
         <button 
+          type="button"
+          aria-label="Close account form"
           onClick={handleClose}
           className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
         >
@@ -405,6 +407,7 @@ export function AddAccountModal() {
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Liability Type</label>
               <select
+                aria-label="Liability Type"
                 value={liabilityType}
                 onChange={(e) => {
                   const val = e.target.value;
