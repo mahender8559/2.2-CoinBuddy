@@ -1,7 +1,12 @@
-import { ShieldCheck, Wallet, Undo2, Redo2 } from 'lucide-react';
+import { ShieldCheck, Wallet, Undo2, Redo2, LogOut } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-export function Header() {
+interface HeaderProps {
+  onLogout: () => void;
+  showLogout?: boolean;
+}
+
+export function Header({ onLogout, showLogout = true }: HeaderProps) {
   const { setWalletModalOpen, canUndo, canRedo, handleUndo, handleRedo } = useAppContext();
 
   return (
@@ -39,6 +44,17 @@ export function Header() {
         >
           <Wallet className="w-5 h-5 text-primary" />
         </button>
+        {showLogout && (
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-2 rounded-full px-2 py-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-error"
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="hidden text-sm font-medium md:inline">Sign out</span>
+          </button>
+        )}
       </div>
     </header>
   );

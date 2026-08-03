@@ -3,17 +3,11 @@ export type Tab = 'dashboard' | 'activity' | 'insights' | 'manage' | 'settings';
 export interface LoanRevision {
   id: string;
   accountId: string;
-  account_id?: string;
   effectiveDate: string;
-  effective_date?: string;
   newInterestRate: number;
-  new_interest_rate?: number;
   newEmi: number;
-  new_emi?: number;
   newTenureMonths: number;
-  new_tenure_months?: number;
   paymentFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
-  payment_frequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
 }
 
 export interface Account {
@@ -27,17 +21,11 @@ export interface Account {
   originalPrincipal?: number;
   interestRate?: number;
   monthlyEMI?: number;
-  interest_rate?: number;
-  monthly_emi?: number;
   nextEMIDate?: string;
   interestCalculationType?: 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
-  interest_calculation_type?: 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
   paymentFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
-  payment_frequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
   tenureMonths?: number;
-  tenure_months?: number;
   loanStartDate?: string;
-  loan_start_date?: string;
   monthlyInterestRate?: number;
   nextInterestDueDate?: string;
   investmentMethod?: 'SIP' | 'Lump Sum';
@@ -48,9 +36,6 @@ export interface Account {
   lateFeeFixedAmount?: number;
   lateFeeInterestRate?: number;
   gracePeriodDays?: number;
-  late_fee_fixed_amount?: number;
-  late_fee_interest_rate?: number;
-  grace_period_days?: number;
 }
 
 export type Category = {

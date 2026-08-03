@@ -1,15 +1,19 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { X, Trash2, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Edit2, ShieldCheck, Plus, Search, Sparkles, GraduationCap, Target, Heart, Plane, Code, Smartphone, Coffee, Music, Film, Book, Camera, Droplet, Sun, Moon, Map, Activity, Gift, Crosshair, MapPin } from 'lucide-react';
+import { X, Trash2, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Edit2, ShieldCheck, Plus, Search, GraduationCap, Target, Heart, Plane, Code, Smartphone, Coffee, Music, Film, Book, Camera, Droplet, Sun, Moon, Map, Activity, Gift, Crosshair, MapPin } from 'lucide-react';
 import { Category } from '../types';
 import { icons } from '../icons';
 import { Cards } from './Cards';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 
 export function ManageFinances() {
   const { categories, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
   
   const [mainTab, setMainTab] = useState<'Accounts' | 'Categories'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
+  const mainTabSwipe = useHorizontalSwipe(() => {
+    setMainTab(current => current === 'Accounts' ? 'Categories' : 'Accounts');
+  });
 
   useEffect(() => {
     if (isManageCategoriesOpen) {
@@ -46,29 +50,6 @@ export function ManageFinances() {
   const totalMonthlyBudget = categories
     .filter(c => c.type !== 'income' && c.group !== 'Savings')
     .reduce((acc, c) => acc + (c.budget || 0), 0);
-
-  // Total savings is accumulated across all savings transactions
-  const totalCombinedSavings = transactions
-    .filter(t => {
-      if (t.isOpeningBalance || t.is_verified === 0) return false;
-      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
-      return catObj?.group === 'Savings';
-    })
-    .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-
-  const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0);
-  const currentMonthSavings = currentMonthTxs
-    .filter(t => {
-      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
-      return catObj?.group === 'Savings';
-    })
-    .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-
-  const prevTotalSavings = totalCombinedSavings - currentMonthSavings;
-  const savingsTrendPercent = prevTotalSavings !== 0 ? (currentMonthSavings / Math.abs(prevTotalSavings)) * 100 : (currentMonthSavings > 0 ? 100 : 0);
-  const isSavingsPositive = savingsTrendPercent >= 0;
-  const formattedSavingsPercent = (isSavingsPositive ? '+' : '') + savingsTrendPercent.toFixed(1) + '%';
-  const hasPriorData = transactions.filter(t => !isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0).length > 0;
 
   const displayedItems = categories.filter(c => {
     if (activeTab === 'Categories') {
@@ -120,7 +101,7 @@ export function ManageFinances() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-safe">
+    <div className="space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
       
       {/* Top Segmented Control matching the mockup */}
       <div className="flex justify-center mb-8">
@@ -174,21 +155,6 @@ export function ManageFinances() {
               </div>
             </div>
           </div>
-
-      <div className="bg-surface-container rounded-3xl p-6 border border-outline-variant/30 flex justify-between items-center relative overflow-hidden">
-        <div className="relative z-10">
-          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">TOTAL COMBINED SAVINGS</p>
-          <h2 className="text-4xl text-emerald-500 font-numeric font-bold">{formatCurrency(totalCombinedSavings)}</h2>
-          <div className="mt-4 flex items-center gap-2">
-            <div className="text-xs text-on-surface-variant">
-              {hasPriorData && prevTotalSavings > 0 && (<p className={`flex items-center gap-1 ${isSavingsPositive ? 'text-emerald-500' : 'text-error'} font-medium`}><Sparkles className="w-3 h-3" /> {formattedSavingsPercent} this month</p>)}
-            </div>
-          </div>
-        </div>
-        <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none">
-          <ShieldCheck className="w-32 h-32 text-emerald-500" />
-        </div>
-      </div>
 
       <div className="flex bg-surface-container rounded-xl p-1">
         <button 

@@ -1,5 +1,5 @@
 import { Fingerprint, ShieldCheck, Lock, Plus, AlertTriangle, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { Tab } from './types';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
@@ -14,11 +14,20 @@ import { PayCardModal } from './components/PayCardModal';
 import { ManageFinances } from './components/ManageFinances';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ButtonTourOverlay } from './components/ButtonTourOverlay';
+import { GoogleSignInGate } from './components/GoogleSignInGate';
 import { useAppContext } from './context/AppContext';
 import { registerDailyCronWorker, calculateEmiReminders, triggerNativeNotification } from './utils/emiReminders';
 
+// Keep the completed Google authentication flow dormant during development.
+// Change this to true when the app is ready to require Google sign-in again.
+const GOOGLE_LOGIN_ENABLED = false;
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
+  });
   const { accounts, transactions, biometric, passcode, verifyPasscode, integrityWarning, dismissIntegrityWarning, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, setEditingTransaction, addAccountModalType, setAddAccountModalType, isWalletModalOpen, setWalletModalOpen, payCardModalState, setPayCardModalState, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
 
   // Daily Cron Job Worker at 09:00 AM local time for Smart EMI Reminders
@@ -47,6 +56,16 @@ export default function App() {
     }
   };
 
+  const handleGoogleLogout = async () => {
+    try {
+      await fetch('/api/auth/google/logout', { method: 'POST', credentials: 'include' });
+    } finally {
+      setUnlocked(false);
+      setGoogleAuth({ loading: false, authenticated: false });
+      window.history.replaceState({}, document.title, '/');
+    }
+  };
+
   useEffect(() => {
     const handleNavigateBackup = () => {
       handleTabChange('settings');
@@ -61,11 +80,49 @@ export default function App() {
     }
   }, [isManageCategoriesOpen]);
 
+  useLayoutEffect(() => {
+    // This runs before child useEffect hooks, so backup work can never begin
+    // while the browser is still on an OAuth callback URL.
+    const callback = new URLSearchParams(window.location.search);
+    const driveResult = callback.get('drive');
+    const authResult = callback.get('auth');
+    if (!driveResult && !authResult) return;
+    if (driveResult) {
+      sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
+        status: driveResult,
+        error: callback.get('drive_error'),
+      }));
+    }
+    const destination = driveResult ? 'settings' : 'dashboard';
+    window.history.replaceState({}, document.title, `/?tab=${destination}`);
+    setActiveTab(destination);
+  }, []);
+
+  useEffect(() => {
+    if (!GOOGLE_LOGIN_ENABLED) {
+      setGoogleAuth({ loading: false, authenticated: false });
+      return;
+    }
+    let active = true;
+    fetch('/api/auth/google/status', { credentials: 'include', cache: 'no-store' })
+      .then(async response => ({ response, body: await response.json().catch(() => null) }))
+      .then(({ response, body }) => {
+        if (active) setGoogleAuth({ loading: false, authenticated: Boolean(response.ok && body?.authenticated) });
+      })
+      .catch(() => {
+        if (active) setGoogleAuth({ loading: false, authenticated: false });
+      });
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     // Initialize history state on load if not already set
     if (!window.history.state || !window.history.state.tab) {
+      const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+      const initialTab = tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
       window.history.replaceState({ exitPrompt: true }, '');
-      window.history.pushState({ tab: 'dashboard' }, '', '?tab=dashboard');
+      window.history.pushState({ tab: initialTab }, '', `?tab=${initialTab}${new URLSearchParams(window.location.search).get('drive') ? `&drive=${new URLSearchParams(window.location.search).get('drive')}` : ''}${new URLSearchParams(window.location.search).get('drive_error') ? `&drive_error=${encodeURIComponent(new URLSearchParams(window.location.search).get('drive_error') || '')}` : ''}`);
+      setActiveTab(initialTab);
     } else if (window.history.state.tab) {
       setActiveTab(window.history.state.tab as Tab);
     }
@@ -114,6 +171,10 @@ export default function App() {
       });
     }
   }, [pinEntry, verifyPasscode, setUnlocked]);
+
+  if (GOOGLE_LOGIN_ENABLED && !googleAuth.authenticated) {
+    return <GoogleSignInGate loading={googleAuth.loading} />;
+  }
 
   if ((biometric || passcode) && !isUnlocked) {
     return (
@@ -281,7 +342,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-on-background selection:bg-primary/30 relative overflow-x-hidden">
-      <Header />
+      <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       
       <main className="pt-20 min-h-screen md:pl-20">

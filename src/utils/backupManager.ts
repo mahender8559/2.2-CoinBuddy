@@ -241,11 +241,12 @@ export function upgradeBackupData(rawJsonString: string): any {
 
   // Ensure accounts array exists and has proper types
   const accounts = Array.isArray(data.accounts) ? data.accounts.map((acc: any) => ({
-    id: acc.id || `acc_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    id: acc.id || crypto.randomUUID(),
     name: acc.name || 'Account',
     type: acc.type || 'asset',
     balance: Number(acc.balance) || 0,
     initialBalance: acc.initialBalance ?? acc.openingBalance ?? (acc.balance !== undefined ? Number(acc.balance) : 0),
+    // Legacy backup aliases are normalized once at this import boundary.
     originalPrincipal: acc.originalPrincipal ?? acc.original_principal ?? acc.balance ?? 0,
     monthlyEMI: acc.monthlyEMI ?? acc.monthly_emi ?? 0,
     interestRate: acc.interestRate ?? acc.interest_rate ?? 0,
@@ -258,7 +259,7 @@ export function upgradeBackupData(rawJsonString: string): any {
 
   // Ensure transactions array exists
   const transactions = Array.isArray(data.transactions) ? data.transactions.map((t: any) => ({
-    id: t.id || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    id: t.id || crypto.randomUUID(),
     amount: Number(t.amount) || 0,
     type: t.type || 'expense',
     category: t.category || 'General',
@@ -350,6 +351,22 @@ export class BackupStorageAdapter {
     encryptedContent: string,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'
   ): Promise<void> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const response = await fetch('/api/google-drive/backup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-CoinBuddy-Filename': encodeURIComponent(filename),
+        },
+        body: new Blob([encryptedContent], { type: 'application/octet-stream' }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Google Drive backup failed (HTTP ${response.status}).`);
+      }
+      return;
+    }
+
     // Save to virtual backup storage registry in localStorage for history list
     const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups') || '[]';
     let savedBackups: any[] = [];
@@ -394,8 +411,8 @@ export class BackupStorageAdapter {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-    } else if (provider === 'GOOGLE_DRIVE' || provider === 'CUSTOM') {
-      throw new Error(`${provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Custom cloud storage'} is not configured. Connect a real storage adapter before enabling cloud backups.`);
+    } else if (provider === 'CUSTOM') {
+      throw new Error('Custom cloud storage is not configured.');
     }
   }
 
@@ -432,6 +449,18 @@ export class BackupStorageAdapter {
    * Simulates OAuth re-authentication flow with target storage provider
    */
   static async authenticate(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<boolean> {
+    if (provider === 'GOOGLE_DRIVE') {
+      // Keep the storage adapter testable outside a browser; OAuth is only
+      // initiated from the deployed web application.
+      if (typeof window === 'undefined') return true;
+      const status = await fetch('/api/google-drive/status').then(response => response.ok ? response.json() : { connected: false });
+      if (!status.connected) {
+        // Deliberately leave the SPA so Vercel invokes the OAuth function.
+        window.location.href = '/api/google-drive/connect';
+        return false;
+      }
+      return true;
+    }
     await new Promise((resolve) => setTimeout(resolve, 800));
     return true;
   }
@@ -440,6 +469,19 @@ export class BackupStorageAdapter {
    * Downloads or retrieves latest backup files list for restore
    */
   static async listAvailableBackups(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<any[]> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const response = await fetch('/api/google-drive/backups');
+      if (!response.ok) return [];
+      const result = await response.json();
+      return (result.files || []).map((file: any) => ({
+        id: file.id,
+        name: file.name,
+        date: new Date(file.modifiedTime).toLocaleString(),
+        size: `${(Number(file.size || 0) / 1024).toFixed(1)} KB`,
+        accountsCount: 0,
+        transactionsCount: 0,
+      }));
+    }
     const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups');
     if (existingBackupsJson) {
       try {

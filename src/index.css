@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600&display=swap');
+/* Bundled font files: no Google CDN request is needed on first offline launch. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/geist';
 @import "tailwindcss";
 
 @theme {

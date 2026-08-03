@@ -2,15 +2,16 @@ import { Account, Transaction, CreditCardInfo } from '../types';
 import { safeCompute, SAFE_MATH_ERRORS } from './safeMath';
 import { calculateLedgerBalance } from '../domain/ledgerRules';
 
+const balanceCalculationErrors = new Map<string, string>();
+export function getBalanceCalculationErrors(): ReadonlyMap<string, string> { return balanceCalculationErrors; }
+
 /**
  * Checks whether an account has an opening balance transaction in the transaction list.
  */
 export function hasOpeningBalanceTx(account: Account, transactions: Transaction[]): boolean {
   return transactions.some(
     tx =>
-      (tx.isOpeningBalance ||
-        tx.category === '#opening' ||
-        tx.transaction_type === 'OPENING_BALANCE') &&
+      (tx.isOpeningBalance || tx.transaction_type === 'OPENING_BALANCE') &&
       (tx.account === account.id ||
         tx.fromAccountId === account.id ||
         tx.toAccountId === account.id)
@@ -29,7 +30,16 @@ export function recomputeAccountBalance(account: Account, transactions: Transact
     return calculateLedgerBalance(account, transactions);
   }, SAFE_MATH_ERRORS.DRIFT);
 
-  return typeof safeRes === 'number' ? safeRes : (0 as any);
+  if (typeof safeRes === 'number') {
+    balanceCalculationErrors.delete(account.id);
+    return safeRes;
+  }
+  const message = `Balance calculation failed for account ${account.name} (${safeRes}).`;
+  balanceCalculationErrors.set(account.id, message);
+  console.error(message, { accountId: account.id });
+  // This is only a rendering fallback; consumers can inspect the diagnostics
+  // map and must display an integrity warning rather than trust this value.
+  return 0;
 }
 
 

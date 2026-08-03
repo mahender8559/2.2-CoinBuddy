@@ -15,20 +15,11 @@ export default defineConfig(() => {
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wasm}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              }
-            }
-          }
-        ]
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wasm,woff2}'],
+        // OAuth and Drive endpoints must never be satisfied by the SPA
+        // navigation fallback or a cached response.
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: []
       },
       devOptions: {
         enabled: true,

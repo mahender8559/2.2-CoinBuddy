@@ -33,15 +33,15 @@ export function calculateEmiReminders(
   const activeLoans = accounts.filter(acc => {
     if (acc.is_archived === 1 || acc.type !== 'liability') return false;
     const isLoanGroup = acc.group === 'Bank Loan' || acc.group === 'Loan' || acc.group === 'Mortgage' || acc.group === 'Personal Loan';
-    const emi = acc.monthlyEMI ?? acc.monthly_emi ?? 0;
+    const emi = acc.monthlyEMI ?? acc.monthlyEMI ?? 0;
     return (isLoanGroup || emi > 0) && acc.balance > 0;
   });
 
   for (const loan of activeLoans) {
-    const emiAmount = loan.monthlyEMI ?? loan.monthly_emi ?? 0;
+    const emiAmount = loan.monthlyEMI ?? loan.monthlyEMI ?? 0;
     
     // Determine due date for current month
-    const dateStr = loan.nextEMIDate || loan.loanStartDate || loan.loan_start_date || '';
+    const dateStr = loan.nextEMIDate || loan.loanStartDate || loan.loanStartDate || '';
     let dueDay = 5; // default fallback day
     if (dateStr) {
       const parts = dateStr.split('-');
@@ -82,9 +82,9 @@ export function calculateEmiReminders(
     const diffTime = dueDate.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
 
-    const fixedPenalty = loan.lateFeeFixedAmount ?? loan.late_fee_fixed_amount ?? 500;
-    const ratePenalty = loan.lateFeeInterestRate ?? loan.late_fee_interest_rate ?? 2.0;
-    const graceDays = loan.gracePeriodDays ?? loan.grace_period_days ?? 0;
+    const fixedPenalty = loan.lateFeeFixedAmount ?? loan.lateFeeFixedAmount ?? 500;
+    const ratePenalty = loan.lateFeeInterestRate ?? loan.lateFeeInterestRate ?? 2.0;
+    const graceDays = loan.gracePeriodDays ?? loan.gracePeriodDays ?? 0;
 
     const formattedDueDate = dueDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     const formattedEmi = emiAmount.toLocaleString('en-IN');
@@ -97,8 +97,8 @@ export function calculateEmiReminders(
         type: 'UPCOMING_EMI',
         accountId: loan.id,
         accountName: loan.name,
-        title: `📅 Upcoming EMI: ${loan.name}`,
-        body: `Friendly reminder: Your ₹${formattedEmi} EMI is due on ${formattedDueDate}. Paying on time saves you from a potential ₹${formattedFixed} penalty and protects your credit score!`,
+        title: `ðŸ“… Upcoming EMI: ${loan.name}`,
+        body: `Friendly reminder: Your â‚¹${formattedEmi} EMI is due on ${formattedDueDate}. Paying on time saves you from a potential â‚¹${formattedFixed} penalty and protects your credit score!`,
         dueDate,
         dueDateFormatted: formattedDueDate,
         monthlyEmi: emiAmount,
@@ -116,8 +116,8 @@ export function calculateEmiReminders(
         type: 'MISSED_EMI',
         accountId: loan.id,
         accountName: loan.name,
-        title: `⚠️ Action Required: ${loan.name} EMI`,
-        body: `It looks like your EMI wasn't logged. If this is unpaid, your bank may apply a penalty of ₹${formattedFixed} + ${ratePenalty}% interest. Tap to mark as paid or update your balance.`,
+        title: `âš ï¸ Action Required: ${loan.name} EMI`,
+        body: `It looks like your EMI wasn't logged. If this is unpaid, your bank may apply a penalty of â‚¹${formattedFixed} + ${ratePenalty}% interest. Tap to mark as paid or update your balance.`,
         dueDate,
         dueDateFormatted: formattedDueDate,
         monthlyEmi: emiAmount,

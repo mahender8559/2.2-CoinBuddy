@@ -74,7 +74,7 @@ export function AddAccountModal() {
     if (editingCreditCard) {
       setName(editingCreditCard.name || '');
       const openingTx = transactions.find(t => 
-        (t.isOpeningBalance || t.category === '#opening') &&
+        (t.isOpeningBalance || t.transaction_type === 'OPENING_BALANCE') &&
         (t.account === editingCreditCard.id || t.toAccountId === editingCreditCard.id || t.fromAccountId === editingCreditCard.id)
       );
       setBalance(openingTx ? Math.abs(openingTx.amount).toString() : '0');
@@ -86,7 +86,7 @@ export function AddAccountModal() {
     } else if (editingAccount) {
       setName(editingAccount.name || '');
       const openingTx = transactions.find(t => 
-        (t.isOpeningBalance || t.category === '#opening') &&
+        (t.isOpeningBalance || t.transaction_type === 'OPENING_BALANCE') &&
         (t.account === editingAccount.id || t.toAccountId === editingAccount.id || t.fromAccountId === editingAccount.id)
       );
       setBalance(openingTx ? Math.abs(openingTx.amount).toString() : '0');
@@ -99,18 +99,18 @@ export function AddAccountModal() {
       } else {
         setLiabilityType(editingAccount.group || 'Bank Loan');
         setOriginalPrincipal(editingAccount.originalPrincipal !== undefined ? editingAccount.originalPrincipal.toString() : (editingAccount.balance !== undefined ? editingAccount.balance.toString() : ''));
-        setInterestRate(editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : (editingAccount.interest_rate !== undefined ? editingAccount.interest_rate.toString() : ''));
-        setMonthlyEMI(editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : (editingAccount.monthly_emi !== undefined ? editingAccount.monthly_emi.toString() : ''));
-        setNextEMIDate(editingAccount.nextEMIDate || editingAccount.loanStartDate || editingAccount.loan_start_date || '');
-        setInterestCalculationType((editingAccount.interestCalculationType || editingAccount.interest_calculation_type) as any || 'REDUCING');
-        setPaymentFrequency((editingAccount.paymentFrequency || editingAccount.payment_frequency) as any || 'MONTHLY');
-        setTenureMonths(editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : (editingAccount.tenure_months !== undefined ? editingAccount.tenure_months.toString() : ''));
-        setLoanStartDate(editingAccount.loanStartDate || editingAccount.loan_start_date || editingAccount.nextEMIDate || '');
+        setInterestRate(editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : (editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : ''));
+        setMonthlyEMI(editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : (editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : ''));
+        setNextEMIDate(editingAccount.nextEMIDate || editingAccount.loanStartDate || editingAccount.loanStartDate || '');
+        setInterestCalculationType((editingAccount.interestCalculationType || editingAccount.interestCalculationType) as any || 'REDUCING');
+        setPaymentFrequency((editingAccount.paymentFrequency || editingAccount.paymentFrequency) as any || 'MONTHLY');
+        setTenureMonths(editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : (editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : ''));
+        setLoanStartDate(editingAccount.loanStartDate || editingAccount.loanStartDate || editingAccount.nextEMIDate || '');
         setMonthlyInterestRate(editingAccount.monthlyInterestRate !== undefined ? editingAccount.monthlyInterestRate.toString() : '');
         setNextInterestDueDate(editingAccount.nextInterestDueDate || '');
-        setLateFeeFixedAmount(editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : (editingAccount.late_fee_fixed_amount !== undefined ? editingAccount.late_fee_fixed_amount.toString() : ''));
-        setLateFeeInterestRate(editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : (editingAccount.late_fee_interest_rate !== undefined ? editingAccount.late_fee_interest_rate.toString() : ''));
-        setGracePeriodDays(editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : (editingAccount.grace_period_days !== undefined ? editingAccount.grace_period_days.toString() : '0'));
+        setLateFeeFixedAmount(editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : (editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : ''));
+        setLateFeeInterestRate(editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : (editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : ''));
+        setGracePeriodDays(editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : (editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : '0'));
         setIsEmiManualOverride(false);
       }
     } else if (addAccountModalType) {
@@ -255,28 +255,18 @@ export function AddAccountModal() {
           balance: numBalance || numP,
           group: liabilityType,
           originalPrincipal: numP,
-          original_principal: numP,
           initialBalance: numP,
           openingBalance: numP,
           interestRate: Math.abs(Number(interestRate) || 0),
           monthlyEMI: Math.abs(Number(monthlyEMI) || 0),
-          interest_rate: Math.abs(Number(interestRate) || 0),
-          monthly_emi: Math.abs(Number(monthlyEMI) || 0),
           interestCalculationType: finalInterestCalcType,
-          interest_calculation_type: finalInterestCalcType,
           paymentFrequency: paymentFrequency,
-          payment_frequency: paymentFrequency,
           tenureMonths: Math.abs(Number(tenureMonths) || 0),
-          tenure_months: Math.abs(Number(tenureMonths) || 0),
           loanStartDate: loanStartDate || nextEMIDate,
-          loan_start_date: loanStartDate || nextEMIDate,
           nextEMIDate: nextEMIDate || loanStartDate,
           lateFeeFixedAmount: Math.abs(Number(lateFeeFixedAmount) || 0),
-          late_fee_fixed_amount: Math.abs(Number(lateFeeFixedAmount) || 0),
           lateFeeInterestRate: Math.abs(Number(lateFeeInterestRate) || 0),
-          late_fee_interest_rate: Math.abs(Number(lateFeeInterestRate) || 0),
           gracePeriodDays: Math.abs(Number(gracePeriodDays) || 0),
-          grace_period_days: Math.abs(Number(gracePeriodDays) || 0)
         };
 
         if (editingCreditCard) {
@@ -815,9 +805,9 @@ export function AddAccountModal() {
                   {interestCalculationType === 'INTEREST_ONLY' && (
                     <p className="text-[11px] text-primary mt-1.5 flex items-center gap-1 font-medium">
                       <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-                      {paymentFrequency === 'QUARTERLY' && 'Quarterly: balance × (rate / 400)'}
-                      {paymentFrequency === 'ANNUALLY' && 'Annually: balance × (rate / 100)'}
-                      {paymentFrequency === 'MONTHLY' && 'Monthly: balance × (rate / 1200)'}
+                      {paymentFrequency === 'QUARTERLY' && 'Quarterly: balance Ã— (rate / 400)'}
+                      {paymentFrequency === 'ANNUALLY' && 'Annually: balance Ã— (rate / 100)'}
+                      {paymentFrequency === 'MONTHLY' && 'Monthly: balance Ã— (rate / 1200)'}
                     </p>
                   )}
                 </div>
@@ -840,7 +830,7 @@ export function AddAccountModal() {
                 <div className="grid grid-cols-3 gap-2.5 pt-1">
                   <div>
                     <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Fixed Late Fee (₹)
+                      Fixed Late Fee (â‚¹)
                     </label>
                     <input 
                       type="number"

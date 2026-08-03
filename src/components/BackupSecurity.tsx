@@ -11,7 +11,6 @@ import {
   BackupStorageAdapter, 
   decryptBackup, 
   upgradeBackupData, 
-  hydrateDatabase, 
   BackupSettings, 
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS 
@@ -80,6 +79,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   
   const [selectedBackupFile, setSelectedBackupFile] = useState<{
+    id?: string;
     name: string;
     date: string;
     size: string;
@@ -103,6 +103,21 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const [restoreSuccessCelebration, setRestoreSuccessCelebration] = useState(false);
 
   const localFileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem('coinbuddy_drive_oauth_result');
+    const params = new URLSearchParams(window.location.search);
+    const result = stored ? JSON.parse(stored) : { status: params.get('drive'), error: params.get('drive_error') };
+    if (result.status === 'connected') {
+      setBackupSuccessMessage('Google Drive connected successfully.');
+    } else if (result.status === 'error') {
+      setBackupErrorMessage(result.error || 'Google Drive connection failed.');
+    } else {
+      return;
+    }
+    sessionStorage.removeItem('coinbuddy_drive_oauth_result');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   // Fetch available backups list when restore source changes
   useEffect(() => {
@@ -213,23 +228,22 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
   };
 
-  // Helper to test watchdog failure & reconnect flow
-  const handleSimulateFailure = async () => {
-    setConfig(prev => ({
-      ...prev,
-      authExpired: true
-    }));
-    
-    const failedMeta = await BackupManager.executeSilentBackup({
-      ...config,
-      authExpired: true
-    });
+  const handleStorageProviderChange = async (provider: BackupSettings['storageProvider']) => {
+    setConfig(prev => ({ ...prev, storageProvider: provider, authExpired: false }));
+    if (provider !== 'GOOGLE_DRIVE') return;
 
-    if (failedMeta) {
-      setConfig(prev => ({
-        ...prev,
-        lastBackupMetadata: failedMeta
-      }));
+    setIsReconnecting(true);
+    setBackupErrorMessage(null);
+    setBackupSuccessMessage('Connecting to Google Drive…');
+    try {
+      // This redirects to Google when the account is not already connected.
+      const connected = await BackupStorageAdapter.authenticate(provider);
+      if (connected) setBackupSuccessMessage('Google Drive is already connected.');
+    } catch (error: any) {
+      setBackupSuccessMessage(null);
+      setBackupErrorMessage(error?.message || 'Unable to start the Google Drive connection.');
+    } finally {
+      setIsReconnecting(false);
     }
   };
 
@@ -349,10 +363,12 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
 
     let payloadToDecrypt = selectedBackupFile.content;
-    if (!payloadToDecrypt) {
-      // If mock file without direct content, build payload
-      payloadToDecrypt = BackupManager.generateBackupJSON();
+    if (!payloadToDecrypt && restoreSource === 'GOOGLE_DRIVE' && selectedBackupFile.id) {
+      const response = await fetch(`/api/google-drive/backups?id=${encodeURIComponent(selectedBackupFile.id)}`);
+      if (!response.ok) throw new Error('Unable to download the selected Google Drive backup.');
+      payloadToDecrypt = await response.text();
     }
+    if (!payloadToDecrypt) throw new Error('The selected backup file is unavailable. Choose another file or upload it again.');
 
     setIsDecrypting(true);
 
@@ -385,27 +401,24 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   };
 
   // Step 4 Final Confirm, Migrate & Hydrate Handler
-  const handleConfirmRestore = () => {
+  const handleConfirmRestore = async () => {
     if (!decryptedRawJSON) return;
 
     setIsRestoring(true);
 
-    setTimeout(() => {
       try {
         // 1. Upgrade schema
         const upgradedData = upgradeBackupData(decryptedRawJSON);
         
         // 2. Hydrate database
-        hydrateDatabase(upgradedData);
-        
-        // 3. Update React AppContext state immediately
-        importLedgerData(upgradedData);
+        // importLedgerData persists and refreshes the SQLite projection before it resolves.
+        await importLedgerData(upgradedData);
 
         // 4. Show success celebration
         setIsRestoring(false);
         setRestoreSuccessCelebration(true);
         
-        setTimeout(() => {
+        window.setTimeout(() => {
           setRestoreSuccessCelebration(false);
           setIsRestoreModalOpen(false);
           setRestoreStep(1);
@@ -416,7 +429,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
         setIsRestoring(false);
         alert(`Restore Error: ${e?.message || 'Failed to hydrate database.'}`);
       }
-    }, 1000);
   };
 
   const meta = config.lastBackupMetadata;
@@ -581,17 +593,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
         )}
       </div>
 
-      {/* Simulator bar for testing background failure watchdog */}
-      <div className="flex items-center justify-between px-3 text-[11px] text-on-surface-variant">
-        <span>Watchdog Status: Active (5-file retention policy)</span>
-        <button
-          onClick={handleSimulateFailure}
-          className="text-error/80 hover:text-error underline font-semibold"
-        >
-          [Test Watchdog Error]
-        </button>
-      </div>
-
       {/* 2. Auto-Backup Settings Group */}
       <div className="space-y-3">
         <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest ml-2">Auto-Backup Settings</h3>
@@ -656,7 +657,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             <select
               value={config.storageProvider}
               disabled={!config.isAutoBackupEnabled}
-              onChange={(e) => setConfig(prev => ({ ...prev, storageProvider: e.target.value as any }))}
+              onChange={(e) => { void handleStorageProviderChange(e.target.value as BackupSettings['storageProvider']); }}
               className="bg-surface-container-highest border border-outline-variant/30 text-on-surface rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
             >
               <option value="LOCAL">Local Device Storage</option>
