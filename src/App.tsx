@@ -14,10 +14,12 @@ import { PayCardModal } from './components/PayCardModal';
 import { ManageFinances } from './components/ManageFinances';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ButtonTourOverlay } from './components/ButtonTourOverlay';
+import { GoogleSignInGate } from './components/GoogleSignInGate';
 import { useAppContext } from './context/AppContext';
 import { registerDailyCronWorker, calculateEmiReminders, triggerNativeNotification } from './utils/emiReminders';
 
 export default function App() {
+  const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
     return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
@@ -69,13 +71,30 @@ export default function App() {
     // while the browser is still on an OAuth callback URL.
     const callback = new URLSearchParams(window.location.search);
     const driveResult = callback.get('drive');
-    if (!driveResult) return;
-    sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
-      status: driveResult,
-      error: callback.get('drive_error'),
-    }));
-    window.history.replaceState({}, document.title, '/?tab=settings');
-    setActiveTab('settings');
+    const authResult = callback.get('auth');
+    if (!driveResult && !authResult) return;
+    if (driveResult) {
+      sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
+        status: driveResult,
+        error: callback.get('drive_error'),
+      }));
+    }
+    const destination = driveResult ? 'settings' : 'dashboard';
+    window.history.replaceState({}, document.title, `/?tab=${destination}`);
+    setActiveTab(destination);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/google/status', { credentials: 'include', cache: 'no-store' })
+      .then(async response => ({ response, body: await response.json().catch(() => null) }))
+      .then(({ response, body }) => {
+        if (active) setGoogleAuth({ loading: false, authenticated: Boolean(response.ok && body?.authenticated) });
+      })
+      .catch(() => {
+        if (active) setGoogleAuth({ loading: false, authenticated: false });
+      });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -134,6 +153,10 @@ export default function App() {
       });
     }
   }, [pinEntry, verifyPasscode, setUnlocked]);
+
+  if (!googleAuth.authenticated) {
+    return <GoogleSignInGate loading={googleAuth.loading} />;
+  }
 
   if ((biometric || passcode) && !isUnlocked) {
     return (

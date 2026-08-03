@@ -4,7 +4,7 @@ const COOKIE = 'coinbuddy_drive_session';
 const STATE_COOKIE = 'coinbuddy_drive_state';
 const scope = 'https://www.googleapis.com/auth/drive.appdata';
 
-function required(name) {
+export function required(name) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not configured.`);
   return value;
@@ -29,14 +29,14 @@ function key() {
   return bytes;
 }
 
-function seal(payload) {
+export function sealSession(payload) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key(), iv);
   const data = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), data]).toString('base64url');
 }
 
-function unseal(value) {
+export function unsealSession(value) {
   const bytes = Buffer.from(value, 'base64url');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key(), bytes.subarray(0, 12));
   decipher.setAuthTag(bytes.subarray(12, 28));
@@ -65,7 +65,7 @@ export async function finishAuthorization(req, res) {
   // Never replace a working encrypted session with an empty OAuth response.
   if (!tokens.refresh_token) throw new Error('Google did not return a refresh token. Remove CoinBuddy access in Google Account permissions, then reconnect.');
   try {
-    setCookie(res, COOKIE, seal({ refreshToken: tokens.refresh_token }), 60 * 60 * 24 * 365);
+    setCookie(res, COOKIE, sealSession({ refreshToken: tokens.refresh_token }), 60 * 60 * 24 * 365);
   } catch (err) {
     console.error('Encryption Failure:', err);
     throw new Error('Unable to encrypt the Google Drive session.');
@@ -76,7 +76,7 @@ export async function finishAuthorization(req, res) {
 export async function driveToken(req, res) {
   const session = parseCookies(req)[COOKIE];
   if (!session) throw new Error('Google Drive is not connected.');
-  const { refreshToken } = unseal(session);
+  const { refreshToken } = unsealSession(session);
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: required('GOOGLE_CLIENT_ID'), client_secret: required('GOOGLE_CLIENT_SECRET'), refresh_token: refreshToken, grant_type: 'refresh_token' }) });
   const tokens = await response.json();
   if (!response.ok) throw new Error('Google Drive authorization expired. Reconnect Google Drive.');
