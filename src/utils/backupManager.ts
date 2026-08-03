@@ -451,7 +451,8 @@ export class BackupStorageAdapter {
       if (typeof window === 'undefined') return true;
       const status = await fetch('/api/google-drive/status').then(response => response.ok ? response.json() : { connected: false });
       if (!status.connected) {
-        window.location.assign('/api/google-drive/connect');
+        // Deliberately leave the SPA so Vercel invokes the OAuth function.
+        window.location.href = '/api/google-drive/connect';
         return false;
       }
       return true;
