@@ -1,6 +1,6 @@
-import { Account, Transaction, CreditCardInfo } from '../../../src/types';
-import { safeCompute, SAFE_MATH_ERRORS } from '../../../src/utils/safeMath';
-import { calculateLedgerBalance } from '../../../src/domain/ledgerRules';
+import { Account, Transaction, CreditCardInfo } from '../types';
+import { safeCompute, SAFE_MATH_ERRORS } from './safeMath';
+import { calculateLedgerBalance } from '../domain/ledgerRules';
 
 /**
  * Checks whether an account has an opening balance transaction in the transaction list.
