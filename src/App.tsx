@@ -52,6 +52,16 @@ export default function App() {
     }
   };
 
+  const handleGoogleLogout = async () => {
+    try {
+      await fetch('/api/auth/google/logout', { method: 'POST', credentials: 'include' });
+    } finally {
+      setUnlocked(false);
+      setGoogleAuth({ loading: false, authenticated: false });
+      window.history.replaceState({}, document.title, '/');
+    }
+  };
+
   useEffect(() => {
     const handleNavigateBackup = () => {
       handleTabChange('settings');
@@ -324,7 +334,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-on-background selection:bg-primary/30 relative overflow-x-hidden">
-      <Header />
+      <Header onLogout={handleGoogleLogout} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       
       <main className="pt-20 min-h-screen md:pl-20">
