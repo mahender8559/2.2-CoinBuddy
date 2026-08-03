@@ -20,7 +20,7 @@ export function Activity() {
         : Math.max(currentIndex - 1, 0);
       return typeFilters[nextIndex];
     });
-  });
+  }, true);
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -134,7 +134,7 @@ export function Activity() {
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
 
   return (
-    <div className="space-y-6 pb-24 md:pb-0 animate-fade-in touch-pan-y" {...typeFilterSwipe}>
+    <div className="space-y-6 pb-24 md:pb-0 animate-fade-in">
       {/* Header with Select */} 
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-on-surface">Activity Logger</h2>
@@ -167,7 +167,7 @@ export function Activity() {
       )}
 
       {/* Type Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide touch-pan-y" {...typeFilterSwipe}>
         {typeFilters.map(type => (
           <button
             key={type}
