@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Account, Transaction, CreditCardInfo } from '../types';
 import {
   recomputeAccountBalance,
+  recomputeAccountStateFromLedger,
   recomputeAllAccountBalances,
   syncCreditCardsWithAccounts,
 } from '../utils/balanceManager';
@@ -182,6 +183,14 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
     // Total = 1000 + 250 - 500 = 750
     const cardBalance = recomputeAccountBalance(mockAccounts[2], mockTransactions);
     expect(cardBalance).toBe(750);
+  });
+
+  it('recomputeAccountStateFromLedger derives balance from transactions instead of stale local state', () => {
+    const staleAccount = { ...mockAccounts[0], balance: 99999 };
+    const derived = recomputeAccountStateFromLedger(staleAccount, mockTransactions);
+
+    expect(derived.balance).toBe(5000);
+    expect(derived.id).toBe('checking');
   });
 
   it('recomputeAllAccountBalances fixes historical drift across all accounts on startup', () => {

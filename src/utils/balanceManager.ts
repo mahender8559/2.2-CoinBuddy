@@ -125,6 +125,14 @@ export function recomputeAllAccountBalances(
 }
 
 /**
+ * Compatibility helper for callers that need an account-shaped ledger
+ * projection. It never trusts the balance carried by the input record.
+ */
+export function recomputeAccountStateFromLedger(account: Account, transactions: Transaction[]): Account {
+  return { ...account, balance: recomputeAccountBalance(account, transactions) };
+}
+
+/**
  * Syncs credit card info balances with corresponding account balances.
  */
 export function syncCreditCardsWithAccounts(

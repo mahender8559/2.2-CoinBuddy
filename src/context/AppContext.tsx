@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Transaction, CreditCardInfo, Category, Account, Widget, LoanRevision } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
-import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from '../utils/balanceManager';
+import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
   initializeDatabase,
   persistDatabase,
@@ -219,11 +219,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Recompute all account balances dynamically from scratch using the filtered transaction array
     nextAccs = recomputeAllAccountBalances(nextAccs, nextTxs);
-    const nextCards = syncCreditCardsWithAccounts(nextAccs, creditCards);
+    const nextCards = projectCreditCards(nextAccs, creditCards);
 
     setTransactions(nextTxs);
-    setAccounts(nextAccs);
-    setCreditCards(nextCards);
+    setAccountRecords(stripAccountBalances(nextAccs));
+    setCreditCardRecords(stripCardBalances(nextCards));
   };
 
   const handleUndo = () => {
@@ -260,30 +260,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return d.toISOString();
   };
 
-  const [accounts, setAccounts] = useState<Account[]>(loadInitialState('accounts', []));
+  const [accountRecords, setAccountRecords] = useState<Account[]>(() =>
+    loadInitialState('accounts', []).map(record => ({ ...record, balance: 0 }))
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(loadInitialState('transactions', []));
+  const [creditCardRecords, setCreditCardRecords] = useState<CreditCardInfo[]>(() =>
+    loadInitialState('creditCards', []).map(record => ({ ...record, balance: 0 }))
+  );
 
-  const totalAssetsRes = safeCompute(() => 
+  // `balance` remains on the UI types for backwards compatibility, but records
+  // deliberately retain no balance value. Only the ledger projection below may
+  // supply one to consumers.
+  const stripAccountBalances = (records: Account[]) => records.map(record => ({ ...record, balance: 0 }));
+  const stripCardBalances = (records: CreditCardInfo[]) => records.map(record => ({ ...record, balance: 0 }));
+
+  // Accounts and cards hold only persisted metadata in state. Their balances are
+  // projections of the transaction table, never independently writable values.
+  const accounts = useMemo(
+    () => recomputeAllAccountBalances(accountRecords, transactions),
+    [accountRecords, transactions]
+  );
+  const creditCards = useMemo(
+    () => projectCreditCards(accounts, creditCardRecords),
+    [accounts, creditCardRecords]
+  );
+
+  const totalAssetsRes = safeCompute(() =>
     accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + getSafeNumericValue(a.balance), 0),
     SAFE_MATH_ERRORS.DRIFT
   );
   const totalAssets = typeof totalAssetsRes === 'number' ? totalAssetsRes : 0;
-
-  const totalLiabilitiesRes = safeCompute(() => 
+  const totalLiabilitiesRes = safeCompute(() =>
     accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + getSafeNumericValue(a.balance), 0),
     SAFE_MATH_ERRORS.DRIFT
   );
   const totalLiabilities = typeof totalLiabilitiesRes === 'number' ? totalLiabilitiesRes : 0;
-
   const netWorthRes = safeCompute(() => totalAssets - totalLiabilities, SAFE_MATH_ERRORS.DRIFT);
   const netWorth = typeof netWorthRes === 'number' ? netWorthRes : (netWorthRes as any);
-
-  const getAccountBalance = (accountId: string) => {
-    return accounts.find(a => a.id === accountId)?.balance ?? 0;
-  };
-
-  const [transactions, setTransactions] = useState<Transaction[]>(loadInitialState('transactions', []));
-
-  const [creditCards, setCreditCards] = useState<CreditCardInfo[]>(loadInitialState('creditCards', []));
+  const getAccountBalance = (accountId: string) => accounts.find(a => a.id === accountId)?.balance ?? 0;
 
   const [categories, setCategories] = useState<Category[]>(loadInitialState('categories', []));
 
@@ -326,10 +340,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     widgets: Widget[];
     loanRevisions: LoanRevision[];
   }) => {
-    setAccounts(state.accounts);
+    setAccountRecords(stripAccountBalances(state.accounts));
     setTransactions(state.transactions);
     setCategories(state.categories);
-    setCreditCards(state.creditCards);
+    setCreditCardRecords(stripCardBalances(state.creditCards));
     setWidgets(state.widgets);
     setLoanRevisions(state.loanRevisions);
   };
@@ -461,8 +475,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (recurringTemplates.length === 0) return;
 
     let newTxs: Transaction[] = [];
-    let updatedAccounts = accounts;
-    let updatedCards = creditCards;
     let hasChanges = false;
 
     recurringTemplates.forEach(template => {
@@ -515,11 +527,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
            
            newTxs.push(newTx);
            
-           if (isVerified === 1) {
-             updatedAccounts = processAccountsForTx(newTx, 1, updatedAccounts);
-             updatedCards = syncCreditCardsWithAccounts(updatedAccounts, updatedCards);
-           }
-           
            hasChanges = true;
            return true;
         }
@@ -534,11 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (hasChanges) {
       const combinedTxs = [...newTxs, ...transactions];
-      const rebalancedAccs = recomputeAllAccountBalances(accounts, combinedTxs);
-      const rebalancedCards = syncCreditCardsWithAccounts(rebalancedAccs, creditCards);
       setTransactions(combinedTxs);
-      setAccounts(rebalancedAccs);
-      setCreditCards(rebalancedCards);
       if (dbDriver) {
         void persistDbAction(async () => {
           for (const transaction of newTxs) {
@@ -548,103 +551,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [transactions, accounts, creditCards, autoRecur, dbDriver]);
-
-  const processAccountsForTx = (tx: Omit<Transaction, 'id'>, direction: 1 | -1, accs: Account[]): Account[] => {
-    const amount = Math.abs(tx.amount) * direction;
-
-    // A. Income (Money entering the ecosystem)
-    if (tx.type === 'income') {
-      const targetId = tx.toAccountId || tx.account || 'cash';
-      return accs.map(a => {
-        if (a.id === targetId) {
-          if (a.type === 'asset') {
-            return { ...a, balance: Math.max(0, a.balance + amount) };
-          } else {
-            // Income should not be deposited into liability, but if processed, reduce debt
-            return { ...a, balance: Math.max(0, a.balance - amount) };
-          }
-        }
-        return a;
-      });
-    }
-
-    // B. Expense (Money leaving the ecosystem)
-    if (tx.type === 'expense') {
-      const sourceId = tx.fromAccountId || tx.account || 'cash';
-      const isInterestOnly = 
-        tx.isInterestOnly ||
-        tx.category === '#interest' ||
-        tx.category?.toLowerCase().includes('interest') ||
-        tx.title?.toLowerCase().includes('interest payment');
-
-      return accs.map(a => {
-        if (a.id === sourceId) {
-          if (a.type === 'asset') {
-            return { ...a, balance: Math.max(0, a.balance - amount) };
-          } else if (a.type === 'liability') {
-            if (isInterestOnly) {
-              // Special Edge Case: Interest-Only Payment
-              // Reduces Asset balance, but does NOT reduce Principal balance of Liability account
-              return a;
-            } else {
-              // Paid from Liability: Debt grows (Source Liability Balance + amount)
-              return { ...a, balance: a.balance + amount };
-            }
-          }
-        }
-        return a;
-      });
-    }
-
-    // C. Transfer (Internal money movement - ZERO Net Worth Impact)
-    if (tx.type === 'transfer') {
-      const fromId = tx.fromAccountId;
-      const toId = tx.toAccountId;
-
-      return accs.map(a => {
-        let newBalance = a.balance;
-
-        if (a.id === fromId) {
-          if (a.type === 'asset') {
-            newBalance = Math.max(0, newBalance - amount); // Liquid cash drops
-          } else if (a.type === 'liability') {
-            newBalance = newBalance + amount; // Debt increases
-          }
-        }
-
-        if (a.id === toId) {
-          if (a.type === 'asset') {
-            newBalance = Math.max(0, newBalance + amount); // Liquid cash increases
-          } else if (a.type === 'liability') {
-            newBalance = Math.max(0, newBalance - amount); // Debt decreases (e.g. paying card/loan)
-          }
-        }
-
-        return { ...a, balance: newBalance };
-      });
-    }
-
-    return accs;
-  };
-
-  const syncCreditCardsWithAccounts = (newAccounts: Account[], cards: CreditCardInfo[]): CreditCardInfo[] => {
-    return cards.map(c => {
-      const acc = newAccounts.find(a => a.id === c.id);
-      if (acc) {
-        return { ...c, balance: acc.balance, limit: acc.limit ?? c.limit };
-      }
-      return c;
-    });
-  };
-
-  // Startup Migration & Rebalance Routine
-  useEffect(() => {
-    setAccounts(prevAccs => {
-      const rebalanced = recomputeAllAccountBalances(prevAccs, transactions);
-      setCreditCards(prevCards => syncCreditCardsWithAccounts(rebalanced, prevCards));
-      return rebalanced;
-    });
-  }, []);
 
   const validateTransaction = (
     tx: Omit<Transaction, 'id'>, 
@@ -730,8 +636,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const finalTx = { ...tx, id: Math.random().toString() };
     const nextTxs = [finalTx, ...transactions];
-    const newAccounts = recomputeAllAccountBalances(accounts, nextTxs);
-    const newCreditCards = syncCreditCardsWithAccounts(newAccounts, creditCards);
 
     pushCommand({
       entityType: 'transaction',
@@ -740,8 +644,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       newState: finalTx
     });
     setTransactions(nextTxs);
-    setAccounts(newAccounts);
-    setCreditCards(newCreditCards);
 
     if (dbDriver) {
       persistDbAction(() => insertTransactionRow(dbDriver, finalTx));
@@ -765,8 +667,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const updatedTx = { ...newTx, id };
     const nextTxs = transactions.map(t => t.id === id ? updatedTx : t);
-    const newAccounts = recomputeAllAccountBalances(accounts, nextTxs);
-    const newCreditCards = syncCreditCardsWithAccounts(newAccounts, creditCards);
 
     pushCommand({
       entityType: 'transaction',
@@ -776,8 +676,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     setTransactions(nextTxs);
-    setAccounts(newAccounts);
-    setCreditCards(newCreditCards);
 
     if (dbDriver) {
       persistDbAction(() => updateTransactionRow(dbDriver, id, newTx));
@@ -793,16 +691,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (tx) {
       const nextTxs = transactions.filter(t => t.id !== id);
-      const newAccounts = recomputeAllAccountBalances(accounts, nextTxs);
-      const newCreditCards = syncCreditCardsWithAccounts(newAccounts, creditCards);
       pushCommand({
         entityType: 'transaction',
         actionType: 'delete',
         previousState: tx,
         newState: null
       });
-      setAccounts(newAccounts);
-      setCreditCards(newCreditCards);
       setTransactions(nextTxs);
 
       if (dbDriver) {
@@ -849,7 +743,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     setLoanRevisions(prev => [...prev, newRev]);
-    setAccounts(prevAccs => prevAccs.map(acc => {
+    setAccountRecords(prevAccs => prevAccs.map(acc => {
       if (acc.id === accId) {
         const existing = acc.revisions || [];
         return {
@@ -875,7 +769,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteLoanRevision = (id: string) => {
     setLoanRevisions(prev => prev.filter(r => r.id !== id));
-    setAccounts(prevAccs => prevAccs.map(acc => {
+    setAccountRecords(prevAccs => prevAccs.map(acc => {
       if (acc.revisions) {
         return {
           ...acc,
@@ -893,11 +787,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addCreditCard = (card: Omit<CreditCardInfo, 'id'>) => {
     const newId = Math.random().toString();
     const initialBalance = card.balance || 0;
-    const newCard: CreditCardInfo = { ...card, id: newId, balance: initialBalance };
-    const newAccount: Account = { id: newId, name: card.name, type: 'liability', balance: initialBalance, limit: card.limit };
+    const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
+    const newAccount: Account = { id: newId, name: card.name, type: 'liability', balance: 0, limit: card.limit };
 
-    setCreditCards(cards => [{ ...newCard }, ...cards]);
-    setAccounts(prev => [newAccount, ...prev]);
+    setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
+    setAccountRecords(prev => [newAccount, ...prev]);
 
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
@@ -1019,15 +913,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
 
-    const { currentBalance } = validateAndCalculateBalance(id, card.balance, card.limit);
-
-    const updatedCard: CreditCardInfo = { ...card, id, balance: currentBalance };
+    validateAndCalculateBalance(id, card.balance, card.limit);
+    const updatedCard: CreditCardInfo = { ...card, id, balance: 0 };
 
     if (existingTxIndex >= 0) {
       const newAmount = card.balance;
       setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? { ...t, amount: newAmount } : t));
-      setCreditCards(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
-      setAccounts(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: currentBalance, limit: card.limit } : a));
+      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
+      setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
     } else {
       if (card.balance > 0) {
         const now = new Date();
@@ -1051,13 +944,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           persistDbAction(() => insertTransactionRow(dbDriver, openingTx));
         }
       }
-      setCreditCards(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
-      setAccounts(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: currentBalance, limit: card.limit } : a));
+      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
+      setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
     }
 
     if (dbDriver) {
       persistDbAction(async () => {
-        await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: currentBalance });
+        await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: 0 });
+        // The entered card balance is an opening-ledger transaction, not card
+        // metadata. Persist its edit through the same authoritative path used
+        // for normal account opening balances.
+        if (existingTxIndex >= 0) {
+          await updateOpeningBalance(dbDriver, id, card.balance);
+        }
         await updateCreditCardRow(dbDriver, updatedCard);
       });
     }
@@ -1066,7 +965,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addAccount = (account: Omit<Account, 'id'>) => {
     const newId = Math.random().toString();
     const initialBalance = account.balance || 0;
-    const newAccount: Account = { ...account, id: newId, balance: initialBalance };
+    const newAccount: Account = { ...account, id: newId, balance: 0 };
     
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
@@ -1113,7 +1012,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       newState: { account: newAccount, openingTx }
     });
 
-    setAccounts(prev => [newAccount, ...prev]);
+    setAccountRecords(prev => [newAccount, ...prev]);
     if (openingTx) {
       setTransactions(prev => [openingTx, ...prev]);
     }
@@ -1134,7 +1033,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
     
-    const { currentBalance } = validateAndCalculateBalance(id, account.balance);
+    validateAndCalculateBalance(id, account.balance);
 
     if (existingTxIndex >= 0) {
       const newAmount = account.balance;
@@ -1142,7 +1041,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const mergedAccount = {
         ...account,
         id,
-        balance: currentBalance,
+        balance: 0,
         originalPrincipal: account.originalPrincipal || targetAccount.originalPrincipal || account.balance
       };
       pushCommand({
@@ -1153,8 +1052,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? updatedTx : t));
-      setAccounts(accs => accs.map(a => a.id === id ? mergedAccount : a));
-      setCreditCards(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: currentBalance } : c));
+      setAccountRecords(accs => accs.map(a => a.id === id ? mergedAccount : a));
+      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
 
       if (dbDriver) {
         persistDbAction(async () => {
@@ -1189,14 +1088,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         entityType: 'account',
         actionType: 'update',
         previousState: { account: targetAccount, openingTx: null },
-        newState: { account: { ...account, id, balance: currentBalance }, openingTx: newOpeningTx }
+        newState: { account: { ...account, id, balance: 0 }, openingTx: newOpeningTx }
       });
-      setAccounts(accs => accs.map(a => a.id === id ? { ...account, id, balance: currentBalance } : a));
-      setCreditCards(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: currentBalance } : c));
+      setAccountRecords(accs => accs.map(a => a.id === id ? { ...account, id, balance: 0 } : a));
+      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
 
       if (dbDriver) {
         persistDbAction(async () => {
-          await updateAccountRow(dbDriver, { ...account, id, balance: currentBalance });
+          await updateAccountRow(dbDriver, { ...account, id, balance: 0 });
           if (newOpeningTx) {
             await insertTransactionRow(dbDriver, newOpeningTx);
           }
@@ -1229,14 +1128,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
         (t.account === id || t.fromAccountId === id || t.toAccountId === id)
       )));
-      setAccounts(prev => prev.filter(a => a.id !== id));
-      setCreditCards(prev => prev.filter(c => c.id !== id));
+      setAccountRecords(prev => prev.filter(a => a.id !== id));
+      setCreditCardRecords(prev => prev.filter(c => c.id !== id));
     } else {
       if (Math.abs(targetAccount.balance) > 0.0001) {
         throw new Error("Account must have a zero balance before closing. Please transfer funds or log an expense.");
       }
-      setAccounts(prev => prev.map(a => a.id === id ? { ...a, is_archived: 1 } : a));
-      setCreditCards(prev => prev.filter(c => c.id !== id));
+      setAccountRecords(prev => prev.map(a => a.id === id ? { ...a, is_archived: 1 } : a));
+      setCreditCardRecords(prev => prev.filter(c => c.id !== id));
     }
   };
 
@@ -1303,7 +1202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCreditCard = (cardId: string) => {
-    setCreditCards(cards => cards.filter(c => c.id !== cardId));
+    setCreditCardRecords(cards => cards.filter(c => c.id !== cardId));
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
@@ -1384,8 +1283,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     setTransactions([]);
-    setCreditCards([]);
-    setAccounts([]);
+    setCreditCardRecords([]);
+    setAccountRecords([]);
     setWidgets([]);
     setPasscode(null);
     setBiometric(false);
@@ -1408,17 +1307,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await importLedgerToDatabase(dbDriver, data);
       });
       const refreshed = await loadStateFromDatabase(dbDriver);
-      setAccounts(refreshed.accounts);
+      setAccountRecords(stripAccountBalances(refreshed.accounts));
       setTransactions(refreshed.transactions);
       setCategories(refreshed.categories);
-      setCreditCards(refreshed.creditCards);
+      setCreditCardRecords(stripCardBalances(refreshed.creditCards));
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
     } else {
-      if (data.accounts && Array.isArray(data.accounts)) setAccounts(data.accounts);
+      if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);
       if (data.categories && Array.isArray(data.categories)) setCategories(data.categories);
-      if (data.creditCards && Array.isArray(data.creditCards)) setCreditCards(data.creditCards);
+      if (data.creditCards && Array.isArray(data.creditCards)) setCreditCardRecords(stripCardBalances(data.creditCards));
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
       if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
     }
