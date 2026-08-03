@@ -1,5 +1,5 @@
 import { Fingerprint, ShieldCheck, Lock, Plus, AlertTriangle, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { Tab } from './types';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
@@ -64,21 +64,21 @@ export default function App() {
     }
   }, [isManageCategoriesOpen]);
 
-  useEffect(() => {
-    // OAuth callbacks must never leave the SPA mounted at an /api URL. Keep a
-    // short-lived result for Backup & Security, then remove token/error query
-    // data before any background backup work can run.
+  useLayoutEffect(() => {
+    // This runs before child useEffect hooks, so backup work can never begin
+    // while the browser is still on an OAuth callback URL.
     const callback = new URLSearchParams(window.location.search);
     const driveResult = callback.get('drive');
-    if (driveResult) {
-      sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
-        status: driveResult,
-        error: callback.get('drive_error'),
-      }));
-      window.history.replaceState({ tab: 'settings' }, '', '?tab=settings');
-      setActiveTab('settings');
-      return;
-    }
+    if (!driveResult) return;
+    sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
+      status: driveResult,
+      error: callback.get('drive_error'),
+    }));
+    window.history.replaceState({ tab: 'settings' }, '', new URL('/?tab=settings', window.location.origin).toString());
+    setActiveTab('settings');
+  }, []);
+
+  useEffect(() => {
     // Initialize history state on load if not already set
     if (!window.history.state || !window.history.state.tab) {
       const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null;
