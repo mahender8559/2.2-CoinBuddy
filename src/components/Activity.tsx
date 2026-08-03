@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 
 export function Activity() {
@@ -10,6 +11,16 @@ export function Activity() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'All' | 'Income' | 'Expense' | 'Transfer'>('All');
+  const typeFilters = ['All', 'Income', 'Expense', 'Transfer'] as const;
+  const typeFilterSwipe = useHorizontalSwipe(direction => {
+    setSelectedTypeFilter(current => {
+      const currentIndex = typeFilters.indexOf(current);
+      const nextIndex = direction === 'left'
+        ? Math.min(currentIndex + 1, typeFilters.length - 1)
+        : Math.max(currentIndex - 1, 0);
+      return typeFilters[nextIndex];
+    });
+  });
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -123,7 +134,7 @@ export function Activity() {
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
 
   return (
-    <div className="space-y-6 pb-24 md:pb-0 animate-fade-in">
+    <div className="space-y-6 pb-24 md:pb-0 animate-fade-in touch-pan-y" {...typeFilterSwipe}>
       {/* Header with Select */} 
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-on-surface">Activity Logger</h2>
@@ -157,7 +168,7 @@ export function Activity() {
 
       {/* Type Filters */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {['All', 'Income', 'Expense', 'Transfer'].map(type => (
+        {typeFilters.map(type => (
           <button
             key={type}
             onClick={() => setSelectedTypeFilter(type as any)}

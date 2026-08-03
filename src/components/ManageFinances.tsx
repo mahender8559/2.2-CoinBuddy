@@ -4,12 +4,16 @@ import { X, Trash2, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, 
 import { Category } from '../types';
 import { icons } from '../icons';
 import { Cards } from './Cards';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 
 export function ManageFinances() {
   const { categories, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
   
   const [mainTab, setMainTab] = useState<'Accounts' | 'Categories'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
+  const mainTabSwipe = useHorizontalSwipe(() => {
+    setMainTab(current => current === 'Accounts' ? 'Categories' : 'Accounts');
+  });
 
   useEffect(() => {
     if (isManageCategoriesOpen) {
@@ -120,7 +124,7 @@ export function ManageFinances() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-safe">
+    <div className="space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
       
       {/* Top Segmented Control matching the mockup */}
       <div className="flex justify-center mb-8">
