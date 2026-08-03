@@ -214,6 +214,25 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
   };
 
+  const handleStorageProviderChange = async (provider: BackupSettings['storageProvider']) => {
+    setConfig(prev => ({ ...prev, storageProvider: provider, authExpired: false }));
+    if (provider !== 'GOOGLE_DRIVE') return;
+
+    setIsReconnecting(true);
+    setBackupErrorMessage(null);
+    setBackupSuccessMessage('Connecting to Google Drive…');
+    try {
+      // This redirects to Google when the account is not already connected.
+      const connected = await BackupStorageAdapter.authenticate(provider);
+      if (connected) setBackupSuccessMessage('Google Drive is already connected.');
+    } catch (error: any) {
+      setBackupSuccessMessage(null);
+      setBackupErrorMessage(error?.message || 'Unable to start the Google Drive connection.');
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
   // Helper to test watchdog failure & reconnect flow
   const handleSimulateFailure = async () => {
     setConfig(prev => ({
@@ -662,7 +681,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             <select
               value={config.storageProvider}
               disabled={!config.isAutoBackupEnabled}
-              onChange={(e) => setConfig(prev => ({ ...prev, storageProvider: e.target.value as any }))}
+              onChange={(e) => { void handleStorageProviderChange(e.target.value as BackupSettings['storageProvider']); }}
               className="bg-surface-container-highest border border-outline-variant/30 text-on-surface rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
             >
               <option value="LOCAL">Local Device Storage</option>

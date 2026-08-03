@@ -446,6 +446,9 @@ export class BackupStorageAdapter {
    */
   static async authenticate(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<boolean> {
     if (provider === 'GOOGLE_DRIVE') {
+      // Keep the storage adapter testable outside a browser; OAuth is only
+      // initiated from the deployed web application.
+      if (typeof window === 'undefined') return true;
       const status = await fetch('/api/google-drive/status').then(response => response.ok ? response.json() : { connected: false });
       if (!status.connected) {
         window.location.assign('/api/google-drive/connect');
