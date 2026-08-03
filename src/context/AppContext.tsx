@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { Transaction, CreditCardInfo, Category, Account, Widget, LoanRevision } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
-import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
+import { getBalanceCalculationErrors, recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
   initializeDatabase,
   persistDatabase,
@@ -34,6 +34,7 @@ import {
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
+import { hasRealTransactionHistory, isOpeningBalanceTransaction, validateOpeningBalance } from '../domain/ledgerRules';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -277,6 +278,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => recomputeAllAccountBalances(accountRecords, transactions),
     [accountRecords, transactions]
   );
+  useEffect(() => {
+    const errors = [...getBalanceCalculationErrors().values()];
+    if (errors.length) setIntegrityWarning(errors.join(' '));
+  }, [accounts]);
   const creditCards = useMemo(
     () => projectCreditCards(accounts, creditCardRecords),
     [accounts, creditCardRecords]
@@ -299,7 +304,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [widgets, setWidgets] = useState<Widget[]>([]);
-  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: Math.random().toString(36).substr(2, 9) }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
+  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: crypto.randomUUID() }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
   const removeWidget = (id: string) => { setWidgets(widgets.filter(w => w.id !== id)); if (dbDriver) { deleteWidgetRow(dbDriver, id).then(() => persistDatabase(dbDriver)).catch(console.error); } };
 
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
@@ -511,6 +516,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     } else if (tx.type === 'transfer') {
+      if (!tx.fromAccountId || !tx.toAccountId || tx.fromAccountId === tx.toAccountId) {
+        return { valid: false, error: 'A transfer must use two different accounts.' };
+      }
       const sourceId = tx.fromAccountId;
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
@@ -637,23 +645,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addLoanRevision = (revision: Omit<LoanRevision, 'id'>) => {
-    const newId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const accId = revision.accountId || revision.account_id || '';
+    const newId = crypto.randomUUID();
+    const accId = revision.accountId || '';
     const newRev: LoanRevision = {
       ...revision,
       id: newId,
       accountId: accId,
-      account_id: accId,
-      effectiveDate: revision.effectiveDate || revision.effective_date || '',
-      effective_date: revision.effectiveDate || revision.effective_date || '',
-      newInterestRate: revision.newInterestRate ?? revision.new_interest_rate ?? 0,
-      new_interest_rate: revision.newInterestRate ?? revision.new_interest_rate ?? 0,
-      newEmi: revision.newEmi ?? revision.new_emi ?? 0,
-      new_emi: revision.newEmi ?? revision.new_emi ?? 0,
-      newTenureMonths: revision.newTenureMonths ?? revision.new_tenure_months ?? 0,
-      new_tenure_months: revision.newTenureMonths ?? revision.new_tenure_months ?? 0,
-      paymentFrequency: revision.paymentFrequency || revision.payment_frequency,
-      payment_frequency: revision.paymentFrequency || revision.payment_frequency,
+      effectiveDate: revision.effectiveDate || '',
+      newInterestRate: revision.newInterestRate ?? 0,
+      newEmi: revision.newEmi ?? 0,
+      newTenureMonths: revision.newTenureMonths ?? 0,
+      paymentFrequency: revision.paymentFrequency || revision.paymentFrequency,
     };
 
     setLoanRevisions(prev => [...prev, newRev]);
@@ -663,13 +665,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return {
           ...acc,
           interestRate: newRev.newInterestRate,
-          interest_rate: newRev.newInterestRate,
           monthlyEMI: newRev.newEmi,
-          monthly_emi: newRev.newEmi,
           tenureMonths: newRev.newTenureMonths,
-          tenure_months: newRev.newTenureMonths,
           paymentFrequency: newRev.paymentFrequency || acc.paymentFrequency,
-          payment_frequency: newRev.payment_frequency || acc.payment_frequency,
           revisions: [...existing, newRev]
         };
       }
@@ -699,7 +697,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addCreditCard = (card: Omit<CreditCardInfo, 'id'>) => {
-    const newId = Math.random().toString();
+    const newId = crypto.randomUUID();
     const initialBalance = card.balance || 0;
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
     const newAccount: Account = { id: newId, name: card.name, type: 'liability', balance: 0, limit: card.limit };
@@ -712,9 +710,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const now = new Date();
       const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       const newOpeningTx: Transaction = {
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         title: 'Opening Balance',
-        subtitle: `${formattedDate} • Initial Debt`,
+        subtitle: `${formattedDate} â€¢ Initial Debt`,
         amount: initialBalance,
         date: now.toISOString(),
         category: '#opening',
@@ -741,7 +739,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!targetAccount) return;
 
     const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening') &&
+      isOpeningBalanceTransaction(t) &&
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
 
@@ -749,6 +747,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (existingTxIndex >= 0) {
       const newAmount = card.balance;
+      const validation = validateOpeningBalance({ ...targetAccount, limit: card.limit }, transactions, newAmount);
+      if (!validation.valid) { window.alert(validation.error); return; }
       setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? { ...t, amount: newAmount } : t));
       setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
       setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
@@ -757,9 +757,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
         const openingTx: Transaction = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
+          subtitle: `${formattedDate} â€¢ Initial Balance`,
           amount: card.balance,
           date: now.toISOString(),
           category: '#opening',
@@ -794,7 +794,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addAccount = (account: Omit<Account, 'id'>) => {
-    const newId = Math.random().toString();
+    const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
     
@@ -805,9 +805,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       if (account.type === 'asset') {
         openingTx = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
+          subtitle: `${formattedDate} â€¢ Initial Balance`,
           amount: initialBalance,
           date: now.toISOString(),
           category: '#opening',
@@ -820,9 +820,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
       } else if (account.type === 'liability') {
         openingTx = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Debt`,
+          subtitle: `${formattedDate} â€¢ Initial Debt`,
           amount: initialBalance,
           date: now.toISOString(),
           category: '#opening',
@@ -860,13 +860,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!targetAccount) return;
 
     const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
+      isOpeningBalanceTransaction(t) &&
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
     
 
     if (existingTxIndex >= 0) {
       const newAmount = account.balance;
+      const validation = validateOpeningBalance({ ...targetAccount, ...account, id }, transactions, newAmount);
+      if (!validation.valid) { window.alert(validation.error); return; }
       const updatedTx = { ...transactions[existingTxIndex], amount: newAmount };
       const mergedAccount = {
         ...account,
@@ -897,9 +899,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
         const openingTx: Transaction = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
+          subtitle: `${formattedDate} â€¢ Initial Balance`,
           amount: account.balance,
           date: now.toISOString(),
           category: '#opening',
@@ -945,17 +947,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    const hasHistory = transactions.some(t => {
-      const isOpening = t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE';
-      if (isOpening) return false;
-
-      const isInvolved = t.account === id || t.fromAccountId === id || t.toAccountId === id;
-      return isInvolved;
-    });
+    const hasHistory = hasRealTransactionHistory(id, transactions);
 
     if (!hasHistory) {
       setTransactions(prev => prev.filter(t => !(
-        (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
+        isOpeningBalanceTransaction(t) &&
         (t.account === id || t.fromAccountId === id || t.toAccountId === id)
       )));
       setAccountRecords(prev => prev.filter(a => a.id !== id));
@@ -975,7 +971,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     addTransaction({
       title: `Transfer: ${fromAccount?.name || 'Unknown'} to ${toAccount?.name || 'Unknown'}`,
-      subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      subtitle: `Today â€¢ ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       amount: Math.abs(amount),
       date: new Date().toISOString(),
       category: '#transfer',
@@ -1008,8 +1004,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (pAmount === undefined || iAmount === undefined) {
       if (liabilityAcc && (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined)) {
-        const rate = liabilityAcc.interestRate ?? liabilityAcc.interest_rate ?? 0;
-        const type = (liabilityAcc.interestCalculationType || liabilityAcc.interest_calculation_type || 'REDUCING') as any;
+        const rate = liabilityAcc.interestRate ?? 0;
+        const type = (liabilityAcc.interestCalculationType || 'REDUCING') as any;
         const split = calculateEmiSplit(liabilityAcc.balance, rate, amount, type);
         pAmount = split.principalAmount;
         iAmount = split.interestAmount;
@@ -1025,15 +1021,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (iAmount > 0) {
       addTransaction({
         title: `Interest Payment: ${liabilityAcc?.name || 'Loan'}`,
-        subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        subtitle: `Today â€¢ ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         amount: iAmount,
         date: new Date().toISOString(),
         category: '#interest',
         icon: 'Flame',
         type: 'expense',
         fromAccountId: defaultAsset,
-        account: id,
-        toAccountId: id,
         isInterestOnly: true,
       });
     }
@@ -1044,7 +1038,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
-    const newCategory = { ...category, id: Math.random().toString() };
+    const newCategory = { ...category, id: crypto.randomUUID() };
     setCategories(prev => [newCategory, ...prev]);
     if (dbDriver) {
       persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
@@ -1067,11 +1061,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const formatCurrency = (amount: number | string) => {
     if (isSafeMathError(amount)) {
-      return `⚠️ [${amount}]`;
+      return `âš ï¸ [${amount}]`;
     }
     const num = typeof amount === 'number' ? amount : parseFloat(String(amount));
     if (isNaN(num) || !isFinite(num)) {
-      return `⚠️ [ERR_CALC_NAN]`;
+      return `âš ï¸ [ERR_CALC_NAN]`;
     }
     const locales: Record<string, string> = {
       'USD': 'en-US',

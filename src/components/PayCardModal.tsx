@@ -56,19 +56,19 @@ export function PayCardModal() {
   const selectedCard = creditCards.find(c => c.id === payCardModalState.cardId);
   const selectedLiability = accounts.find(a => a.id === payCardModalState.cardId && a.type === 'liability');
 
-  const interestType = (selectedLiability?.interestCalculationType || selectedLiability?.interest_calculation_type || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
+  const interestType = (selectedLiability?.interestCalculationType || selectedLiability?.interestCalculationType || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
 
   const isLoan = selectedLiability && (
     selectedLiability.group === 'Loan' ||
     selectedLiability.group === 'Interest-Only Loan' ||
     selectedLiability.group === 'Bank Loan' ||
     selectedLiability.monthlyEMI !== undefined ||
-    selectedLiability.monthly_emi !== undefined ||
+    selectedLiability.monthlyEMI !== undefined ||
     selectedLiability.interestRate !== undefined ||
-    selectedLiability.interest_rate !== undefined
+    selectedLiability.interestRate !== undefined
   );
 
-  const annualRate = selectedLiability?.interestRate ?? selectedLiability?.interest_rate ?? 0;
+  const annualRate = selectedLiability?.interestRate ?? selectedLiability?.interestRate ?? 0;
 
   useEffect(() => {
     setError(null);
@@ -76,7 +76,7 @@ export function PayCardModal() {
     if (selectedCard) {
       setAmount(selectedCard.dueAmount.toString());
     } else if (selectedLiability) {
-      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.monthly_emi ?? selectedLiability.balance ?? 0;
+      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.monthlyEMI ?? selectedLiability.balance ?? 0;
       setAmount(emiVal > 0 ? emiVal.toString() : '');
     }
     setCelebration(null);
@@ -208,7 +208,7 @@ export function PayCardModal() {
               </motion.div>
 
               <h3 className="text-2xl font-black text-on-surface mb-1">
-                {celebration.isFullyPaid ? '🎉 DEBT ELIMINATED!' : '⚡ DEBT REDUCED!'}
+                {celebration.isFullyPaid ? 'ðŸŽ‰ DEBT ELIMINATED!' : 'âš¡ DEBT REDUCED!'}
               </h3>
               <p className="text-xs text-on-surface-variant mb-6">
                 {celebration.isFullyPaid 
@@ -225,7 +225,7 @@ export function PayCardModal() {
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-on-surface-variant font-medium">Remaining Balance</span>
                   <span className={`font-bold font-numeric ${celebration.newBalance === 0 ? 'text-emerald-500 font-black' : 'text-on-surface'}`}>
-                    {celebration.newBalance === 0 ? '₹0.00 (DEBT FREE)' : formatCurrency(celebration.newBalance)}
+                    {celebration.newBalance === 0 ? 'â‚¹0.00 (DEBT FREE)' : formatCurrency(celebration.newBalance)}
                   </span>
                 </div>
               </div>
@@ -325,7 +325,7 @@ export function PayCardModal() {
                 <span className="text-on-surface-variant font-numeric">{formatCurrency(balance)}</span>
                 <ArrowRight className="w-4 h-4 text-emerald-500" />
                 <span className={`font-bold font-numeric ${newBalance === 0 ? 'text-emerald-500' : 'text-on-surface'}`}>
-                  {newBalance === 0 ? '₹0.00 (DEBT FREE! 🎉)' : formatCurrency(newBalance)}
+                  {newBalance === 0 ? 'â‚¹0.00 (DEBT FREE! ðŸŽ‰)' : formatCurrency(newBalance)}
                 </span>
               </div>
               
@@ -353,7 +353,7 @@ export function PayCardModal() {
             </div>
             {selectedCard && selectedCard.limit > 0 && (
               <p className="text-[10px] text-emerald-400 font-medium pt-0.5">
-                ⚡ Frees up {formatCurrency(numAmount)} back into your available credit line
+                âš¡ Frees up {formatCurrency(numAmount)} back into your available credit line
               </p>
             )}
           </motion.div>
@@ -458,7 +458,7 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-500 font-numeric">
-                      ₹
+                      â‚¹
                     </span>
                     <input
                       type="number"
@@ -484,7 +484,7 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-rose-400 font-numeric">
-                      ₹
+                      â‚¹
                     </span>
                     <input
                       type="number"

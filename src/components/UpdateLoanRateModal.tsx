@@ -19,20 +19,20 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
   // Inputs
   const [newRateStr, setNewRateStr] = useState<string>('');
   const [newFrequency, setNewFrequency] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'>(
-    (account?.paymentFrequency || account?.payment_frequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'
+    (account?.paymentFrequency || account?.paymentFrequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'
   );
   const [effectiveDate, setEffectiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [selectedStrategy, setSelectedStrategy] = useState<'MAINTAIN_EMI' | 'MAINTAIN_TENURE'>('MAINTAIN_EMI');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Sync initial rate on open/account change
-  const currentRate = account?.interestRate ?? account?.interest_rate ?? 0;
-  const currentEmi = account?.monthlyEMI ?? account?.monthly_emi ?? 0;
-  const originalTenure = account?.tenureMonths ?? account?.tenure_months ?? 12;
+  const currentRate = account?.interestRate ?? account?.interestRate ?? 0;
+  const currentEmi = account?.monthlyEMI ?? account?.monthlyEMI ?? 0;
+  const originalTenure = account?.tenureMonths ?? account?.tenureMonths ?? 12;
   const principal = account?.originalPrincipal || account?.balance || 0;
-  const type = (account?.interestCalculationType || account?.interest_calculation_type || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
-  const currentFrequency = (account?.paymentFrequency || account?.payment_frequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
-  const startDate = account?.loanStartDate || account?.loan_start_date || account?.nextEMIDate || new Date().toISOString().slice(0, 10);
+  const type = (account?.interestCalculationType || account?.interestCalculationType || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
+  const currentFrequency = (account?.paymentFrequency || account?.paymentFrequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
+  const startDate = account?.loanStartDate || account?.loanStartDate || account?.nextEMIDate || new Date().toISOString().slice(0, 10);
 
   // Computed revision choices
   const calculation = useMemo(() => {
@@ -170,7 +170,6 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
       newEmi: finalEmi,
       newTenureMonths: finalTenure,
       paymentFrequency: newFrequency,
-      payment_frequency: newFrequency,
     };
 
     addLoanRevision(newRevision);

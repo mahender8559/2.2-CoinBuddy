@@ -29,7 +29,7 @@ export function AddTransactionModal() {
 
   const isTransferToLiability = type === 'transfer' && toAccountId && accounts.find(a => a.id === toAccountId)?.type === 'liability';
   const transferToLiability = isTransferToLiability ? accounts.find(a => a.id === toAccountId) : null;
-  const dueAmount = transferToLiability?.monthlyEMI ?? transferToLiability?.monthly_emi ?? 0;
+  const dueAmount = transferToLiability?.monthlyEMI ?? transferToLiability?.monthlyEMI ?? 0;
   const liabilityBalance = transferToLiability?.balance ?? 0;
 
   useEffect(() => {

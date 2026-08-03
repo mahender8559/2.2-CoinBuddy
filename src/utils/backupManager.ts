@@ -241,11 +241,12 @@ export function upgradeBackupData(rawJsonString: string): any {
 
   // Ensure accounts array exists and has proper types
   const accounts = Array.isArray(data.accounts) ? data.accounts.map((acc: any) => ({
-    id: acc.id || `acc_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    id: acc.id || crypto.randomUUID(),
     name: acc.name || 'Account',
     type: acc.type || 'asset',
     balance: Number(acc.balance) || 0,
     initialBalance: acc.initialBalance ?? acc.openingBalance ?? (acc.balance !== undefined ? Number(acc.balance) : 0),
+    // Legacy backup aliases are normalized once at this import boundary.
     originalPrincipal: acc.originalPrincipal ?? acc.original_principal ?? acc.balance ?? 0,
     monthlyEMI: acc.monthlyEMI ?? acc.monthly_emi ?? 0,
     interestRate: acc.interestRate ?? acc.interest_rate ?? 0,
@@ -258,7 +259,7 @@ export function upgradeBackupData(rawJsonString: string): any {
 
   // Ensure transactions array exists
   const transactions = Array.isArray(data.transactions) ? data.transactions.map((t: any) => ({
-    id: t.id || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    id: t.id || crypto.randomUUID(),
     amount: Number(t.amount) || 0,
     type: t.type || 'expense',
     category: t.category || 'General',

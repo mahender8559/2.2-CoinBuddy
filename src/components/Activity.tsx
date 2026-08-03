@@ -5,7 +5,7 @@ import { icons } from '../icons';
 
 
 export function Activity() {
-  const { transactions, formatCurrency, setAddModalOpen, categories, deleteTransaction, setEditingTransaction, getCycleDetails, accounts } = useAppContext();
+  const { transactions, formatCurrency, setAddModalOpen, categories, deleteTransaction, setEditingTransaction, getCycleDetails, accounts, approveTransaction, rejectTransaction } = useAppContext();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
@@ -13,6 +13,8 @@ export function Activity() {
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [approvalDates, setApprovalDates] = useState<Record<string, string>>({});
+  const pendingTransactions = useMemo(() => transactions.filter(tx => tx.is_verified === 0), [transactions]);
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => {
@@ -135,6 +137,23 @@ export function Activity() {
           {isSelectionMode ? 'Cancel' : 'Select'}
         </button>
       </div>
+
+      {pendingTransactions.length > 0 && (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
+          <h3 className="font-semibold text-on-surface">Pending approvals</h3>
+          <p className="mt-1 text-sm text-on-surface-variant">Pending recurring entries do not affect balances until approved.</p>
+          <div className="mt-3 space-y-3">
+            {pendingTransactions.map(tx => (
+              <div key={tx.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface p-3 dark:bg-surface-container-low">
+                <span className="min-w-32 flex-1 text-sm font-medium">{tx.title} · {formatCurrency(tx.amount)}</span>
+                <input aria-label={`Approval date for ${tx.title}`} type="date" value={approvalDates[tx.id] ?? tx.date.slice(0, 10)} onChange={e => setApprovalDates(prev => ({ ...prev, [tx.id]: e.target.value }))} />
+                <button className="rounded-lg bg-primary px-3 text-sm font-medium text-on-primary" onClick={() => approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10))}>Approve</button>
+                <button className="rounded-lg border border-outline px-3 text-sm" onClick={() => rejectTransaction(tx.id)}>Reject</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Type Filters */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">

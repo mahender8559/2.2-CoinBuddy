@@ -9,13 +9,9 @@ export function getOriginalPrincipal(account: Account, transactions: Transaction
     return account.originalPrincipal;
   }
 
-  if ((account as any).original_principal && (account as any).original_principal > 0) {
-    return (account as any).original_principal;
-  }
-
   // Look for opening balance transaction
   const openingTx = transactions.find(
-    t => (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
+    t => (t.isOpeningBalance || t.transaction_type === 'OPENING_BALANCE') &&
          (t.account === account.id || t.fromAccountId === account.id || t.toAccountId === account.id)
   );
   if (openingTx && Math.abs(openingTx.amount) > 0) {
@@ -38,7 +34,7 @@ export function getTotalInterestPaid(account: Account, transactions: Transaction
     .filter(t => 
       t.is_verified !== 0 &&
       (t.account === account.id || t.toAccountId === account.id || t.fromAccountId === account.id) &&
-      (t.isInterestOnly || t.category === '#interest' || t.category?.toLowerCase().includes('interest') || t.title?.toLowerCase().includes('interest payment'))
+      t.isInterestOnly
     )
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 }
@@ -199,8 +195,8 @@ export function generateLoanSchedule(
 
   // Sort revisions by effectiveDate ascending
   const sortedRevisions = [...revisions].sort((a, b) => {
-    const dA = new Date(a.effectiveDate || a.effective_date || '').getTime() || 0;
-    const dB = new Date(b.effectiveDate || b.effective_date || '').getTime() || 0;
+    const dA = new Date(a.effectiveDate).getTime() || 0;
+    const dB = new Date(b.effectiveDate).getTime() || 0;
     return dA - dB;
   });
 
@@ -228,7 +224,7 @@ export function generateLoanSchedule(
       // Check revision
       let currentRev: LoanRevision | null = null;
       for (const rev of sortedRevisions) {
-        const revEffStr = rev.effectiveDate || rev.effective_date || '';
+        const revEffStr = rev.effectiveDate;
         if (revEffStr) {
           const revDate = new Date(revEffStr);
           if (monthDate.getFullYear() > revDate.getFullYear() || 
@@ -240,10 +236,10 @@ export function generateLoanSchedule(
 
       let isRevisedThisMonth = false;
       if (currentRev) {
-        const revRate = currentRev.newInterestRate ?? currentRev.new_interest_rate ?? activeRate;
-        const revEmi = currentRev.newEmi ?? currentRev.new_emi ?? activeEmi;
-        const revTenure = currentRev.newTenureMonths ?? currentRev.new_tenure_months ?? activeTenure;
-        const revFreq = (currentRev.paymentFrequency || currentRev.payment_frequency) as ('MONTHLY' | 'QUARTERLY' | 'ANNUALLY') || activeFreq;
+        const revRate = currentRev.newInterestRate ?? activeRate;
+        const revEmi = currentRev.newEmi ?? activeEmi;
+        const revTenure = currentRev.newTenureMonths ?? activeTenure;
+        const revFreq = currentRev.paymentFrequency || activeFreq;
 
         if (revRate !== activeRate || revEmi !== activeEmi || revTenure !== activeTenure || revFreq !== activeFreq) {
           activeRate = revRate;
@@ -315,7 +311,7 @@ export function generateLoanSchedule(
     // Check if any revision becomes active on or before this monthDate
     let currentRev: LoanRevision | null = null;
     for (const rev of sortedRevisions) {
-      const revEffStr = rev.effectiveDate || rev.effective_date || '';
+      const revEffStr = rev.effectiveDate;
       if (revEffStr) {
         const revDate = new Date(revEffStr);
         // Compare year and month or full timestamp
@@ -328,9 +324,9 @@ export function generateLoanSchedule(
 
     let isRevisedThisMonth = false;
     if (currentRev) {
-      const revRate = currentRev.newInterestRate ?? currentRev.new_interest_rate ?? activeRate;
-      const revEmi = currentRev.newEmi ?? currentRev.new_emi ?? activeEmi;
-      const revTenure = currentRev.newTenureMonths ?? currentRev.new_tenure_months ?? activeTenure;
+      const revRate = currentRev.newInterestRate ?? activeRate;
+      const revEmi = currentRev.newEmi ?? activeEmi;
+      const revTenure = currentRev.newTenureMonths ?? activeTenure;
 
       if (revRate !== activeRate || revEmi !== activeEmi || revTenure !== activeTenure) {
         activeRate = revRate;
@@ -383,6 +379,16 @@ export function generateLoanSchedule(
     month++;
   }
 
+  // Reconcile the final cent to the original principal. Rounding every row is
+  // necessary for display, but may otherwise leave a long schedule adrift.
+  const reconciliation = Math.round((P - cumPrincipal) * 100) / 100;
+  if (schedule.length && Math.abs(reconciliation) >= 0.01) {
+    const last = schedule[schedule.length - 1];
+    last.principalPortion = Math.round((last.principalPortion + reconciliation) * 100) / 100;
+    last.emi = Math.round((last.principalPortion + last.interestPortion) * 100) / 100;
+    last.cumulativePrincipal = P;
+    cumPrincipal = P;
+  }
   const totalPrincipal = P;
   const totalInterest = cumInterest;
   const totalAmount = Math.round((totalPrincipal + totalInterest) * 100) / 100;

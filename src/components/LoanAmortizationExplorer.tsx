@@ -65,7 +65,7 @@ export function LoanAmortizationExplorer() {
     return accounts.filter(a => 
       !a.is_archived && 
       a.type === 'liability' && 
-      (a.group === 'Bank Loan' || a.group === 'Loan' || a.group === 'Mortgage' || a.group === 'Interest-Only Loan' || a.interestRate !== undefined || a.interest_rate !== undefined || a.monthlyEMI !== undefined || a.monthly_emi !== undefined)
+      (a.group === 'Bank Loan' || a.group === 'Loan' || a.group === 'Mortgage' || a.group === 'Interest-Only Loan' || a.interestRate !== undefined || a.interestRate !== undefined || a.monthlyEMI !== undefined || a.monthlyEMI !== undefined)
     );
   }, [accounts]);
 
@@ -97,11 +97,11 @@ export function LoanAmortizationExplorer() {
     const acc = loanAccounts.find(a => a.id === id);
     if (acc) {
       const p = acc.originalPrincipal || acc.balance || 500000;
-      const rate = acc.interestRate ?? acc.interest_rate ?? 8.5;
-      const months = acc.tenureMonths ?? acc.tenure_months ?? 24;
-      const type = (acc.interestCalculationType || acc.interest_calculation_type || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
-      const freq = (acc.paymentFrequency || acc.payment_frequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
-      const start = acc.loanStartDate || acc.loan_start_date || acc.nextEMIDate || new Date().toISOString().slice(0, 10);
+      const rate = acc.interestRate ?? acc.interestRate ?? 8.5;
+      const months = acc.tenureMonths ?? acc.tenureMonths ?? 24;
+      const type = (acc.interestCalculationType || acc.interestCalculationType || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
+      const freq = (acc.paymentFrequency || acc.paymentFrequency || 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
+      const start = acc.loanStartDate || acc.loanStartDate || acc.nextEMIDate || new Date().toISOString().slice(0, 10);
 
       setPrincipal(p.toString());
       setInterestRate(rate.toString());
@@ -158,10 +158,10 @@ export function LoanAmortizationExplorer() {
               onChange={(e) => handleAccountSelect(e.target.value)}
               className="bg-surface-container border border-outline-variant/30 rounded-xl py-1.5 px-3 text-xs font-medium text-on-surface focus:outline-none focus:border-primary"
             >
-              <option value="custom">⚙️ Custom Loan Scenario</option>
+              <option value="custom">âš™ï¸ Custom Loan Scenario</option>
               {loanAccounts.map(acc => (
                 <option key={acc.id} value={acc.id}>
-                  🏦 {acc.name} ({formatCurrency(acc.balance)})
+                  ðŸ¦ {acc.name} ({formatCurrency(acc.balance)})
                 </option>
               ))}
             </select>
@@ -183,7 +183,7 @@ export function LoanAmortizationExplorer() {
       <div className="bg-surface-container p-3 sm:p-4 rounded-2xl border border-outline-variant/20 grid grid-cols-1 min-[390px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mobile-compact-grid">
         <div>
           <label className="block text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1 flex items-center gap-1">
-            <Landmark className="w-3.5 h-3.5 text-primary" /> Principal (₹)
+            <Landmark className="w-3.5 h-3.5 text-primary" /> Principal (â‚¹)
           </label>
           <input
             type="number"
@@ -392,7 +392,7 @@ export function LoanAmortizationExplorer() {
                 <YAxis 
                   yAxisId="monthly"
                   tick={{ fontSize: 10, fill: 'var(--color-on-surface-variant)' }}
-                  tickFormatter={(val) => `₹${val}`}
+                  tickFormatter={(val) => `â‚¹${val}`}
                   axisLine={false}
                   tickLine={false}
                   width={60}
@@ -401,7 +401,7 @@ export function LoanAmortizationExplorer() {
                   yAxisId="balance"
                   orientation="right"
                   tick={{ fontSize: 10, fill: 'var(--color-on-surface-variant)' }}
-                  tickFormatter={(val) => `₹${Math.round(val/1000)}k`}
+                  tickFormatter={(val) => `â‚¹${Math.round(val/1000)}k`}
                   axisLine={false}
                   tickLine={false}
                   width={55}

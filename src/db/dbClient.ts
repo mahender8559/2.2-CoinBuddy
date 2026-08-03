@@ -1,4 +1,5 @@
 import initSqlJs from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
 import { Account, Category, CreditCardInfo, LoanRevision, Transaction, Widget } from '../types';
@@ -121,7 +122,9 @@ function createDriver(db: any): SqlJsDatabaseDriver {
 }
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
-  const SQL = await initSqlJs({ locateFile: (file) => file });
+  // Vite emits this asset and Workbox precaches it, including when the app is
+  // hosted below a subpath. This is deliberately not a page-relative URL.
+  const SQL = await initSqlJs({ locateFile: () => sqlWasmUrl });
   let saved = await readOpfsSnapshot() ?? await readSnapshot();
   if (!saved) {
     const legacy = localStorage.getItem(DB_STORAGE_KEY);
@@ -406,9 +409,12 @@ export async function insertTransactionRow(driver: SqlJsDatabaseDriver, tx: Omit
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be a finite positive number.');
   const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
   const parsedType = transactionType === 'EXPENSE' || transactionType === 'TRANSFER' || transactionType === 'OPENING_BALANCE' ? transactionType : 'INCOME';
+  if (parsedType === 'TRANSFER' && tx.fromAccountId && tx.fromAccountId === tx.toAccountId) {
+    throw new Error('A transfer must use two different accounts.');
+  }
   await driver.execute(
     `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only, recurring_rule_id, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    [id, parsedType, tx.title, tx.subtitle ?? null, amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, tx.recurringRuleId ?? null, tx.dueDate ?? null]
+    [id, parsedType, tx.title, tx.subtitle ?? null, amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? (tx.isRecurring ? 0 : 1), tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, tx.recurringRuleId ?? null, tx.dueDate ?? null]
   );
   return id;
 }
@@ -481,7 +487,7 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
           await insertTransactionRow(driver, {
             id: crypto.randomUUID(), title: `Interest Payment: ${liability.name}`, subtitle: rule.subtitle ?? '', amount: split.interestAmount,
             date: `${dueDate}T12:00:00.000Z`, category: '#interest', icon: 'Flame', type: 'expense',
-            fromAccountId: rule.from_account_id ?? undefined, account: rule.to_account_id, toAccountId: rule.to_account_id,
+            fromAccountId: rule.from_account_id ?? undefined,
             isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: false, recurringRuleId: rule.id, dueDate,
           } as Transaction);
         }
@@ -516,6 +522,9 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
   }
 
   for (const tx of transactions) {
+    if (tx.type === 'transfer' && tx.fromAccountId && tx.fromAccountId === tx.toAccountId) {
+      throw new Error(`Import contains invalid same-account transfer: ${tx.id}`);
+    }
     await insertTransactionRow(driver, tx);
   }
 
