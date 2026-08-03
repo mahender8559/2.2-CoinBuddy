@@ -248,26 +248,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
   };
 
-  // Helper to test watchdog failure & reconnect flow
-  const handleSimulateFailure = async () => {
-    setConfig(prev => ({
-      ...prev,
-      authExpired: true
-    }));
-    
-    const failedMeta = await BackupManager.executeSilentBackup({
-      ...config,
-      authExpired: true
-    });
-
-    if (failedMeta) {
-      setConfig(prev => ({
-        ...prev,
-        lastBackupMetadata: failedMeta
-      }));
-    }
-  };
-
   // 2. Wiring the 'Backup Now' Action
   const handleBackupNow = async () => {
     if (!config.hasPassword || !config.backupPassword) {
@@ -619,17 +599,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             </button>
           </div>
         )}
-      </div>
-
-      {/* Simulator bar for testing background failure watchdog */}
-      <div className="flex items-center justify-between px-3 text-[11px] text-on-surface-variant">
-        <span>Watchdog Status: Active (5-file retention policy)</span>
-        <button
-          onClick={handleSimulateFailure}
-          className="text-error/80 hover:text-error underline font-semibold"
-        >
-          [Test Watchdog Error]
-        </button>
       </div>
 
       {/* 2. Auto-Backup Settings Group */}
