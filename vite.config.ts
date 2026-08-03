@@ -16,6 +16,9 @@ export default defineConfig(() => {
       workbox: {
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wasm,woff2}'],
+        // OAuth and Drive endpoints must never be satisfied by the SPA
+        // navigation fallback or a cached response.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: []
       },
       devOptions: {

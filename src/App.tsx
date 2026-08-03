@@ -74,7 +74,7 @@ export default function App() {
       status: driveResult,
       error: callback.get('drive_error'),
     }));
-    window.history.replaceState({ tab: 'settings' }, '', new URL('/?tab=settings', window.location.origin).toString());
+    window.history.replaceState({}, document.title, '/?tab=settings');
     setActiveTab('settings');
   }, []);
 

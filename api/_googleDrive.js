@@ -44,7 +44,10 @@ function unseal(value) {
 }
 
 export function setCookie(res, name, value, maxAge = 600, path = '/') {
-  res.setHeader('Set-Cookie', `${name}=${value}; Secure; HttpOnly; SameSite=None; Path=${path}; Max-Age=${maxAge}`);
+  const serialized = `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=${maxAge}`;
+  const existing = res.getHeader('Set-Cookie');
+  const headers = existing ? [...(Array.isArray(existing) ? existing : [String(existing)]), serialized] : [serialized];
+  res.setHeader('Set-Cookie', headers);
 }
 
 export function startAuthorization(req, res) {
@@ -62,7 +65,7 @@ export async function finishAuthorization(req, res) {
   // Never replace a working encrypted session with an empty OAuth response.
   if (!tokens.refresh_token) throw new Error('Google did not return a refresh token. Remove CoinBuddy access in Google Account permissions, then reconnect.');
   try {
-    setCookie(res, COOKIE, seal({ refreshToken: tokens.refresh_token }), 60 * 60 * 24 * 30);
+    setCookie(res, COOKIE, seal({ refreshToken: tokens.refresh_token }), 60 * 60 * 24 * 365);
   } catch (err) {
     console.error('Encryption Failure:', err);
     throw new Error('Unable to encrypt the Google Drive session.');

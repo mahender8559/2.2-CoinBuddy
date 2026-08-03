@@ -6,7 +6,10 @@ export default async function handler(req, res) {
     console.log('Tokens received:', Object.keys(tokens));
     res.redirect(`${appUrl(req)}/?tab=settings&drive=connected`);
   } catch (error) {
-    const params = new URLSearchParams({ tab: 'settings', drive: 'error', drive_error: error instanceof Error ? error.message : 'Google Drive connection failed.' });
-    res.redirect(`${appUrl(req)}/?${params}`);
+    console.error('CRYPTO_FAIL:', error);
+    res.status(500).json({
+      error: 'Google Drive authorization failed.',
+      detail: error instanceof Error ? error.message : 'Unknown OAuth or encryption error.',
+    });
   }
 }

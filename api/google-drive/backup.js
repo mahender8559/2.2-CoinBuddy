@@ -13,9 +13,11 @@ async function readRawBody(req, maxBytes = 4 * 1024 * 1024) {
 }
 
 export default async function handler(req, res) {
+  const cookies = parseCookies(req);
+  console.log('Drive cookie diagnostics:', { cookieNames: Object.keys(cookies), hasDriveSession: Boolean(cookies.coinbuddy_drive_session) });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed.' });
   try {
-    const session = parseCookies(req).coinbuddy_drive_session;
+    const session = cookies.coinbuddy_drive_session;
     if (!session) {
       console.error('Google Drive backup rejected: missing Drive session cookie.');
       return res.status(401).json({ error: 'Google Drive is not connected. Reconnect and try again.' });
