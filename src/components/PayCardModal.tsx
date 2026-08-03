@@ -27,14 +27,13 @@ export function PayCardModal() {
   const [isRateUpdateOpen, setIsRateUpdateOpen] = useState<boolean>(false);
 
   const [fromAccountId, setFromAccountId] = useState<string>('');
+  const activeAssetAccounts = accounts.filter(a => a.type === 'asset' && !a.is_archived);
   useEffect(() => {
     if (payCardModalState.isOpen) {
-      const defaultAsset = accounts.find(a => a.type === 'asset' && !a.is_archived)?.id;
-      if (defaultAsset) {
-        setFromAccountId(defaultAsset);
-      }
+      const currentSelectionIsValid = activeAssetAccounts.some(a => a.id === fromAccountId);
+      setFromAccountId(currentSelectionIsValid ? fromAccountId : (activeAssetAccounts[0]?.id ?? ''));
     }
-  }, [payCardModalState.isOpen, accounts]);
+  }, [payCardModalState.isOpen, accounts, fromAccountId]);
 
   useEffect(() => {
     if (!celebration?.active) return;
@@ -162,8 +161,8 @@ export function PayCardModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm px-4">
-      <div className="bg-surface-container rounded-3xl w-full max-w-md p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3 sm:p-4">
+      <div data-testid="pay-modal" className="bg-surface-container rounded-3xl w-full max-w-md p-4 sm:p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative overflow-hidden my-auto max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto">
         
         {/* Celebration Overlay */}
         <AnimatePresence>
@@ -241,6 +240,8 @@ export function PayCardModal() {
         </AnimatePresence>
 
         <button 
+          type="button"
+          aria-label="Close payment"
           onClick={() => setPayCardModalState({ isOpen: false, cardId: null })}
           className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
         >
@@ -363,16 +364,23 @@ export function PayCardModal() {
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Pay From</label>
             <select
+              data-testid="pay-from-select"
+              aria-label="Pay From"
               value={fromAccountId}
               onChange={(e) => setFromAccountId(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-emerald-500 transition-colors"
               required
             >
               <option value="" disabled>Select Source Account</option>
-              {accounts.filter(a => a.type === 'asset' && !a.is_archived).map(acc => (
+              {activeAssetAccounts.map(acc => (
                 <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
               ))}
             </select>
+            {activeAssetAccounts.length === 0 && (
+              <p role="alert" className="mt-2 text-xs font-semibold text-amber-400">
+                Add an active asset account before making a payment.
+              </p>
+            )}
           </div>
 
           <div>
@@ -509,7 +517,9 @@ export function PayCardModal() {
 
           <button
             type="submit"
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 mt-2"
+            disabled={activeAssetAccounts.length === 0 || !fromAccountId}
+            data-testid="confirm-payment"
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 mt-2"
           >
             <Sparkles className="w-5 h-5" /> Confirm & Pay Down
           </button>
@@ -524,4 +534,3 @@ export function PayCardModal() {
     </div>
   );
 }
-

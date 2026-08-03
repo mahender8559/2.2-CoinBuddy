@@ -177,7 +177,7 @@ export function Cards() {
         
         <div className="space-y-4">
           {liabilities.map(account => {
-            const ccDetails = creditCards.find(c => c.name === account.name);
+            const ccDetails = creditCards.find(c => c.id === account.id);
             
             let dueDateStr = '';
             let isDueSoon = false;
@@ -421,4 +421,3 @@ export function Cards() {
     </div>
   );
 }
-

@@ -9,6 +9,7 @@ import {
   loadStateFromDatabase,
   seedDemoData,
   insertAccountRow,
+  insertCreditCardAccount,
   updateAccountRow,
   insertTransactionRow,
   updateTransactionRow,
@@ -702,7 +703,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newId = Math.random().toString();
     const initialBalance = card.balance || 0;
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
-    const newAccount: Account = { id: newId, name: card.name, type: 'liability', balance: 0, limit: card.limit };
+    const newAccount: Account = { id: newId, name: card.name, type: 'liability', group: 'Credit Card', balance: 0, limit: card.limit };
 
     setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
     setAccountRecords(prev => [newAccount, ...prev]);
@@ -731,8 +732,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (dbDriver) {
       persistDbAction(async () => {
-        await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id);
-        await insertCreditCardRow(dbDriver, newCard);
+        await insertCreditCardAccount(dbDriver, newAccount, newCard, initialBalance, openingTx?.id);
       });
     }
   };  
