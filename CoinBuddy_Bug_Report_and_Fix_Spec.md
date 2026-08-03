@@ -6,8 +6,7 @@
 
 Fix items are ordered by severity. Each item lists: the rule it violates, the exact file/function, why it's broken, and the required fix. Do not reorder logic without re-running `src/__tests__/*` and adding new tests for each fix (a `vitest` suite already exists — extend it, don't replace it).
 
----
-
+-- 
 ## 0. Architecture-level finding (read this first)
 
 The single biggest structural problem is that **the accounting rules are implemented three separate times, in three different languages/paradigms, and they already disagree with each other**:
