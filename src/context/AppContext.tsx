@@ -123,7 +123,7 @@ interface AppContextType {
   removeWidget: (id: string) => void;
   lastUpdated: string;
   exportLedgerData: () => Record<string, unknown>;
-  importLedgerData: (data: any) => void;
+  importLedgerData: (data: any) => Promise<void>;
   clearAllData: () => void;
   resetToDemoData: () => void;
   integrityWarning: string | null;
@@ -700,10 +700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newId = crypto.randomUUID();
     const initialBalance = card.balance || 0;
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
-    const newAccount: Account = { id: newId, name: card.name, type: 'liability', balance: 0, limit: card.limit };
-
-    setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
-    setAccountRecords(prev => [newAccount, ...prev]);
+    const newAccount: Account = { id: newId, name: card.name, type: 'liability', group: 'Credit Card', balance: 0, limit: card.limit };
 
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
@@ -721,17 +718,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
         account: newId,
         fromAccountId: newId,
         isOpeningBalance: true,
+        isInterestOnly: false,
         transaction_type: 'OPENING_BALANCE'
       };
       openingTx = newOpeningTx;
-      setTransactions(prev => [newOpeningTx, ...prev]);
     }
 
     if (dbDriver) {
-      persistDbAction(async () => {
-        await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id);
-        await insertCreditCardRow(dbDriver, newCard);
-      });
+      void (async () => {
+        const persisted = await persistDbAction(async () => {
+          await dbDriver.execute('BEGIN IMMEDIATE TRANSACTION;');
+          try {
+            await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, true);
+            await insertCreditCardRow(dbDriver, newCard);
+            await dbDriver.execute('COMMIT;');
+          } catch (error) {
+            await dbDriver.execute('ROLLBACK;').catch(() => undefined);
+            throw error;
+          }
+        });
+        if (!persisted) return;
+        // The durable refresh above is authoritative. These are only needed
+        // before the next render when SQLite is unavailable (handled below).
+      })();
+    } else {
+      setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
+      setAccountRecords(prev => [newAccount, ...prev]);
+      if (openingTx) setTransactions(prev => [openingTx, ...prev]);
     }
   };  
   const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
@@ -768,6 +781,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           account: id,
           fromAccountId: id,
           isOpeningBalance: true,
+          isInterestOnly: false,
           transaction_type: 'OPENING_BALANCE'
         };
         setTransactions(prev => [...prev, openingTx]);
@@ -816,6 +830,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           account: newId,
           toAccountId: newId,
           isOpeningBalance: true,
+          isInterestOnly: false,
           transaction_type: 'OPENING_BALANCE'
         };
       } else if (account.type === 'liability') {
@@ -831,6 +846,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           account: newId,
           fromAccountId: newId,
           isOpeningBalance: true,
+          isInterestOnly: false,
           transaction_type: 'OPENING_BALANCE'
         };
       }
@@ -911,6 +927,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toAccountId: account.type === 'asset' ? id : undefined,
           fromAccountId: account.type === 'liability' ? id : undefined,
           isOpeningBalance: true,
+          isInterestOnly: false,
           transaction_type: 'OPENING_BALANCE'
         };
         newOpeningTx = openingTx;
@@ -1135,16 +1152,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const importLedgerData = async (data: any) => {
     if (dbDriver) {
-      persistDbAction(async () => {
+      const persisted = await persistDbAction(async () => {
         await importLedgerToDatabase(dbDriver, data);
       });
-      const refreshed = await loadStateFromDatabase(dbDriver);
-      setAccountRecords(stripAccountBalances(refreshed.accounts));
-      setTransactions(refreshed.transactions);
-      setCategories(refreshed.categories);
-      setCreditCardRecords(stripCardBalances(refreshed.creditCards));
-      setWidgets(refreshed.widgets);
-      setLoanRevisions(refreshed.loanRevisions);
+      if (!persisted) throw new Error('Restore could not be saved locally.');
     } else {
       if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);

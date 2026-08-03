@@ -11,7 +11,6 @@ import {
   BackupStorageAdapter, 
   decryptBackup, 
   upgradeBackupData, 
-  hydrateDatabase, 
   BackupSettings, 
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS 
@@ -369,10 +368,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       if (!response.ok) throw new Error('Unable to download the selected Google Drive backup.');
       payloadToDecrypt = await response.text();
     }
-    if (!payloadToDecrypt) {
-      // If mock file without direct content, build payload
-      payloadToDecrypt = BackupManager.generateBackupJSON();
-    }
+    if (!payloadToDecrypt) throw new Error('The selected backup file is unavailable. Choose another file or upload it again.');
 
     setIsDecrypting(true);
 
@@ -405,27 +401,24 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   };
 
   // Step 4 Final Confirm, Migrate & Hydrate Handler
-  const handleConfirmRestore = () => {
+  const handleConfirmRestore = async () => {
     if (!decryptedRawJSON) return;
 
     setIsRestoring(true);
 
-    setTimeout(() => {
       try {
         // 1. Upgrade schema
         const upgradedData = upgradeBackupData(decryptedRawJSON);
         
         // 2. Hydrate database
-        hydrateDatabase(upgradedData);
-        
-        // 3. Update React AppContext state immediately
-        importLedgerData(upgradedData);
+        // importLedgerData persists and refreshes the SQLite projection before it resolves.
+        await importLedgerData(upgradedData);
 
         // 4. Show success celebration
         setIsRestoring(false);
         setRestoreSuccessCelebration(true);
         
-        setTimeout(() => {
+        window.setTimeout(() => {
           setRestoreSuccessCelebration(false);
           setIsRestoreModalOpen(false);
           setRestoreStep(1);
@@ -436,7 +429,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
         setIsRestoring(false);
         alert(`Restore Error: ${e?.message || 'Failed to hydrate database.'}`);
       }
-    }, 1000);
   };
 
   const meta = config.lastBackupMetadata;

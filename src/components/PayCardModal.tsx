@@ -27,14 +27,13 @@ export function PayCardModal() {
   const [isRateUpdateOpen, setIsRateUpdateOpen] = useState<boolean>(false);
 
   const [fromAccountId, setFromAccountId] = useState<string>('');
+  const activeAssetAccounts = accounts.filter(a => a.type === 'asset' && !a.is_archived);
   useEffect(() => {
     if (payCardModalState.isOpen) {
-      const defaultAsset = accounts.find(a => a.type === 'asset' && !a.is_archived)?.id;
-      if (defaultAsset) {
-        setFromAccountId(defaultAsset);
-      }
+      const currentSelectionIsValid = activeAssetAccounts.some(a => a.id === fromAccountId);
+      setFromAccountId(currentSelectionIsValid ? fromAccountId : (activeAssetAccounts[0]?.id ?? ''));
     }
-  }, [payCardModalState.isOpen, accounts]);
+  }, [payCardModalState.isOpen, accounts, fromAccountId]);
 
   useEffect(() => {
     if (!celebration?.active) return;
@@ -56,19 +55,19 @@ export function PayCardModal() {
   const selectedCard = creditCards.find(c => c.id === payCardModalState.cardId);
   const selectedLiability = accounts.find(a => a.id === payCardModalState.cardId && a.type === 'liability');
 
-  const interestType = (selectedLiability?.interestCalculationType || selectedLiability?.interestCalculationType || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
+  const interestType = (selectedLiability?.interestCalculationType || selectedLiability?.interest_calculation_type || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
 
   const isLoan = selectedLiability && (
     selectedLiability.group === 'Loan' ||
     selectedLiability.group === 'Interest-Only Loan' ||
     selectedLiability.group === 'Bank Loan' ||
     selectedLiability.monthlyEMI !== undefined ||
-    selectedLiability.monthlyEMI !== undefined ||
+    selectedLiability.monthly_emi !== undefined ||
     selectedLiability.interestRate !== undefined ||
-    selectedLiability.interestRate !== undefined
+    selectedLiability.interest_rate !== undefined
   );
 
-  const annualRate = selectedLiability?.interestRate ?? selectedLiability?.interestRate ?? 0;
+  const annualRate = selectedLiability?.interestRate ?? selectedLiability?.interest_rate ?? 0;
 
   useEffect(() => {
     setError(null);
@@ -76,7 +75,7 @@ export function PayCardModal() {
     if (selectedCard) {
       setAmount(selectedCard.dueAmount.toString());
     } else if (selectedLiability) {
-      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.monthlyEMI ?? selectedLiability.balance ?? 0;
+      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.monthly_emi ?? selectedLiability.balance ?? 0;
       setAmount(emiVal > 0 ? emiVal.toString() : '');
     }
     setCelebration(null);
@@ -162,8 +161,8 @@ export function PayCardModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm px-4">
-      <div className="bg-surface-container rounded-3xl w-full max-w-md p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3 sm:p-4">
+      <div data-testid="pay-modal" className="bg-surface-container rounded-3xl w-full max-w-md p-4 sm:p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative overflow-hidden my-auto max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto">
         
         {/* Celebration Overlay */}
         <AnimatePresence>
@@ -208,7 +207,7 @@ export function PayCardModal() {
               </motion.div>
 
               <h3 className="text-2xl font-black text-on-surface mb-1">
-                {celebration.isFullyPaid ? 'ðŸŽ‰ DEBT ELIMINATED!' : 'âš¡ DEBT REDUCED!'}
+                {celebration.isFullyPaid ? '🎉 DEBT ELIMINATED!' : '⚡ DEBT REDUCED!'}
               </h3>
               <p className="text-xs text-on-surface-variant mb-6">
                 {celebration.isFullyPaid 
@@ -225,7 +224,7 @@ export function PayCardModal() {
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-on-surface-variant font-medium">Remaining Balance</span>
                   <span className={`font-bold font-numeric ${celebration.newBalance === 0 ? 'text-emerald-500 font-black' : 'text-on-surface'}`}>
-                    {celebration.newBalance === 0 ? 'â‚¹0.00 (DEBT FREE)' : formatCurrency(celebration.newBalance)}
+                    {celebration.newBalance === 0 ? '₹0.00 (DEBT FREE)' : formatCurrency(celebration.newBalance)}
                   </span>
                 </div>
               </div>
@@ -241,6 +240,8 @@ export function PayCardModal() {
         </AnimatePresence>
 
         <button 
+          type="button"
+          aria-label="Close payment"
           onClick={() => setPayCardModalState({ isOpen: false, cardId: null })}
           className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
         >
@@ -325,7 +326,7 @@ export function PayCardModal() {
                 <span className="text-on-surface-variant font-numeric">{formatCurrency(balance)}</span>
                 <ArrowRight className="w-4 h-4 text-emerald-500" />
                 <span className={`font-bold font-numeric ${newBalance === 0 ? 'text-emerald-500' : 'text-on-surface'}`}>
-                  {newBalance === 0 ? 'â‚¹0.00 (DEBT FREE! ðŸŽ‰)' : formatCurrency(newBalance)}
+                  {newBalance === 0 ? '₹0.00 (DEBT FREE! 🎉)' : formatCurrency(newBalance)}
                 </span>
               </div>
               
@@ -353,7 +354,7 @@ export function PayCardModal() {
             </div>
             {selectedCard && selectedCard.limit > 0 && (
               <p className="text-[10px] text-emerald-400 font-medium pt-0.5">
-                âš¡ Frees up {formatCurrency(numAmount)} back into your available credit line
+                ⚡ Frees up {formatCurrency(numAmount)} back into your available credit line
               </p>
             )}
           </motion.div>
@@ -363,16 +364,23 @@ export function PayCardModal() {
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Pay From</label>
             <select
+              data-testid="pay-from-select"
+              aria-label="Pay From"
               value={fromAccountId}
               onChange={(e) => setFromAccountId(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-emerald-500 transition-colors"
               required
             >
               <option value="" disabled>Select Source Account</option>
-              {accounts.filter(a => a.type === 'asset' && !a.is_archived).map(acc => (
+              {activeAssetAccounts.map(acc => (
                 <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
               ))}
             </select>
+            {activeAssetAccounts.length === 0 && (
+              <p role="alert" className="mt-2 text-xs font-semibold text-amber-400">
+                Add an active asset account before making a payment.
+              </p>
+            )}
           </div>
 
           <div>
@@ -458,7 +466,7 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-500 font-numeric">
-                      â‚¹
+                      ₹
                     </span>
                     <input
                       type="number"
@@ -484,7 +492,7 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-rose-400 font-numeric">
-                      â‚¹
+                      ₹
                     </span>
                     <input
                       type="number"
@@ -509,7 +517,9 @@ export function PayCardModal() {
 
           <button
             type="submit"
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 mt-2"
+            disabled={activeAssetAccounts.length === 0 || !fromAccountId}
+            data-testid="confirm-payment"
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 mt-2"
           >
             <Sparkles className="w-5 h-5" /> Confirm & Pay Down
           </button>
@@ -524,4 +534,3 @@ export function PayCardModal() {
     </div>
   );
 }
-

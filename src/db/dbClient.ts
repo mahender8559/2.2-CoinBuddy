@@ -333,24 +333,31 @@ export async function seedDemoData(driver: SqlJsDatabaseDriver): Promise<void> {
   await loadDemoDataFromJson(driver);
 }
 
-export async function insertAccountRow(driver: SqlJsDatabaseDriver, account: Account, openingBalance: number, openingTransactionId: string = crypto.randomUUID()): Promise<void> {
+export async function insertAccountRow(driver: SqlJsDatabaseDriver, account: Account, openingBalance: number, openingTransactionId: string = crypto.randomUUID(), inTransaction = false): Promise<void> {
   const type = account.type === 'liability' ? 'LIABILITY' : 'ASSET';
-  await driver.execute(
+  if (!inTransaction) await driver.execute('BEGIN IMMEDIATE TRANSACTION;');
+  try {
+    await driver.execute(
     `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [account.id, account.name, type, account.group ?? null, account.limit ?? null, account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]
-  );
+    );
 
-  if (openingBalance > 0) {
+    if (openingBalance > 0) {
     const now = Date.now();
     const txType = 'OPENING_BALANCE';
     const title = 'Opening Balance';
     const subtitle = account.type === 'asset' ? 'Initial Balance' : 'Initial Debt';
     const icon = account.type === 'liability' ? 'CreditCard' : 'Landmark';
-    const params = [openingTransactionId, txType, title, subtitle, openingBalance, now, '#opening', icon, account.id, account.type === 'liability' ? account.id : null, account.type === 'asset' ? account.id : null, 1, 1, 0];
+    const params = [openingTransactionId, txType, title, subtitle, openingBalance, now, '#opening', icon, account.id, account.type === 'liability' ? account.id : null, account.type === 'asset' ? account.id : null, 1, 1, 0, 0];
     await driver.execute(
       `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, is_verified, is_opening_balance, is_recurring, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       params
     );
+    }
+    if (!inTransaction) await driver.execute('COMMIT;');
+  } catch (error) {
+    if (!inTransaction) await driver.execute('ROLLBACK;').catch(() => undefined);
+    throw error;
   }
 }
 
@@ -506,8 +513,6 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
 }
 
 export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {
-  await clearDatabase(driver);
-
   const accounts: Account[] = Array.isArray(data.accounts) ? data.accounts : [];
   const categories: Category[] = Array.isArray(data.categories) ? data.categories : [];
   const transactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions : [];
@@ -515,34 +520,42 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
   const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
   const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
 
-  for (const category of categories) {
+  const allIds = [
+    ...accounts, ...categories, ...transactions, ...creditCards, ...widgets, ...loanRevisions,
+  ].map(entity => entity?.id);
+  if (allIds.some(id => typeof id !== 'string' || !id.trim()) || new Set(allIds).size !== allIds.length) {
+    throw new Error('Backup contains missing or duplicate record IDs.');
+  }
+
+  await driver.execute('BEGIN IMMEDIATE TRANSACTION;');
+  try {
+    await clearDatabase(driver);
+
+    for (const category of categories) {
     await driver.execute(
       `INSERT INTO categories (id, name, type, icon_name, budget, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?);`,
       [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
     );
-  }
+    }
 
-  for (const account of accounts) {
-    await insertAccountRow(driver, account, 0);
-  }
+    for (const account of accounts) await insertAccountRow(driver, account, 0);
 
-  for (const tx of transactions) {
+    for (const tx of transactions) {
     if (tx.type === 'transfer' && tx.fromAccountId && tx.fromAccountId === tx.toAccountId) {
       throw new Error(`Import contains invalid same-account transfer: ${tx.id}`);
     }
     await insertTransactionRow(driver, tx);
-  }
+    }
 
-  for (const card of creditCards) {
-    await insertCreditCardRow(driver, card);
-  }
+    for (const card of creditCards) await insertCreditCardRow(driver, card);
 
-  for (const widget of widgets) {
-    await insertWidgetRow(driver, widget);
-  }
+    for (const widget of widgets) await insertWidgetRow(driver, widget);
 
-  for (const rev of loanRevisions) {
-    await insertLoanRevisionRow(driver, rev);
+    for (const rev of loanRevisions) await insertLoanRevisionRow(driver, rev);
+    await driver.execute('COMMIT;');
+  } catch (error) {
+    await driver.execute('ROLLBACK;').catch(() => undefined);
+    throw error;
   }
 }
 
