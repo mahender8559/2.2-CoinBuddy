@@ -276,7 +276,15 @@ export function upgradeBackupData(rawJsonString: string): any {
   const creditCards = Array.isArray(data.creditCards) ? data.creditCards : [];
 
   // Dynamically recompute account balances from the transaction ledger
-  const rebalancedAccounts = recomputeAllAccountBalances(accounts, transactions);
+  const rebalancedAccounts = recomputeAllAccountBalances(accounts, transactions).map(account => {
+    // Very old exports stored an account balance but not a usable opening
+    // transaction. Preserve that value during migration; importLedgerToDatabase
+    // converts it into the canonical opening-balance row.
+    const hasLedgerEntry = transactions.some((tx: any) =>
+      tx.accountId === account.id || tx.account === account.id || tx.fromAccountId === account.id || tx.toAccountId === account.id
+    );
+    return hasLedgerEntry ? account : { ...account, balance: Number((account as any).initialBalance ?? 0) };
+  });
   const syncedCards = syncCreditCardsWithAccounts(rebalancedAccounts, creditCards);
 
   return {

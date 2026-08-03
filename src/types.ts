@@ -78,6 +78,8 @@ export type Transaction = {
   toAccountId?: string;
   isInterestOnly?: boolean;
   isOpeningBalance?: boolean;
+  recurringRuleId?: string;
+  dueDate?: string;
   transaction_type?: string;
   is_verified?: number;
   notes?: string;

@@ -2,8 +2,13 @@ import initSqlJs from 'sql.js';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
 import { Account, Category, CreditCardInfo, LoanRevision, Transaction, Widget } from '../types';
+import { calculateEmiSplit } from '../utils/emi';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
+const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
+const SNAPSHOT_STORE = 'snapshots';
+const SNAPSHOT_KEY = 'primary';
+const OPFS_SNAPSHOT_FILE = 'coinbuddy.sqlite';
 
 export interface SqlJsDatabaseDriver {
   rawDb: any;
@@ -30,6 +35,58 @@ function base64ToUint8Array(base64: string): Uint8Array {
     buffer[i] = binary.charCodeAt(i);
   }
   return buffer;
+}
+
+function openSnapshotStore(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SNAPSHOT_DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(SNAPSHOT_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Unable to open IndexedDB.'));
+  });
+}
+
+async function readSnapshot(): Promise<Uint8Array | null> {
+  const database = await openSnapshotStore();
+  try {
+    const value = await new Promise<ArrayBuffer | Uint8Array | undefined>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readonly').objectStore(SNAPSHOT_STORE).get(SNAPSHOT_KEY);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return value ? (value instanceof Uint8Array ? value : new Uint8Array(value)) : null;
+  } finally { database.close(); }
+}
+
+async function writeSnapshot(snapshot: Uint8Array): Promise<void> {
+  const database = await openSnapshotStore();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readwrite').objectStore(SNAPSHOT_STORE).put(snapshot, SNAPSHOT_KEY);
+      request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+    });
+  } finally { database.close(); }
+}
+
+async function readOpfsSnapshot(): Promise<Uint8Array | null> {
+  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  if (!getDirectory) return null;
+  try {
+    const root = await getDirectory();
+    const file = await (await root.getFileHandle(OPFS_SNAPSHOT_FILE)).getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  } catch { return null; }
+}
+
+async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
+  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  if (!getDirectory) return false;
+  const root = await getDirectory();
+  const handle = await root.getFileHandle(OPFS_SNAPSHOT_FILE, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(snapshot);
+  await writable.close();
+  return true;
 }
 
 function createDriver(db: any): SqlJsDatabaseDriver {
@@ -65,8 +122,17 @@ function createDriver(db: any): SqlJsDatabaseDriver {
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
   const SQL = await initSqlJs({ locateFile: (file) => file });
-  const saved = localStorage.getItem(DB_STORAGE_KEY);
-  const db = saved ? new SQL.Database(base64ToUint8Array(saved)) : new SQL.Database();
+  let saved = await readOpfsSnapshot() ?? await readSnapshot();
+  if (!saved) {
+    const legacy = localStorage.getItem(DB_STORAGE_KEY);
+    if (legacy) {
+      saved = base64ToUint8Array(legacy);
+      await writeSnapshot(saved);
+      await writeOpfsSnapshot(saved).catch(() => false);
+      localStorage.removeItem(DB_STORAGE_KEY);
+    }
+  }
+  const db = saved ? new SQL.Database(saved) : new SQL.Database();
 
   db.run(SQLITE_PRAGMA_SETUP);
   db.run(CREATE_TABLES_SQL);
@@ -83,12 +149,25 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
   return createDriver(db);
 }
 
-export function persistDatabase(driver: SqlJsDatabaseDriver): void {
+export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
   try {
-    const snapshot = driver.exportToBase64();
-    localStorage.setItem(DB_STORAGE_KEY, snapshot);
-  } catch (error) {
-    console.warn('Failed to persist database snapshot:', error);
+    const snapshot = driver.rawDb.export();
+    if (!await writeOpfsSnapshot(snapshot)) await writeSnapshot(snapshot);
+  }
+  catch (error) { throw new Error(`Unable to save your ledger locally: ${error instanceof Error ? error.message : String(error)}`); }
+}
+
+export async function deletePersistedDatabase(): Promise<void> {
+  const database = await openSnapshotStore();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readwrite').objectStore(SNAPSHOT_STORE).delete(SNAPSHOT_KEY);
+      request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+    });
+  } finally { database.close(); }
+  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  if (getDirectory) {
+    try { await (await getDirectory()).removeEntry(OPFS_SNAPSHOT_FILE); } catch { /* file did not exist */ }
   }
 }
 
@@ -146,6 +225,8 @@ export function normalizeTransactionRow(row: any): Transaction {
     isRecurring: Boolean(Number(row.is_recurring ?? 0)),
     isOpeningBalance: Boolean(Number(row.is_opening_balance ?? 0)),
     isInterestOnly: Boolean(Number(row.is_interest_only ?? 0)),
+    recurringRuleId: row.recurring_rule_id ?? undefined,
+    dueDate: row.due_date ?? undefined,
     transaction_type: row.transaction_type,
   } as Transaction;
 }
@@ -321,21 +402,25 @@ export async function deleteLoanRevisionRow(driver: SqlJsDatabaseDriver, id: str
 
 export async function insertTransactionRow(driver: SqlJsDatabaseDriver, tx: Omit<Transaction, 'id'> & { id?: string }): Promise<string> {
   const id = tx.id ?? crypto.randomUUID();
+  const amount = Math.abs(Number(tx.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be a finite positive number.');
   const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
   const parsedType = transactionType === 'EXPENSE' || transactionType === 'TRANSFER' || transactionType === 'OPENING_BALANCE' ? transactionType : 'INCOME';
   await driver.execute(
-    `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    [id, parsedType, tx.title, tx.subtitle ?? null, tx.amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0]
+    `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only, recurring_rule_id, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, parsedType, tx.title, tx.subtitle ?? null, amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, tx.recurringRuleId ?? null, tx.dueDate ?? null]
   );
   return id;
 }
 
 export async function updateTransactionRow(driver: SqlJsDatabaseDriver, id: string, tx: Omit<Transaction, 'id'>): Promise<void> {
+  const amount = Math.abs(Number(tx.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be a finite positive number.');
   const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
   const parsedType = transactionType === 'EXPENSE' || transactionType === 'TRANSFER' || transactionType === 'OPENING_BALANCE' ? transactionType : 'INCOME';
   await driver.execute(
     `UPDATE transactions SET transaction_type = ?, title = ?, subtitle = ?, amount = ?, date = ?, category = ?, icon = ?, account = ?, from_account_id = ?, to_account_id = ?, notes = ?, is_verified = ?, is_recurring = ?, is_opening_balance = ?, is_interest_only = ? WHERE id = ?;`,
-    [parsedType, tx.title, tx.subtitle ?? null, tx.amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, id]
+    [parsedType, tx.title, tx.subtitle ?? null, amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, id]
   );
 }
 
@@ -344,7 +429,69 @@ export async function deleteTransactionRow(driver: SqlJsDatabaseDriver, id: stri
 }
 
 export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
-  await driver.execute(`DELETE FROM transactions; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM accounts;`);
+  await driver.execute(`DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM accounts;`);
+}
+
+export async function createRecurringRule(driver: SqlJsDatabaseDriver, template: Omit<Transaction, 'id'> & { id?: string }): Promise<string> {
+  const amount = Math.abs(Number(template.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Recurring rule amount must be a finite positive number.');
+  const id = template.id ?? crypto.randomUUID();
+  const type = template.type.toUpperCase();
+  const nextDueDate = new Date(template.date).toISOString().slice(0, 10);
+  await driver.execute(
+    `INSERT INTO recurring_rules (id, title, subtitle, amount, transaction_type, account, from_account_id, to_account_id, category, icon, notes, is_interest_only, next_due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, template.title, template.subtitle ?? null, amount, type, template.account ?? null, template.fromAccountId ?? null, template.toAccountId ?? null, template.category ?? null, template.icon ?? null, template.notes ?? null, template.isInterestOnly ? 1 : 0, nextDueDate]
+  );
+  return id;
+}
+
+function advanceRecurringDate(date: string, frequency: string): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCMonth(value.getUTCMonth() + (frequency === 'ANNUALLY' ? 12 : frequency === 'QUARTERLY' ? 3 : 1));
+  return value.toISOString().slice(0, 10);
+}
+
+/** Backfill every missed scheduled occurrence, with identity-based de-duplication. */
+export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriver, autoApprove: boolean, today = new Date()): Promise<number> {
+  const todayDate = today.toISOString().slice(0, 10);
+  const rules = await driver.query(`SELECT * FROM recurring_rules WHERE is_active = 1 AND next_due_date <= ?`, [todayDate]);
+  let generated = 0;
+  for (const rule of rules) {
+    let dueDate = rule.next_due_date;
+    while (dueDate <= todayDate) {
+      const exists = await driver.query(`SELECT id FROM transactions WHERE recurring_rule_id = ? AND due_date = ?`, [rule.id, dueDate]);
+      if (!exists.length) {
+        const liabilityRows = rule.transaction_type === 'TRANSFER' && rule.to_account_id
+          ? await driver.query(`SELECT * FROM account_balances_view WHERE id = ? AND type = 'LIABILITY'`, [rule.to_account_id])
+          : [];
+        const liability = liabilityRows[0];
+        const hasLoanTerms = liability && (liability.interest_rate != null || liability.monthly_emi != null);
+        const split = hasLoanTerms
+          ? calculateEmiSplit(Number(liability.cached_balance), Number(liability.interest_rate ?? 0), Number(rule.amount), liability.interest_calculation_type ?? 'REDUCING')
+          : null;
+        const principalAmount = split ? split.principalAmount : Number(rule.amount);
+        if (principalAmount > 0) await insertTransactionRow(driver, {
+          id: crypto.randomUUID(), title: rule.title, subtitle: rule.subtitle ?? '', amount: principalAmount,
+          date: `${dueDate}T12:00:00.000Z`, category: rule.category ?? '#uncategorized', icon: rule.icon ?? 'RefreshCw',
+          type: rule.transaction_type.toLowerCase(), account: rule.account ?? undefined, fromAccountId: rule.from_account_id ?? undefined,
+          toAccountId: rule.to_account_id ?? undefined, notes: rule.notes ?? undefined, isInterestOnly: Boolean(rule.is_interest_only),
+          is_verified: autoApprove ? 1 : 0, isRecurring: false, recurringRuleId: rule.id, dueDate,
+        } as Transaction);
+        if (split && split.interestAmount > 0) {
+          await insertTransactionRow(driver, {
+            id: crypto.randomUUID(), title: `Interest Payment: ${liability.name}`, subtitle: rule.subtitle ?? '', amount: split.interestAmount,
+            date: `${dueDate}T12:00:00.000Z`, category: '#interest', icon: 'Flame', type: 'expense',
+            fromAccountId: rule.from_account_id ?? undefined, account: rule.to_account_id, toAccountId: rule.to_account_id,
+            isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: false, recurringRuleId: rule.id, dueDate,
+          } as Transaction);
+        }
+        generated++;
+      }
+      dueDate = advanceRecurringDate(dueDate, rule.frequency);
+    }
+    await driver.execute(`UPDATE recurring_rules SET next_due_date = ? WHERE id = ?`, [dueDate, rule.id]);
+  }
+  return generated;
 }
 
 export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {

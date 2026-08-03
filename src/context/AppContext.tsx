@@ -1,10 +1,11 @@
-import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { Transaction, CreditCardInfo, Category, Account, Widget, LoanRevision } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
   initializeDatabase,
   persistDatabase,
+  deletePersistedDatabase,
   loadStateFromDatabase,
   seedDemoData,
   insertAccountRow,
@@ -26,10 +27,13 @@ import {
   importLedgerToDatabase,
   loadAppSettings,
   upsertAppSetting,
+  createRecurringRule,
+  generateDueRecurringTransactions,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
-import { deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
+import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
+import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -54,7 +58,6 @@ interface AppContextType {
   getAccountBalance: (accountId: string) => number;
   accounts: Account[];
   calculateEmiSplit?: (balance: number, annualRate: number, emi: number) => { interestAmount: number; principalAmount: number };
-  validateInitialBalanceChange?: (id: string, newInitialBalance: number, creditLimitOverride?: number) => { currentBalance: number; minAllowed: number; maxAllowed: number };
   addAccount: (account: Omit<Account, 'id'>) => void;
   updateAccount: (id: string, account: Omit<Account, 'id'>) => void;
   deleteAccount: (id: string) => void;
@@ -86,6 +89,7 @@ interface AppContextType {
   setUnlocked: (val: boolean) => void;
   passcode: string | null;
   setPasscode: (val: string | null) => void;
+  verifyPasscode: (val: string) => Promise<boolean>;
   isManageCategoriesOpen: boolean;
   setManageCategoriesOpen: (val: boolean) => void;
   addAccountModalType: 'asset' | 'liability' | null;
@@ -121,25 +125,12 @@ interface AppContextType {
   importLedgerData: (data: any) => void;
   clearAllData: () => void;
   resetToDemoData: () => void;
+  integrityWarning: string | null;
+  dismissIntegrityWarning: () => void;
+  verifyDataIntegrity: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-const STATE_VERSION = 'v2_demo_rules';
-
-// Helper function to load initial state safely from localStorage
-const loadInitialState = <T,>(key: string, defaultVal: T): T => {
-  try {
-    const saved = localStorage.getItem('monthly-tracker-state');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.version === STATE_VERSION && parsed[key] !== undefined) {
-        return parsed[key];
-      }
-    }
-  } catch (e) {}
-  return defaultVal;
-};
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -147,7 +138,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currency, setCurrency] = useState('INR');
   const [autoRecur, setAutoRecur] = useState(true);
   const [biometric, setBiometric] = useState(false);
-  const [passcode, setPasscode] = useState<string | null>(null);
+  const [passcode, setPasscodeHash] = useState<string | null>(null);
+  const setPasscode = (value: string | null) => {
+    if (value === null) { setPasscodeHash(null); return; }
+    void hashPasscode(value).then(setPasscodeHash).catch(error => {
+      console.error('Unable to secure passcode:', error);
+      window.alert('Unable to save passcode securely on this device.');
+    });
+  };
+  const verifyPasscode = (value: string) => verifyPasscodeHash(value, passcode);
   const [isUnlocked, setUnlocked] = useState(false);
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isOnboardingOpen, setOnboardingOpen] = useState(() => localStorage.getItem('coinbuddy_onboarding_seen') !== 'true');
@@ -159,10 +158,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isWalletModalOpen, setWalletModalOpen] = useState(false);
   const [payCardModalState, setPayCardModalState] = useState<{isOpen: boolean, cardId: string | null}>({isOpen: false, cardId: null});
   
-  const [lastUpdated, setLastUpdated] = useState<string>(() => loadInitialState('lastUpdated', new Date().toISOString()));
+  const [lastUpdated, setLastUpdated] = useState<string>(() => new Date().toISOString());
 
   const [dbDriver, setDbDriver] = useState<SqlJsDatabaseDriver | null>(null);
   const [dbReady, setDbReady] = useState(false);
+  const [integrityWarning, setIntegrityWarning] = useState<string | null>(null);
+  const pendingLiabilityPayments = useRef(new Set<string>());
 
   const [undoStack, setUndoStack] = useState<UndoRedoCommand[]>([]);
   const [redoStack, setRedoStack] = useState<UndoRedoCommand[]>([]);
@@ -246,12 +247,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
 
-  const [profile, setProfile] = useState<{ name: string; email: string; avatar: string; offlineReady: boolean }>(loadInitialState('profile', {
+  const [profile, setProfile] = useState<{ name: string; email: string; avatar: string; offlineReady: boolean }>({
     name: 'Financial Sovereign',
     email: 'sovereign@vault.vellum',
     avatar: '',
     offlineReady: true
-  }));
+  });
 
   const getCycleRelativeDate = (dayOffset: number) => {
     const now = new Date();
@@ -260,13 +261,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return d.toISOString();
   };
 
-  const [accountRecords, setAccountRecords] = useState<Account[]>(() =>
-    loadInitialState('accounts', []).map(record => ({ ...record, balance: 0 }))
-  );
-  const [transactions, setTransactions] = useState<Transaction[]>(loadInitialState('transactions', []));
-  const [creditCardRecords, setCreditCardRecords] = useState<CreditCardInfo[]>(() =>
-    loadInitialState('creditCards', []).map(record => ({ ...record, balance: 0 }))
-  );
+  const [accountRecords, setAccountRecords] = useState<Account[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [creditCardRecords, setCreditCardRecords] = useState<CreditCardInfo[]>([]);
 
   // `balance` remains on the UI types for backwards compatibility, but records
   // deliberately retain no balance value. Only the ledger projection below may
@@ -299,13 +296,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const netWorth = typeof netWorthRes === 'number' ? netWorthRes : (netWorthRes as any);
   const getAccountBalance = (accountId: string) => accounts.find(a => a.id === accountId)?.balance ?? 0;
 
-  const [categories, setCategories] = useState<Category[]>(loadInitialState('categories', []));
+  const [categories, setCategories] = useState<Category[]>([]);
 
-  const [widgets, setWidgets] = useState<Widget[]>(loadInitialState('widgets', []));
-  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: Math.random().toString(36).substr(2, 9) }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => { persistDatabase(dbDriver); }).catch(console.error); } };
-  const removeWidget = (id: string) => { setWidgets(widgets.filter(w => w.id !== id)); if (dbDriver) { deleteWidgetRow(dbDriver, id).then(() => { persistDatabase(dbDriver); }).catch(console.error); } };
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: Math.random().toString(36).substr(2, 9) }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
+  const removeWidget = (id: string) => { setWidgets(widgets.filter(w => w.id !== id)); if (dbDriver) { deleteWidgetRow(dbDriver, id).then(() => persistDatabase(dbDriver)).catch(console.error); } };
 
-  const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>(loadInitialState('loanRevisions', []));
+  const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
@@ -353,24 +350,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateFromDbState(state);
   };
 
+  const verifyDataIntegrity = async (): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const result = await auditDatabaseIntegrity(dbDriver);
+    const message = result.mismatches.length || !result.isNetWorthAccurate
+      ? 'Ledger integrity warning: one or more balances do not match the transaction ledger.'
+      : null;
+    setIntegrityWarning(message);
+    return !message;
+  };
+
   const persistAppSetting = async (key: string, value: unknown) => {
     if (!dbDriver) return;
     try {
       await upsertAppSetting(dbDriver, key, value);
-      persistDatabase(dbDriver);
+      await persistDatabase(dbDriver);
     } catch (error) {
       console.error(`Failed to persist app setting ${key}:`, error);
     }
   };
 
-  const persistDbAction = async (action: () => Promise<unknown>) => {
-    if (!dbDriver) return;
+  const persistDbAction = async (action: () => Promise<unknown>): Promise<boolean> => {
+    if (!dbDriver) return false;
     try {
       await action();
-      persistDatabase(dbDriver);
+      await persistDatabase(dbDriver);
       await refreshStateFromDatabase(dbDriver);
+      return true;
     } catch (error) {
       console.error('SQLite persistence failed:', error);
+      // Restore the projection from the durable ledger and make failure visible.
+      await refreshStateFromDatabase(dbDriver).catch(() => undefined);
+      window.alert(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
     }
   };
 
@@ -384,16 +396,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const count = Number(row.count ?? 0);
         if (count === 0) {
           await seedDemoData(driver);
-          persistDatabase(driver);
+          await persistDatabase(driver);
         }
         await refreshStateFromDatabase(driver);
+        const integrity = await auditDatabaseIntegrity(driver);
+        if (integrity.mismatches.length || !integrity.isNetWorthAccurate) setIntegrityWarning('Ledger integrity warning: one or more balances do not match the transaction ledger.');
         const settings = await loadAppSettings(driver);
         if (settings.theme === 'light' || settings.theme === 'dark') setTheme(settings.theme);
         if (typeof settings.colorPalette === 'string') setColorPalette(settings.colorPalette);
         if (typeof settings.currency === 'string') setCurrency(settings.currency);
         if (typeof settings.autoRecur === 'boolean') setAutoRecur(settings.autoRecur);
         if (typeof settings.biometric === 'boolean') setBiometric(settings.biometric);
-        if (typeof settings.passcode === 'string' || settings.passcode === null) setPasscode(settings.passcode as string | null);
+        if (typeof settings.passcode === 'string' || settings.passcode === null) {
+          const storedPasscode = settings.passcode as string | null;
+          if (storedPasscode && !storedPasscode.startsWith('sha256:')) setPasscode(storedPasscode);
+          else setPasscodeHash(storedPasscode);
+        }
         if (typeof settings.monthCycleDay === 'number') setMonthCycleDay(settings.monthCycleDay);
         if (settings.profile && typeof settings.profile === 'object') setProfile(settings.profile as typeof profile);
         setDbReady(true);
@@ -407,35 +425,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Rehydrate basic settings
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('monthly-tracker-state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.theme) setTheme(parsed.theme);
-        if (parsed.colorPalette) setColorPalette(parsed.colorPalette);
-        if (parsed.currency) setCurrency(parsed.currency);
-        if (parsed.autoRecur !== undefined) setAutoRecur(parsed.autoRecur);
-        if (parsed.biometric !== undefined) setBiometric(parsed.biometric);
-        if (parsed.passcode !== undefined) setPasscode(parsed.passcode);
-        if (parsed.monthCycleDay !== undefined) setMonthCycleDay(parsed.monthCycleDay);
-        if (parsed.lastUpdated) setLastUpdated(parsed.lastUpdated);
-      }
-    } catch (e) {}
-  }, []);
-
-  // Persist user preferences in SQLite. Local storage remains only as a migration fallback.
+  // SQLite is the single persisted source for preferences.
   useEffect(() => {
     const updatedTime = new Date().toISOString();
     setLastUpdated(updatedTime);
-    const state = {
-      version: STATE_VERSION,
-      lastUpdated: updatedTime,
-      theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay,
-      profile
-    };
-    localStorage.setItem('monthly-tracker-state', JSON.stringify(state));
     if (dbReady) {
       void Promise.all([
         persistAppSetting('theme', theme),
@@ -465,92 +458,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme, colorPalette]);
 
   useEffect(() => {
-    if (transactions.length === 0) return;
-    
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    const recurringTemplates = transactions.filter(t => t.isRecurring && t.is_verified !== 0 && !t.isOpeningBalance);
-    if (recurringTemplates.length === 0) return;
-
-    let newTxs: Transaction[] = [];
-    let hasChanges = false;
-
-    recurringTemplates.forEach(template => {
-      const templateDate = new Date(template.date);
-      let targetMonth = currentMonth;
-      let targetYear = currentYear;
-      
-      let targetDate = new Date(targetYear, targetMonth, templateDate.getDate());
-      
-      // If we've already passed the target date for this month, consider next month's occurrence
-      // Wait, we also want to generate for this month if it hasn't been generated yet and it's past
-      // To keep it simple, we just check if it's already generated for targetDate's month/year
-      
-      // Let's adjust targetDate if it's currently > 5 days in the past? No, if it's in the past and not generated, we should generate it.
-      // If it's in the future, we check if it's <= 5 days away.
-      
-      let timeDiff = targetDate.getTime() - now.getTime();
-      let daysUntil = timeDiff / (1000 * 3600 * 24);
-      
-      if (daysUntil < -15) { // If it's more than 15 days in the past, maybe they already moved to next month? Actually let's just look forward if it's past targetDate + some buffer, but realistically we should just check if this month is generated.
-         // Actually, if we just check if this month's is generated.
-      }
-
-      const checkAndGenerateForDate = (dateToGenerate: Date) => {
-        const diff = dateToGenerate.getTime() - now.getTime();
-        const days = diff / (1000 * 3600 * 24);
-        
-        if (days > 5) return false; // Too far in the future
-        
-        const alreadyExists = transactions.some(t => 
-          t.title === template.title && 
-          t.amount === template.amount &&
-          t.id !== template.id &&
-          new Date(t.date).getMonth() === dateToGenerate.getMonth() &&
-          new Date(t.date).getFullYear() === dateToGenerate.getFullYear()
-        );
-        
-        if (!alreadyExists && (dateToGenerate.getMonth() !== templateDate.getMonth() || dateToGenerate.getFullYear() !== templateDate.getFullYear())) {
-           // We generate it!
-           // If autoRecur is on, and the date has passed (days <= 0), it's verified. Otherwise it's 0.
-           const isVerified = (autoRecur && days <= 0) ? 1 : 0;
-           
-           const newTx: Transaction = {
-             ...template,
-             id: Math.random().toString(),
-             date: dateToGenerate.toISOString().split('T')[0],
-             is_verified: isVerified,
-             isRecurring: false
-           };
-           
-           newTxs.push(newTx);
-           
-           hasChanges = true;
-           return true;
-        }
-        return false;
-      };
-
-      // Check for current month
-      checkAndGenerateForDate(new Date(currentYear, currentMonth, templateDate.getDate()));
-      // Check for next month (in case we are at the end of the month and next month's is within 5 days)
-      checkAndGenerateForDate(new Date(currentYear, currentMonth + 1, templateDate.getDate()));
-    });
-
-    if (hasChanges) {
-      const combinedTxs = [...newTxs, ...transactions];
-      setTransactions(combinedTxs);
-      if (dbDriver) {
-        void persistDbAction(async () => {
-          for (const transaction of newTxs) {
-            await insertTransactionRow(dbDriver, transaction);
-          }
-        });
-      }
-    }
-  }, [transactions, accounts, creditCards, autoRecur, dbDriver]);
+    if (!dbDriver || !dbReady) return;
+    void persistDbAction(() => generateDueRecurringTransactions(dbDriver, autoRecur));
+  }, [dbDriver, dbReady, autoRecur]);
 
   const validateTransaction = (
     tx: Omit<Transaction, 'id'>, 
@@ -634,7 +544,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, error: validation.error };
     }
 
-    const finalTx = { ...tx, id: Math.random().toString() };
+    const finalTx = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
+    if (tx.isRecurring) {
+      if (dbDriver) void persistDbAction(() => createRecurringRule(dbDriver, finalTx));
+      return { success: true };
+    }
     const nextTxs = [finalTx, ...transactions];
 
     pushCommand({
@@ -822,88 +736,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     }
   };  
-  const validateAndCalculateBalance = (id: string, newInitialBalance: number, creditLimitOverride?: number) => {
-    const targetAccount = accounts.find(a => a.id === id);
-    if (!targetAccount) return { currentBalance: newInitialBalance, minAllowed: 0, maxAllowed: Infinity };
-
-    const isLiability = targetAccount.type === 'liability';
-
-    const nonOpeningTxs = transactions.filter(t => 
-      !(t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
-      (t.account === id || t.toAccountId === id || t.fromAccountId === id)
-    ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    let runningChange = 0;
-    let C_lowest = 0;
-    let C_highest = 0;
-
-    for (const tx of nonOpeningTxs) {
-      if (tx.is_verified === 0) continue;
-      
-      const amount = Math.abs(tx.amount);
-      const sourceId = tx.fromAccountId || tx.account || 'cash';
-      const targetId = tx.toAccountId || tx.account || 'cash';
-      
-      let change = 0;
-
-      if (tx.type === 'income' && targetId === id) {
-        if (!isLiability) change = amount;
-        else change = -amount;
-      } else if (tx.type === 'expense' && sourceId === id) {
-        const isInterestOnly = tx.isInterestOnly || tx.category === '#interest' || tx.category?.toLowerCase().includes('interest') || tx.title?.toLowerCase().includes('interest payment');
-        if (!isLiability) change = -amount;
-        else if (!isInterestOnly) change = amount;
-      } else if (tx.type === 'transfer') {
-        if (sourceId === id) {
-          if (!isLiability) change = -amount;
-          else change = amount;
-        }
-        if (targetId === id) {
-          if (!isLiability) change = amount;
-          else change = -amount;
-        }
-      }
-      
-      runningChange += change;
-      if (runningChange < C_lowest) {
-        C_lowest = runningChange;
-      }
-      if (runningChange > C_highest) {
-        C_highest = runningChange;
-      }
-    }
-
-    if (!isLiability) {
-      const minAllowed = Math.max(0, -C_lowest);
-      if (newInitialBalance < minAllowed) {
-        throw new Error(`Cannot set initial balance lower than ${formatCurrency(minAllowed)}. Existing expenses in this account would cause a negative balance.`);
-      }
-      return { currentBalance: newInitialBalance + runningChange, minAllowed, maxAllowed: Infinity };
-    } else {
-      const minAllowed = Math.max(0, -C_lowest);
-      const newInitialOwed = newInitialBalance;
-
-      if (newInitialOwed < minAllowed) {
-        throw new Error(`Initial debt cannot be lower than ${formatCurrency(minAllowed)} due to past repayments.`);
-      }
-
-      const creditCard = creditCards.find(c => c.id === id);
-      const creditLimit = creditLimitOverride ?? targetAccount.limit ?? creditCard?.limit;
-
-      if (creditLimit !== undefined && creditLimit !== null && creditLimit > 0) {
-        const maxAllowed = Math.max(0, creditLimit - C_highest);
-        if (newInitialOwed + C_highest > creditLimit) {
-          throw new Error(`Initial debt cannot exceed ${formatCurrency(maxAllowed)} as past spending would breach your credit limit.`);
-        }
-        return { currentBalance: newInitialOwed + runningChange, minAllowed, maxAllowed };
-      }
-
-      return { currentBalance: newInitialOwed + runningChange, minAllowed, maxAllowed: Infinity };
-    }
-  };
-
-  const validateInitialBalanceChange = validateAndCalculateBalance;
-
   const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
@@ -913,7 +745,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
 
-    validateAndCalculateBalance(id, card.balance, card.limit);
     const updatedCard: CreditCardInfo = { ...card, id, balance: 0 };
 
     if (existingTxIndex >= 0) {
@@ -1033,7 +864,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
     
-    validateAndCalculateBalance(id, account.balance);
 
     if (existingTxIndex >= 0) {
       const newAmount = account.balance;
@@ -1146,7 +976,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addTransaction({
       title: `Transfer: ${fromAccount?.name || 'Unknown'} to ${toAccount?.name || 'Unknown'}`,
       subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      amount: -amount,
+      amount: Math.abs(amount),
       date: new Date().toISOString(),
       category: '#transfer',
       icon: 'ArrowRightLeft',
@@ -1162,6 +992,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const payLiability = (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => {
+    if (pendingLiabilityPayments.current.has(id)) {
+      window.alert('A payment for this liability is already being saved. Please wait.');
+      return;
+    }
+    pendingLiabilityPayments.current.add(id);
+    // addTransaction persists asynchronously; retain a short UI lock through
+    // the optimistic update and database refresh to prevent double-taps.
+    window.setTimeout(() => pendingLiabilityPayments.current.delete(id), 1500);
     const defaultAsset = fromAccountId || accounts.find(a => a.type === 'asset')?.id || 'checking';
     const liabilityAcc = accounts.find(a => a.id === id);
 
@@ -1340,10 +1178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const resetToDemoData = () => {
-    try {
-      localStorage.removeItem('monthly-tracker-state');
-    } catch (e) {}
-    window.location.reload();
+    void deletePersistedDatabase().finally(() => window.location.reload());
   };
 
   return (
@@ -1353,10 +1188,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       handleUndo,
       handleRedo,
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, formatCurrency, getCurrencySymbol, 
-      accounts, calculateEmiSplit, validateInitialBalanceChange, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
+      accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, 
-      biometric, setBiometric, passcode, setPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
+      biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,
       loanRevisions, addLoanRevision, deleteLoanRevision,
@@ -1366,7 +1201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,
-      clearAllData, resetToDemoData
+      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity
     }}>
       {children}
     </AppContext.Provider>

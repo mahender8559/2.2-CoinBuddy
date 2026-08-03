@@ -1,6 +1,7 @@
 /**
  * Embedded SQLite Schema & Types for Local-First Personal Finance App
  */
+import { applyTransactionEffect } from '../domain/ledgerRules';
 
 // Enforce foreign keys pragmatically in SQLite connection setup
 export const SQLITE_PRAGMA_SETUP = `
@@ -109,6 +110,26 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value_json TEXT NOT NULL
 );
 
+-- A schedule is not a ledger entry. Each generated ledger entry references its
+-- source rule and exact due date, giving deterministic de-duplication.
+CREATE TABLE IF NOT EXISTS recurring_rules (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  amount REAL NOT NULL CHECK(amount > 0),
+  transaction_type TEXT NOT NULL CHECK(transaction_type IN ('INCOME', 'EXPENSE', 'TRANSFER')),
+  account TEXT,
+  from_account_id TEXT,
+  to_account_id TEXT,
+  category TEXT,
+  icon TEXT,
+  notes TEXT,
+  is_interest_only INTEGER NOT NULL DEFAULT 0,
+  frequency TEXT NOT NULL DEFAULT 'MONTHLY' CHECK(frequency IN ('MONTHLY', 'QUARTERLY', 'ANNUALLY')),
+  next_due_date TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1
+);
+
 -- 5. Centralized Computed Account Balances View
 CREATE VIEW IF NOT EXISTS account_balances_view AS
 SELECT 
@@ -130,11 +151,15 @@ SELECT
   COALESCE(
     SUM(
       CASE 
-        WHEN t.transaction_type = 'OPENING_BALANCE' THEN t.amount
+        WHEN t.transaction_type = 'OPENING_BALANCE' AND a.type = 'ASSET' AND t.to_account_id = a.id THEN t.amount
+        WHEN t.transaction_type = 'OPENING_BALANCE' AND a.type = 'LIABILITY' AND t.from_account_id = a.id THEN t.amount
         WHEN t.transaction_type = 'INCOME' AND t.to_account_id = a.id THEN 
           CASE WHEN a.type = 'ASSET' THEN t.amount ELSE -t.amount END
         WHEN t.transaction_type = 'EXPENSE' AND t.from_account_id = a.id THEN 
+          CASE WHEN a.type = 'LIABILITY' AND t.is_interest_only = 1 THEN 0
+          ELSE
           CASE WHEN a.type = 'ASSET' THEN -t.amount ELSE t.amount END
+          END
         WHEN t.transaction_type = 'TRANSFER' AND t.from_account_id = a.id THEN 
           CASE WHEN a.type = 'ASSET' THEN -t.amount ELSE t.amount END
         WHEN t.transaction_type = 'TRANSFER' AND t.to_account_id = a.id THEN 
@@ -247,6 +272,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE categories ADD COLUMN budget REAL NOT NULL DEFAULT 0;`,
   `ALTER TABLE categories ADD COLUMN tags_json TEXT;`,
   `ALTER TABLE categories ADD COLUMN group_name TEXT;`,
+  `ALTER TABLE transactions ADD COLUMN recurring_rule_id TEXT;`,
+  `ALTER TABLE transactions ADD COLUMN due_date TEXT;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -438,7 +465,7 @@ export async function insertTransaction(
  * Requirements:
  * - Finds and UPDATEs the existing OPENING_BALANCE transaction.
  * - Calculates delta = newAmount - oldAmount.
- * - Validation: If account is ASSET and cached_balance + delta < 0, throws an error.
+ * - Validation is derived from the full dated ledger history, not current balance.
  * - Updates the transaction row in the immutable ledger.
  * - Wraps in a SQL transaction.
  */
@@ -470,11 +497,12 @@ export async function updateOpeningBalance(
 
     const txId = txRows[0].id;
     const oldAmount = txRows[0].amount;
+    if (!Number.isFinite(newAmount) || newAmount <= 0) throw new Error('Opening balance must be a positive number.');
     const delta = newAmount - oldAmount;
 
     // 2. Fetch the account balance from view to check type and computed balance
     const accRows = await db.query(
-      `SELECT type, cached_balance FROM account_balances_view WHERE id = ?`,
+      `SELECT type, credit_limit FROM accounts WHERE id = ?`,
       [accountId]
     );
 
@@ -483,11 +511,32 @@ export async function updateOpeningBalance(
     }
 
     const accountType = accRows[0].type;
-    const currentBalance = accRows[0].cached_balance;
+    const creditLimit = Number(accRows[0].credit_limit ?? 0);
 
-    // 3. Validation: prevent historical overdrafts for ASSET
-    if (accountType === 'ASSET' && (currentBalance + delta) < 0) {
-      throw new Error('Cannot update opening balance: This would cause the account balance to fall below zero.');
+    // The opening entry is the first ledger entry, therefore its adjustment
+    // shifts every later running balance by the same delta.  Query the actual
+    // low-water mark so historical overdrafts cannot be hidden by recovery.
+    const runningRows = await db.query(
+      `SELECT MIN(running_balance) AS minimum_balance, MAX(running_balance) AS maximum_balance FROM (
+        SELECT SUM(CASE
+          WHEN transaction_type = 'OPENING_BALANCE' AND ? = 'ASSET' AND to_account_id = ? THEN amount
+          WHEN transaction_type = 'OPENING_BALANCE' AND ? = 'LIABILITY' AND from_account_id = ? THEN amount
+          WHEN transaction_type = 'INCOME' AND to_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN amount ELSE -amount END
+          WHEN transaction_type = 'EXPENSE' AND from_account_id = ? THEN CASE WHEN ? = 'LIABILITY' AND is_interest_only = 1 THEN 0 WHEN ? = 'ASSET' THEN -amount ELSE amount END
+          WHEN transaction_type = 'TRANSFER' AND from_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN -amount ELSE amount END
+          WHEN transaction_type = 'TRANSFER' AND to_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN amount ELSE -amount END
+          ELSE 0 END) OVER (ORDER BY date, id) AS running_balance
+        FROM transactions WHERE is_verified = 1 AND (from_account_id = ? OR to_account_id = ?)
+      )`,
+      [accountType, accountId, accountType, accountId, accountId, accountType, accountId, accountType, accountType, accountId, accountType, accountId, accountType, accountId, accountId]
+    );
+    const minimumBalance = Number(runningRows[0]?.minimum_balance ?? 0) + delta;
+    const maximumBalance = Number(runningRows[0]?.maximum_balance ?? 0) + delta;
+    if (accountType === 'ASSET' && minimumBalance < -0.000001) {
+      throw new Error('Cannot update opening balance: it would cause a historical negative asset balance.');
+    }
+    if (accountType === 'LIABILITY' && creditLimit > 0 && maximumBalance > creditLimit + 0.000001) {
+      throw new Error('Cannot update opening balance: it would exceed this account credit limit.');
     }
 
     // 4. Update the existing OPENING_BALANCE transaction in the immutable ledger
@@ -538,43 +587,22 @@ export async function auditDatabaseIntegrity(
     let expectedBalance = 0;
     
     const txRows = await db.query(
-      `SELECT transaction_type, amount, from_account_id, to_account_id 
+      `SELECT transaction_type, amount, from_account_id, to_account_id, is_verified, is_interest_only 
        FROM transactions 
        WHERE from_account_id = ? OR to_account_id = ?`, 
       [accountId, accountId]
     );
     
     for (const tx of txRows) {
-      if (tx.transaction_type === 'OPENING_BALANCE') {
-        if (accountType === 'ASSET' && tx.to_account_id === accountId) {
-          expectedBalance += tx.amount;
-        } else if (accountType === 'LIABILITY' && tx.from_account_id === accountId) {
-          expectedBalance += tx.amount;
-        }
-      } else if (tx.transaction_type === 'INCOME') {
-        if (tx.to_account_id === accountId) {
-          expectedBalance += tx.amount;
-        }
-      } else if (tx.transaction_type === 'EXPENSE') {
-        if (tx.from_account_id === accountId) {
-          if (accountType === 'ASSET') {
-            expectedBalance -= tx.amount;
-          } else if (accountType === 'LIABILITY') {
-            expectedBalance += tx.amount;
-          }
-        }
-      } else if (tx.transaction_type === 'TRANSFER') {
-        if (tx.from_account_id === accountId) {
-          expectedBalance -= tx.amount;
-        }
-        if (tx.to_account_id === accountId) {
-          if (accountType === 'ASSET') {
-            expectedBalance += tx.amount;
-          } else if (accountType === 'LIABILITY') {
-            expectedBalance -= tx.amount;
-          }
-        }
-      }
+      expectedBalance += applyTransactionEffect({
+        ...tx,
+        type: tx.transaction_type?.toLowerCase(),
+        transaction_type: tx.transaction_type,
+        fromAccountId: tx.from_account_id,
+        toAccountId: tx.to_account_id,
+        isInterestOnly: Boolean(tx.is_interest_only),
+        is_verified: Number(tx.is_verified ?? 1),
+      } as any, { id: accountId, type: accountType === 'LIABILITY' ? 'liability' : 'asset' });
     }
     
     const roundedExpected = Math.round(expectedBalance * 100) / 100;

@@ -9,8 +9,37 @@ import {
   deleteAccountInDB,
   auditDatabaseIntegrity
 } from './sqliteSchema';
+import { recomputeAccountBalance } from '../utils/balanceManager';
 
 describe('Database Integrity Property-Based Tests', () => {
+  it('keeps SQL view, shared ledger rules, and integrity audit in agreement', async () => {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    const driver = {
+      async execute(sql: string, params: any[] = []) { params.length ? db.run(sql, params) : db.exec(sql); },
+      async query(sql: string, params: any[] = []) {
+        const stmt = db.prepare(sql); if (params.length) stmt.bind(params);
+        const rows: any[] = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); return rows;
+      }
+    };
+    await driver.execute(CREATE_TABLES_SQL);
+    await driver.execute(`INSERT INTO accounts (id, name, type) VALUES ('cash', 'Cash', 'ASSET'), ('card', 'Card', 'LIABILITY');`);
+    const fixture = [
+      ['OPENING_BALANCE', 1000, null, 'cash'], ['OPENING_BALANCE', 200, 'card', null],
+      ['EXPENSE', 120, 'cash', null], ['EXPENSE', 80, 'card', null], ['TRANSFER', 50, 'cash', 'card'],
+    ];
+    for (const [type, amount, from, to] of fixture as any[]) {
+      await driver.execute(`INSERT INTO transactions (id, transaction_type, title, amount, date, from_account_id, to_account_id, is_verified) VALUES (?, ?, 'fixture', ?, ?, ?, ?, 1)`, [crypto.randomUUID(), type, amount, Date.now(), from, to]);
+    }
+    const txs = (await driver.query(`SELECT * FROM transactions`)).map((row: any) => ({ ...row, type: row.transaction_type.toLowerCase(), amount: Number(row.amount), fromAccountId: row.from_account_id, toAccountId: row.to_account_id, isOpeningBalance: row.transaction_type === 'OPENING_BALANCE', is_verified: row.is_verified }));
+    const view = await driver.query(`SELECT id, type, cached_balance FROM account_balances_view ORDER BY id`);
+    for (const row of view) {
+      expect(recomputeAccountBalance({ id: row.id, name: row.id, type: row.type === 'LIABILITY' ? 'liability' : 'asset', balance: 0 }, txs as any)).toBe(Number(row.cached_balance));
+    }
+    expect((await auditDatabaseIntegrity(driver)).mismatches).toEqual([]);
+    db.close();
+  });
+
   it('should maintain accurate cached_balances across a sequence of random actions', async () => {
     const SQL = await initSqlJs();
 

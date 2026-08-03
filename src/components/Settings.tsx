@@ -7,7 +7,7 @@ import { exportToExcel } from '../utils/exportExcel';
 import { BackupManager } from '../utils/backupManager';
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, lastUpdated, setOnboardingOpen, setButtonTourOpen } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>('main');
@@ -418,9 +418,7 @@ export function Settings() {
                     const content = e.target?.result;
                     if (typeof content === 'string') {
                       try {
-                        JSON.parse(content); // Validate JSON
-                        localStorage.setItem('monthly-tracker-state', content);
-                        window.location.reload();
+                        importLedgerData(JSON.parse(content));
                       } catch (err) {
                         showAlert('Error', 'Invalid backup file');
                       }
@@ -431,6 +429,13 @@ export function Settings() {
               };
               input.click();
             }}
+          />
+          <DataCard 
+            icon={ShieldCheck}
+            label="Ledger Audit"
+            title="Verify Data Integrity"
+            desc="Compare every balance against the transaction ledger."
+            onClick={() => { void verifyDataIntegrity().then(ok => showAlert(ok ? 'Integrity Verified' : 'Integrity Warning', ok ? 'All account balances match the ledger.' : 'A mismatch was found. Export a backup before editing data.')); }}
           />
           <DataCard 
             icon={KeyRound} 
