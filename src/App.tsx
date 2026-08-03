@@ -65,6 +65,20 @@ export default function App() {
   }, [isManageCategoriesOpen]);
 
   useEffect(() => {
+    // OAuth callbacks must never leave the SPA mounted at an /api URL. Keep a
+    // short-lived result for Backup & Security, then remove token/error query
+    // data before any background backup work can run.
+    const callback = new URLSearchParams(window.location.search);
+    const driveResult = callback.get('drive');
+    if (driveResult) {
+      sessionStorage.setItem('coinbuddy_drive_oauth_result', JSON.stringify({
+        status: driveResult,
+        error: callback.get('drive_error'),
+      }));
+      window.history.replaceState({ tab: 'settings' }, '', '?tab=settings');
+      setActiveTab('settings');
+      return;
+    }
     // Initialize history state on load if not already set
     if (!window.history.state || !window.history.state.tab) {
       const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null;

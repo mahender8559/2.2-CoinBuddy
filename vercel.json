@@ -1,10 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/:path((?!api/).*)",
-      "destination": "/index.html"
-    }
-  ]
+  "framework": "vite"
 }

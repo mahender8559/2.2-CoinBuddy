@@ -106,14 +106,17 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const localFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const stored = sessionStorage.getItem('coinbuddy_drive_oauth_result');
     const params = new URLSearchParams(window.location.search);
-    if (params.get('drive') === 'connected') {
+    const result = stored ? JSON.parse(stored) : { status: params.get('drive'), error: params.get('drive_error') };
+    if (result.status === 'connected') {
       setBackupSuccessMessage('Google Drive connected successfully.');
-    } else if (params.get('drive') === 'error') {
-      setBackupErrorMessage(params.get('drive_error') || 'Google Drive connection failed.');
+    } else if (result.status === 'error') {
+      setBackupErrorMessage(result.error || 'Google Drive connection failed.');
     } else {
       return;
     }
+    sessionStorage.removeItem('coinbuddy_drive_oauth_result');
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
 

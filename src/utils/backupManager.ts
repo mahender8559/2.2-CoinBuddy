@@ -353,12 +353,16 @@ export class BackupStorageAdapter {
   ): Promise<void> {
     if (provider === 'GOOGLE_DRIVE') {
       const response = await fetch('/api/google-drive/backup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, content: encryptedContent }),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-CoinBuddy-Filename': encodeURIComponent(filename),
+        },
+        body: new Blob([encryptedContent], { type: 'application/octet-stream' }),
       });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Google Drive backup failed.');
+        throw new Error(error.error || `Google Drive backup failed (HTTP ${response.status}).`);
       }
       return;
     }
