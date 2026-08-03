@@ -43,8 +43,8 @@ function unseal(value) {
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8'));
 }
 
-export function setCookie(res, name, value, maxAge = 600, path = '/api') {
-  res.setHeader('Set-Cookie', `${name}=${value}; Path=${path}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`);
+export function setCookie(res, name, value, maxAge = 600, path = '/') {
+  res.setHeader('Set-Cookie', `${name}=${value}; Secure; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=${maxAge}`);
 }
 
 export function startAuthorization(req, res) {
