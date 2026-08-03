@@ -70,24 +70,28 @@ async function writeSnapshot(snapshot: Uint8Array): Promise<void> {
 }
 
 async function readOpfsSnapshot(): Promise<Uint8Array | null> {
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const storage = navigator.storage as any;
+  const getDirectory = storage?.getDirectory as (() => Promise<any>) | undefined;
   if (!getDirectory) return null;
   try {
-    const root = await getDirectory();
+    const root = await getDirectory.call(storage);
     const file = await (await root.getFileHandle(OPFS_SNAPSHOT_FILE)).getFile();
     return new Uint8Array(await file.arrayBuffer());
   } catch { return null; }
 }
 
 async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const storage = navigator.storage as any;
+  const getDirectory = storage?.getDirectory as (() => Promise<any>) | undefined;
   if (!getDirectory) return false;
-  const root = await getDirectory();
-  const handle = await root.getFileHandle(OPFS_SNAPSHOT_FILE, { create: true });
-  const writable = await handle.createWritable();
-  await writable.write(snapshot);
-  await writable.close();
-  return true;
+  try {
+    const root = await getDirectory.call(storage);
+    const handle = await root.getFileHandle(OPFS_SNAPSHOT_FILE, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(snapshot);
+    await writable.close();
+    return true;
+  } catch { return false; }
 }
 
 function createDriver(db: any): SqlJsDatabaseDriver {
@@ -168,9 +172,10 @@ export async function deletePersistedDatabase(): Promise<void> {
       request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
     });
   } finally { database.close(); }
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const storage = navigator.storage as any;
+  const getDirectory = storage?.getDirectory as (() => Promise<any>) | undefined;
   if (getDirectory) {
-    try { await (await getDirectory()).removeEntry(OPFS_SNAPSHOT_FILE); } catch { /* file did not exist */ }
+    try { await (await getDirectory.call(storage)).removeEntry(OPFS_SNAPSHOT_FILE); } catch { /* file did not exist */ }
   }
 }
 
