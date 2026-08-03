@@ -80,6 +80,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   
   const [selectedBackupFile, setSelectedBackupFile] = useState<{
+    id?: string;
     name: string;
     date: string;
     size: string;
@@ -349,6 +350,11 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
 
     let payloadToDecrypt = selectedBackupFile.content;
+    if (!payloadToDecrypt && restoreSource === 'GOOGLE_DRIVE' && selectedBackupFile.id) {
+      const response = await fetch(`/api/google-drive/backups?id=${encodeURIComponent(selectedBackupFile.id)}`);
+      if (!response.ok) throw new Error('Unable to download the selected Google Drive backup.');
+      payloadToDecrypt = await response.text();
+    }
     if (!payloadToDecrypt) {
       // If mock file without direct content, build payload
       payloadToDecrypt = BackupManager.generateBackupJSON();

@@ -351,6 +351,18 @@ export class BackupStorageAdapter {
     encryptedContent: string,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'
   ): Promise<void> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const response = await fetch('/api/google-drive/backup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content: encryptedContent }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Google Drive backup failed.');
+      }
+      return;
+    }
+
     // Save to virtual backup storage registry in localStorage for history list
     const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups') || '[]';
     let savedBackups: any[] = [];
@@ -395,8 +407,8 @@ export class BackupStorageAdapter {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-    } else if (provider === 'GOOGLE_DRIVE' || provider === 'CUSTOM') {
-      throw new Error(`${provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Custom cloud storage'} is not configured. Connect a real storage adapter before enabling cloud backups.`);
+    } else if (provider === 'CUSTOM') {
+      throw new Error('Custom cloud storage is not configured.');
     }
   }
 
@@ -433,6 +445,14 @@ export class BackupStorageAdapter {
    * Simulates OAuth re-authentication flow with target storage provider
    */
   static async authenticate(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<boolean> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const status = await fetch('/api/google-drive/status').then(response => response.ok ? response.json() : { connected: false });
+      if (!status.connected) {
+        window.location.assign('/api/google-drive/connect');
+        return false;
+      }
+      return true;
+    }
     await new Promise((resolve) => setTimeout(resolve, 800));
     return true;
   }
@@ -441,6 +461,19 @@ export class BackupStorageAdapter {
    * Downloads or retrieves latest backup files list for restore
    */
   static async listAvailableBackups(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<any[]> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const response = await fetch('/api/google-drive/backups');
+      if (!response.ok) return [];
+      const result = await response.json();
+      return (result.files || []).map((file: any) => ({
+        id: file.id,
+        name: file.name,
+        date: new Date(file.modifiedTime).toLocaleString(),
+        size: `${(Number(file.size || 0) / 1024).toFixed(1)} KB`,
+        accountsCount: 0,
+        transactionsCount: 0,
+      }));
+    }
     const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups');
     if (existingBackupsJson) {
       try {

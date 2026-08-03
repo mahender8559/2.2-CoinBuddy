@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Download, Upload, KeyRound, Trash2, Info, Moon, Sun, DollarSign, LayoutList, PiggyBank, X, FileSpreadsheet, Palette, Clock, ChevronRight, HardDrive } from 'lucide-react';
+import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Download, Upload, Trash2, Info, Moon, Sun, DollarSign, LayoutList, PiggyBank, X, FileSpreadsheet, Palette, Clock, ChevronRight, HardDrive } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
@@ -436,13 +436,6 @@ export function Settings() {
             title="Verify Data Integrity"
             desc="Compare every balance against the transaction ledger."
             onClick={() => { void verifyDataIntegrity().then(ok => showAlert(ok ? 'Integrity Verified' : 'Integrity Warning', ok ? 'All account balances match the ledger.' : 'A mismatch was found. Export a backup before editing data.')); }}
-          />
-          <DataCard 
-            icon={KeyRound} 
-            label="AES-256" 
-            title="Encryption Settings" 
-            desc="Manage your master password and salt keys." 
-            onClick={() => showAlert("Encryption Status", "Encryption is always enabled using local on-device secure storage via Web Crypto API in the background. Your data is safe.")}
           />
           <div 
             className="bg-surface-container rounded-2xl p-5 border border-error/20 flex flex-col gap-3 hover:bg-error/10 transition-colors cursor-pointer group"
