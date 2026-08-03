@@ -18,7 +18,10 @@ import { useAppContext } from './context/AppContext';
 import { registerDailyCronWorker, calculateEmiReminders, triggerNativeNotification } from './utils/emiReminders';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
+  });
   const { accounts, transactions, biometric, passcode, verifyPasscode, integrityWarning, dismissIntegrityWarning, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, setEditingTransaction, addAccountModalType, setAddAccountModalType, isWalletModalOpen, setWalletModalOpen, payCardModalState, setPayCardModalState, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
 
   // Daily Cron Job Worker at 09:00 AM local time for Smart EMI Reminders
@@ -64,8 +67,11 @@ export default function App() {
   useEffect(() => {
     // Initialize history state on load if not already set
     if (!window.history.state || !window.history.state.tab) {
+      const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+      const initialTab = tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
       window.history.replaceState({ exitPrompt: true }, '');
-      window.history.pushState({ tab: 'dashboard' }, '', '?tab=dashboard');
+      window.history.pushState({ tab: initialTab }, '', `?tab=${initialTab}${new URLSearchParams(window.location.search).get('drive') ? `&drive=${new URLSearchParams(window.location.search).get('drive')}` : ''}${new URLSearchParams(window.location.search).get('drive_error') ? `&drive_error=${encodeURIComponent(new URLSearchParams(window.location.search).get('drive_error') || '')}` : ''}`);
+      setActiveTab(initialTab);
     } else if (window.history.state.tab) {
       setActiveTab(window.history.state.tab as Tab);
     }
