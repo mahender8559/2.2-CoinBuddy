@@ -5,7 +5,7 @@ import {
   Clock, Eye, EyeOff, Loader2, Check, FileText, Smartphone, Database,
   RotateCcw, Sparkles, X, CheckCircle
 } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../../../src/context/AppContext';
 import { 
   BackupManager, 
   BackupStorageAdapter, 
@@ -15,7 +15,7 @@ import {
   BackupSettings, 
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS 
-} from '../utils/backupManager';
+} from '../../../src/utils/backupManager';
 
 interface BackupSecurityProps {
   onBack: () => void;
@@ -80,11 +80,13 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   
   const [selectedBackupFile, setSelectedBackupFile] = useState<{
+    id?: string;
     name: string;
     date: string;
     size: string;
     accountsCount: number;
     transactionsCount: number;
+    provider?: string;
     content?: string;
   } | null>(null);
   
@@ -348,15 +350,18 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       return;
     }
 
-    let payloadToDecrypt = selectedBackupFile.content;
-    if (!payloadToDecrypt) {
-      // If mock file without direct content, build payload
-      payloadToDecrypt = BackupManager.generateBackupJSON();
-    }
-
     setIsDecrypting(true);
 
     try {
+      let payloadToDecrypt = selectedBackupFile.content;
+      if (!payloadToDecrypt) {
+        if (selectedBackupFile.provider === 'GOOGLE_DRIVE' && selectedBackupFile.id) {
+          payloadToDecrypt = await BackupStorageAdapter.getBackupContent(selectedBackupFile);
+        } else {
+          payloadToDecrypt = BackupManager.generateBackupJSON();
+        }
+      }
+
       // Decrypt AES-256-GCM payload using password
       const rawJson = await decryptBackup(payloadToDecrypt, restorePassword);
       
