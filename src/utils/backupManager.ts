@@ -117,7 +117,7 @@ export async function encryptBackup(
   } catch (e) {}
 
   const payload: EncryptedPayload = {
-    version: 'v2.0_AES256',
+    version: 'v2.1_AES256',
     encrypted: true,
     algorithm: 'AES-256-GCM',
     salt: bufferToBase64(salt),

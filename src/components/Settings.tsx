@@ -514,7 +514,7 @@ export function Settings() {
           <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-background" />
           </div>
-          <span className="text-xs font-semibold text-on-surface">Coin Buddy V2.0</span>
+          <span className="text-xs font-semibold text-on-surface">Coin Buddy V2.1</span>
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
         </div>
 

@@ -59,7 +59,7 @@ describe('Backup & Encryption Engine Suite', () => {
       const parsedPayload = JSON.parse(encrypted);
       expect(parsedPayload.encrypted).toBe(true);
       expect(parsedPayload.algorithm).toBe('AES-256-GCM');
-      expect(parsedPayload.version).toBe('v2.0_AES256');
+      expect(parsedPayload.version).toBe('v2.1_AES256');
       expect(parsedPayload.ciphertext).toBeDefined();
       expect(parsedPayload.salt).toBeDefined();
       expect(parsedPayload.iv).toBeDefined();
