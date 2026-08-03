@@ -10,7 +10,9 @@ export function Settings() {
   const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>('main');
+  const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
+    new URLSearchParams(window.location.search).has('drive') ? 'backup' : 'main'
+  );
   const [isEditProfileOpen, setEditProfileOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isExportModalOpen, setExportModalOpen] = useState(false);

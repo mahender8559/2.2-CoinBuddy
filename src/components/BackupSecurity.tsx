@@ -105,6 +105,18 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
   const localFileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drive') === 'connected') {
+      setBackupSuccessMessage('Google Drive connected successfully.');
+    } else if (params.get('drive') === 'error') {
+      setBackupErrorMessage(params.get('drive_error') || 'Google Drive connection failed.');
+    } else {
+      return;
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   // Fetch available backups list when restore source changes
   useEffect(() => {
     let mounted = true;
