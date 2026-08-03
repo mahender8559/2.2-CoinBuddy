@@ -18,6 +18,10 @@ import { GoogleSignInGate } from './components/GoogleSignInGate';
 import { useAppContext } from './context/AppContext';
 import { registerDailyCronWorker, calculateEmiReminders, triggerNativeNotification } from './utils/emiReminders';
 
+// Keep the completed Google authentication flow dormant during development.
+// Change this to true when the app is ready to require Google sign-in again.
+const GOOGLE_LOGIN_ENABLED = false;
+
 export default function App() {
   const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -95,6 +99,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!GOOGLE_LOGIN_ENABLED) {
+      setGoogleAuth({ loading: false, authenticated: false });
+      return;
+    }
     let active = true;
     fetch('/api/auth/google/status', { credentials: 'include', cache: 'no-store' })
       .then(async response => ({ response, body: await response.json().catch(() => null) }))
@@ -164,7 +172,7 @@ export default function App() {
     }
   }, [pinEntry, verifyPasscode, setUnlocked]);
 
-  if (!googleAuth.authenticated) {
+  if (GOOGLE_LOGIN_ENABLED && !googleAuth.authenticated) {
     return <GoogleSignInGate loading={googleAuth.loading} />;
   }
 
@@ -334,7 +342,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-on-background selection:bg-primary/30 relative overflow-x-hidden">
-      <Header onLogout={handleGoogleLogout} />
+      <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       
       <main className="pt-20 min-h-screen md:pl-20">
