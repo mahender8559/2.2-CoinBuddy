@@ -43,8 +43,8 @@ function unseal(value) {
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8'));
 }
 
-export function setCookie(res, name, value, maxAge = 600) {
-  res.setHeader('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`);
+export function setCookie(res, name, value, maxAge = 600, path = '/api') {
+  res.setHeader('Set-Cookie', `${name}=${value}; Path=${path}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`);
 }
 
 export function startAuthorization(req, res) {
@@ -58,8 +58,11 @@ export async function finishAuthorization(req, res) {
   if (!req.query.state || req.query.state !== parseCookies(req)[STATE_COOKIE]) throw new Error('Google Drive connection could not be verified. Please try again.');
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: required('GOOGLE_CLIENT_ID'), client_secret: required('GOOGLE_CLIENT_SECRET'), redirect_uri: callbackUrl(req), grant_type: 'authorization_code' }) });
   const tokens = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokens.refresh_token) throw new Error(tokens.error_description || 'Google did not return a refresh token.');
+  if (!tokenResponse.ok) throw new Error(tokens.error_description || 'Google token exchange failed.');
+  // Never replace a working encrypted session with an empty OAuth response.
+  if (!tokens.refresh_token) throw new Error('Google did not return a refresh token. Remove CoinBuddy access in Google Account permissions, then reconnect.');
   setCookie(res, COOKIE, seal({ refreshToken: tokens.refresh_token }), 60 * 60 * 24 * 30);
+  return tokens;
 }
 
 export async function driveToken(req, res) {
