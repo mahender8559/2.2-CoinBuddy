@@ -36,6 +36,7 @@ import {
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
+import { createDefaultCategories } from '../constants/defaultCategories';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -1121,16 +1122,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const clearAllData = () => {
-    const defaultCats: Category[] = [
-      { id: '1', name: 'Housing', icon: 'Home', budget: 0, tags: ['#rent', '#utilities'], group: 'Essential', type: 'expense' },
-      { id: '2', name: 'Food & Dining', icon: 'Utensils', budget: 0, tags: ['#groceries', '#eatout'], group: 'Essential', type: 'expense' },
-      { id: '3', name: 'Transportation', icon: 'Car', budget: 0, tags: ['#fuel', '#maintenance'], group: 'Essential', type: 'expense' },
-      { id: '4', name: 'Entertainment', icon: 'Briefcase', budget: 0, tags: ['#streaming', '#events'], group: 'Leisure', type: 'expense' },
-      { id: '5', name: 'Health', icon: 'Zap', budget: 0, tags: ['#gym', '#medical'], group: 'Savings', type: 'expense' },
-      { id: '6', name: 'Shopping', icon: 'ShoppingBag', budget: 0, tags: ['#clothing'], group: 'Leisure', type: 'expense' },
-      { id: '7', name: 'Salary', icon: 'Banknote', tags: ['#paycheck', '#salary'], group: 'Essential', type: 'income' },
-      { id: '8', name: 'Other Income', icon: 'Gift', tags: ['#bonus', '#freelance'], group: 'Essential', type: 'income' },
-    ];
+    const defaultCats = createDefaultCategories();
     const defaultProf = {
       name: 'Financial Sovereign',
       email: 'sovereign@vault.vellum',
