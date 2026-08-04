@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import { Widget } from '../types';
 import { AnimatedNumber } from './AnimatedNumber';
+import { getCategorySpend } from '../utils/budget';
 
 import React from 'react';
 
@@ -13,11 +14,7 @@ export const WidgetCard: React.FC<{ widget: Widget }> = ({ widget }) => {
     const category = categories.find(c => c.id === widget.targetId);
     if (!category) return null;
 
-    const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance);
-    const catTag = `#${category.name.toLowerCase().replace(/\s+/g, '')}`;
-    const spent = currentMonthTxs
-      .filter(t => t.type === 'expense' && (t.category === catTag || t.category === category.id))
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const spent = getCategorySpend(category, transactions, isDateInCurrentCycle);
     
     const Icon = icons[category.icon as keyof typeof icons] || List;
     const progress = category.budget && category.budget > 0 ? (spent / category.budget) * 100 : 0;
