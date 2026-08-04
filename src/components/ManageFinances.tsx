@@ -31,6 +31,7 @@ export function ManageFinances() {
       setEditIcon('ShoppingBag');
       setEditType('expense');
       setEditBudget(0);
+      setEditIsRollover(false);
       setIsEditingModalOpen(true);
     };
     document.addEventListener('openAddCategoryModal', handleOpenModal);
@@ -46,6 +47,7 @@ export function ManageFinances() {
   const [editIcon, setEditIcon] = useState<keyof typeof icons>('ShoppingBag');
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
   const [editBudget, setEditBudget] = useState(0);
+  const [editIsRollover, setEditIsRollover] = useState(false);
   const [filterType, setFilterType] = useState<'All' | 'expense' | 'income'>('All');
 
   const totalMonthlyBudget = categories
@@ -82,6 +84,7 @@ export function ManageFinances() {
     setEditIcon(c.icon as keyof typeof icons);
     setEditType(c.type || 'expense');
     setEditBudget(c.budget || 0);
+    setEditIsRollover(Boolean(c.isRollover));
     setIsEditingModalOpen(true);
   };
 
@@ -91,9 +94,9 @@ export function ManageFinances() {
     const finalBudget = categoryType === 'income' ? 0 : editBudget;
     
     if (editingId) {
-      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget });
+      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover });
     } else {
-      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, group: activeTab === 'Savings Goals' ? 'Savings' : 'Essential' });
+      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, group: activeTab === 'Savings Goals' ? 'Savings' : 'Essential' });
     }
     setIsEditingModalOpen(false);
   };
@@ -134,6 +137,7 @@ export function ManageFinances() {
                 setEditName('');
                 setEditIcon('ShoppingBag');
                 setEditBudget(0);
+                setEditIsRollover(false);
                 setIsEditingModalOpen(true);
               }}
               className="p-2 text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
@@ -283,6 +287,7 @@ export function ManageFinances() {
             setEditIcon('ShoppingBag');
             setEditType('expense');
             setEditBudget(0);
+            setEditIsRollover(false);
             setIsEditingModalOpen(true);
           }}
           className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"
@@ -374,6 +379,12 @@ export function ManageFinances() {
                     />
                   </div>
                 </div>
+              )}
+              {activeTab !== 'Savings Goals' && editType === 'expense' && (
+                <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
+                  <span><span className="block text-sm font-semibold text-on-surface">Enable Rollover / Sinking Fund</span><span className="block text-xs text-on-surface-variant mt-0.5">Carry unused budget into the next cycle.</span></span>
+                  <input type="checkbox" checked={editIsRollover} onChange={event => setEditIsRollover(event.target.checked)} className="h-5 w-5 accent-primary" />
+                </label>
               )}
               
               <button 

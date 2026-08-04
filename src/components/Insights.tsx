@@ -1,22 +1,25 @@
 import { useState, useMemo } from 'react';
 import { 
   ShieldCheck, ArrowUpRight, TrendingDown, Lightbulb, PiggyBank, ArrowUp, ArrowDown, 
-  Sparkles, Trophy, Flame, CreditCard, PieChart, Layers, CheckCircle2, ArrowRight
+  Sparkles, Trophy, Flame, CreditCard, PieChart, Layers, CheckCircle2, ArrowRight, AlertTriangle
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, YAxis, XAxis, Tooltip, Sankey } from 'recharts';
 import { AnimatedNumber } from './AnimatedNumber';
 import { icons } from '../icons';
 import { LoanAmortizationExplorer } from './LoanAmortizationExplorer';
 import { getOriginalPrincipal } from '../utils/emi';
 import type { ComponentType, SVGProps } from 'react';
+import { isCashFlowTransaction } from '../domain/ledgerRules';
+import { calculateFinancialRunway, projectDebtPayoff } from '../utils/metrics';
 
 export function Insights() {
   const { 
     transactions, 
     formatCurrency, 
     categories, 
+    events,
     profile, 
     getCycleDetails, 
     isDateInCurrentCycle, 
@@ -27,6 +30,7 @@ export function Insights() {
   } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [extraPayment, setExtraPayment] = useState(0);
 
   // Assets and Liabilities Calculation
   const assets = useMemo(() => accounts.filter(a => !a.is_archived && a.type === 'asset' && a.balance > 0).sort((a, b) => b.balance - a.balance), [accounts]);
@@ -41,7 +45,7 @@ export function Insights() {
     const titlesByCategory: Record<string, Set<string>> = {};
 
     transactions.filter(t => {
-      if (t.isOpeningBalance || t.is_verified === 0 || t.type !== 'expense' || !isDateInCurrentCycle(t.date)) return false;
+      if (t.isOpeningBalance || t.is_verified === 0 || !isCashFlowTransaction(t) || t.type !== 'expense' || !isDateInCurrentCycle(t.date)) return false;
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
       return catObj?.group !== 'Savings';
     }).forEach(tx => {
@@ -66,16 +70,16 @@ export function Insights() {
 
   const eventSummaries = useMemo(() => Object.values(
     transactions.reduce<Record<string, { name: string; expenses: number; income: number }>>((groups, transaction) => {
-      const name = transaction.groupId?.trim();
-      if (!name || transaction.isOpeningBalance || transaction.is_verified === 0) return groups;
+      const event = events.find(item => item.id === transaction.eventId);
+      if (!event || transaction.isOpeningBalance || transaction.is_verified === 0) return groups;
 
-      const group = groups[name] ?? (groups[name] = { name, expenses: 0, income: 0 });
-      if (transaction.type === 'expense') group.expenses += Math.abs(transaction.amount);
-      if (transaction.type === 'income') group.income += Math.abs(transaction.amount);
+      const group = groups[event.id] ?? (groups[event.id] = { name: event.name, expenses: 0, income: 0 });
+      if (isCashFlowTransaction(transaction) && transaction.type === 'expense') group.expenses += Math.abs(transaction.amount);
+      if (isCashFlowTransaction(transaction) && transaction.type === 'income') group.income += Math.abs(transaction.amount);
       return groups;
     }, {})
   ).map(group => ({ ...group, netSpent: group.expenses - group.income }))
-    .sort((a, b) => b.netSpent - a.netSpent), [transactions]);
+    .sort((a, b) => b.netSpent - a.netSpent), [transactions, events]);
 
   const getCategoryDetails = (catIdentifier: string) => {
     const matchedCategory = categories.find(c => 
@@ -92,7 +96,7 @@ export function Insights() {
   // Available categories with expenses
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
-    transactions.filter(t => !t.isOpeningBalance && t.is_verified !== 0 && t.type === 'expense').forEach(t => set.add(t.category));
+    transactions.filter(t => !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t) && t.type === 'expense').forEach(t => set.add(t.category));
     return Array.from(set).map(catId => {
       const details = getCategoryDetails(catId);
       return { id: catId, name: details.name, details };
@@ -150,7 +154,7 @@ export function Insights() {
 
     // Highest single transaction in selected category
     const catTxs = transactions.filter(t => 
-      !t.isOpeningBalance && t.is_verified !== 0 && t.type === 'expense' && (selectedCategory === 'all' || t.category === selectedCategory)
+      !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t) && t.type === 'expense' && (selectedCategory === 'all' || t.category === selectedCategory)
     );
     const maxTx = catTxs.length > 0 
       ? catTxs.reduce((max, t) => Math.abs(t.amount) > Math.abs(max.amount) ? t : max, catTxs[0])
@@ -172,9 +176,9 @@ export function Insights() {
     const monthlyNetFlow: Record<string, number> = {};
     transactions.forEach(t => {
       const cycle = getCycleDetails(t.date);
-      if (t.type === 'income') {
+      if (isCashFlowTransaction(t) && t.type === 'income') {
         monthlyNetFlow[cycle.key] = (monthlyNetFlow[cycle.key] || 0) + Math.abs(t.amount);
-      } else if (t.type === 'expense') {
+      } else if (isCashFlowTransaction(t) && t.type === 'expense') {
         monthlyNetFlow[cycle.key] = (monthlyNetFlow[cycle.key] || 0) - Math.abs(t.amount);
       }
     });
@@ -237,7 +241,7 @@ export function Insights() {
       });
     }
 
-    const recurringTxs = transactions.filter(t => !t.isOpeningBalance && t.is_verified !== 0 && t.type === 'expense' && (t.title.toLowerCase().includes('subscription') || t.title.toLowerCase().includes('netflix') || t.title.toLowerCase().includes('spotify')));
+    const recurringTxs = transactions.filter(t => !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t) && t.type === 'expense' && (t.title.toLowerCase().includes('subscription') || t.title.toLowerCase().includes('netflix') || t.title.toLowerCase().includes('spotify')));
     if (recurringTxs.length > 0) {
       tips.push({
         icon: Lightbulb,
@@ -292,7 +296,8 @@ export function Insights() {
         totalCapacity,
         paidOff,
         utilization,
-        percentPaid: Math.min(100, Math.max(0, percentPaid)),
+        percentPaid: Math.max(0, percentPaid),
+        isOverPrincipal: !isCreditCard && totalCapacity > 0 && liability.balance > totalCapacity,
         isDebtFree: liability.balance === 0
       };
     });
@@ -301,6 +306,28 @@ export function Insights() {
   const totalDebtPaid = liabilityMetrics.reduce((sum, l) => sum + l.paidOff, 0);
   const totalDebtCapacity = liabilityMetrics.reduce((sum, l) => sum + (l.totalCapacity || l.balance), 0);
   const overallDebtPaidPercent = totalDebtCapacity > 0 ? Math.min(100, (totalDebtPaid / totalDebtCapacity) * 100) : 100;
+  const runway = useMemo(() => calculateFinancialRunway(accounts, categories, transactions, getCycleDetails), [accounts, categories, transactions, getCycleDetails]);
+  const termLoans = liabilityMetrics.filter(liability => !liability.isCreditCard && liability.balance > 0 && (liability.monthlyEMI ?? 0) > 0);
+  const debtProjections = useMemo(() => termLoans.map(loan => {
+    const standard = projectDebtPayoff(loan.balance, loan.monthlyEMI ?? 0, loan.interestRate ?? 0);
+    const accelerated = projectDebtPayoff(loan.balance, loan.monthlyEMI ?? 0, loan.interestRate ?? 0, extraPayment);
+    return { loan, standard, accelerated, interestSaved: Math.max(0, (standard?.interest ?? 0) - (accelerated?.interest ?? 0)) };
+  }), [termLoans, extraPayment]);
+  const sankeyData = useMemo(() => {
+    const outgoing = new Map<string, number>();
+    let income = 0;
+    transactions.filter(transaction => transaction.is_verified !== 0 && isDateInCurrentCycle(transaction.date) && !transaction.isOpeningBalance && isCashFlowTransaction(transaction)).forEach(transaction => {
+      if (transaction.type === 'income') income += Math.abs(transaction.amount);
+      if (transaction.type === 'expense') {
+        const debtPayment = transaction.toAccountId && accounts.some(account => account.id === transaction.toAccountId && account.type === 'liability');
+        const category = debtPayment ? 'Debt payments' : (categories.find(category => category.id === transaction.category || `#${category.name.toLowerCase().replace(/\s+/g, '')}` === transaction.category)?.name ?? 'Other expenses');
+        outgoing.set(category, (outgoing.get(category) ?? 0) + Math.abs(transaction.amount));
+      }
+    });
+    transactions.filter(transaction => transaction.is_verified !== 0 && isDateInCurrentCycle(transaction.date) && transaction.type === 'transfer').forEach(transaction => outgoing.set('Transfers / savings', (outgoing.get('Transfers / savings') ?? 0) + Math.abs(transaction.amount)));
+    const nodes = [{ name: 'Income' }, ...Array.from(outgoing.keys()).map(name => ({ name }))];
+    return { nodes, links: Array.from(outgoing.entries()).map(([name, value]) => ({ source: 0, target: nodes.findIndex(node => node.name === name), value })), income };
+  }, [transactions, categories, accounts, isDateInCurrentCycle]);
 
   const chartColors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#f43f5e'];
   const dotClasses = ['bg-[#8b5cf6]', 'bg-[#10b981]', 'bg-[#f59e0b]', 'bg-[#ec4899]', 'bg-[#0ea5e9]', 'bg-[#f43f5e]'];
@@ -318,6 +345,23 @@ export function Insights() {
           <span className="text-xs font-medium text-on-surface-variant">Data stored securely on this device</span>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Financial Runway</p>
+          <p className="mt-2 text-3xl font-bold font-numeric text-on-surface">{runway.months === null ? '∞' : `${runway.months.toFixed(1)} months`}</p>
+          <p className="mt-1 text-xs text-on-surface-variant">{formatCurrency(runway.liquidAssets)} in cash and bank funds ÷ trailing 3-month essential spending.</p>
+        </section>
+        <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
+          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Debt-Free Projection</p><p className="text-xs text-on-surface-variant mt-1">If I pay an extra {formatCurrency(extraPayment)} each month</p></div><input aria-label="Extra monthly debt payment" type="range" min="0" max="50000" step="500" value={extraPayment} onChange={event => setExtraPayment(Number(event.target.value))} className="w-32 accent-primary" /></div>
+          {debtProjections.length ? debtProjections.map(({ loan, standard, accelerated, interestSaved }) => <div key={loan.id} className="mt-3 text-xs"><strong>{loan.name}</strong><span className="ml-2 text-on-surface-variant">Debt-free: {accelerated ? accelerated.payoffDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'Payment too low'} · saves {formatCurrency(interestSaved)} interest</span>{standard && accelerated && extraPayment > 0 && <span className="ml-2 text-emerald-500">({standard.months - accelerated.months} months sooner)</span>}</div>) : <p className="mt-3 text-xs text-on-surface-variant">Add a term loan with a monthly payment to see a payoff projection.</p>}
+        </section>
+      </div>
+
+      <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
+        <div className="flex items-center justify-between"><div><h3 className="font-bold text-on-surface">Current Cycle Cash Flow</h3><p className="text-xs text-on-surface-variant">Income flowing to spending, savings transfers, and debt payments.</p></div><span className="text-sm font-bold text-emerald-500">{formatCurrency(sankeyData.income)} income</span></div>
+        {sankeyData.links.length ? <div className="h-64 mt-4"><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={24} nodeWidth={12} link={{ stroke: 'var(--color-primary)', strokeOpacity: 0.35 }}><Tooltip formatter={(value: number) => formatCurrency(value)} /></Sankey></ResponsiveContainer></div> : <p className="py-12 text-center text-sm text-on-surface-variant">No verified cash-flow activity in this cycle yet.</p>}
+      </section>
 
       {/* NEW: Category Specific Trend & Growth Chart Section */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-4 sm:p-6 shadow-sm">
@@ -584,15 +628,16 @@ export function Insights() {
                     ) : (
                       <>
                         <div className="flex justify-between text-[11px] text-on-surface-variant font-medium">
-                          <span>Loan Payoff ({liability.percentPaid.toFixed(0)}% Paid)</span>
+                          <span className={liability.isOverPrincipal ? 'text-rose-400 font-bold' : undefined}>Loan Payoff ({liability.percentPaid.toFixed(0)}% Paid)</span>
                           <span>{liability.isDebtFree ? 'DEBT FREE 🎉' : `${formatCurrency(liability.paidOff)} / ${formatCurrency(liability.totalCapacity)}`}</span>
                         </div>
-                        <div className="w-full h-2 bg-surface-dim rounded-full overflow-hidden">
+                        {liability.isOverPrincipal && <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-400"><AlertTriangle className="w-3 h-3" /> Over Principal</span>}
+                        <div className={`w-full h-2 bg-surface-dim rounded-full overflow-hidden ${liability.isOverPrincipal ? 'ring-1 ring-rose-500/60' : ''}`}>
                           <motion.div 
                             initial={{ width: 0 }}
-                            animate={{ width: `${liability.percentPaid}%` }}
+                            animate={{ width: `${Math.min(100, liability.percentPaid)}%` }}
                             transition={{ duration: 1 }}
-                            className={`h-full rounded-full ${liability.isDebtFree ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-emerald-500/80'}`}
+                            className={`h-full rounded-full ${liability.isOverPrincipal ? 'bg-rose-500 shadow-[0_0_12px_#f43f5e]' : liability.isDebtFree ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-emerald-500/80'}`}
                           />
                         </div>
                       </>

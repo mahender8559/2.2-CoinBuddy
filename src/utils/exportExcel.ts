@@ -1,5 +1,6 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import { Transaction, Account, Category } from '../types';
+import { isCashFlowTransaction } from '../domain/ledgerRules';
 
 export const exportToExcel = async (
   transactions: Transaction[],
@@ -7,6 +8,7 @@ export const exportToExcel = async (
   categories: Category[],
   currency: string
 ) => {
+  const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Coin Buddy';
   workbook.created = new Date();
@@ -164,8 +166,8 @@ export const exportToExcel = async (
     { header: 'Value', key: 'value' },
   ];
 
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Math.abs(t.amount), 0);
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalIncome = transactions.filter(t => isCashFlowTransaction(t) && t.type === 'income').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalExpense = transactions.filter(t => isCashFlowTransaction(t) && t.type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
 
   sumSheet.addRow({ metric: 'Total Income', value: totalIncome });

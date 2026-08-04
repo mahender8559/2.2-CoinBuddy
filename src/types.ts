@@ -17,6 +17,7 @@ export interface Account {
   type: 'asset' | 'liability';
   balance: number;
   limit?: number;
+  overdraftLimit?: number;
   group?: string;
   is_archived?: number; // 0 for active, 1 for archived
   originalPrincipal?: number;
@@ -44,10 +45,19 @@ export type Category = {
   name: string;
   icon: IconName;
   budget?: number;
+  isRollover?: boolean;
   tags?: string[];
   group?: 'Essential' | 'Leisure' | 'Savings';
   type?: 'expense' | 'income';
 };
+
+export type TransactionType =
+  | 'INCOME'
+  | 'EXPENSE'
+  | 'TRANSFER'
+  | 'OPENING_BALANCE'
+  | 'MARKET_ADJUSTMENT'
+  | 'BALANCE_ADJUSTMENT';
 
 export type Transaction = {
   id: string;
@@ -66,12 +76,17 @@ export type Transaction = {
   isOpeningBalance?: boolean;
   recurringRuleId?: string;
   dueDate?: string;
-  /** Optional free-text event or outing label for grouped reporting. */
-  groupId?: string;
-  transaction_type?: string;
+  eventId?: string;
+  transaction_type?: TransactionType;
   is_verified?: number;
   notes?: string;
 };
+
+export interface Event {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
 export interface Widget {
   id: string;

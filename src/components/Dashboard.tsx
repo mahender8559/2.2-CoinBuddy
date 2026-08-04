@@ -12,9 +12,10 @@ import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip, ReferenceL
 import { Transaction } from '../types';
 import { EmiAdvocateBanner } from './EmiAdvocateBanner';
 import { BackupWarningBanner } from './BackupWarningBanner';
+import { isCashFlowTransaction } from '../domain/ledgerRules';
 
 export function Dashboard() {
-  const { transactions, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
+  const { transactions, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
@@ -73,8 +74,8 @@ export function Dashboard() {
     return transactions.reduce((acc, t) => {
       const d = new Date(t.date);
       if (d >= startDate && d <= endDate) {
-        if (t.type === 'income') return acc + Math.abs(t.amount);
-        if (t.type === 'expense') return acc - Math.abs(t.amount);
+        if (isCashFlowTransaction(t) && t.type === 'income') return acc + Math.abs(t.amount);
+        if (isCashFlowTransaction(t) && t.type === 'expense') return acc - Math.abs(t.amount);
       }
       return acc;
     }, 0);
@@ -134,7 +135,7 @@ export function Dashboard() {
     return days <= 5;
   });
 
-  const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0);
+  const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t));
   
   const cycleIncome = currentMonthTxs
     .filter(t => t.type === 'income')
@@ -154,7 +155,7 @@ export function Dashboard() {
     })
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
     
-  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, isDateInCurrentCycle);
+  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, getCycleDetails);
   const budgetStatus = budgetProgress <= 100 ? 'ON TRACK' : 'OVER BUDGET';
 
   const thirtyDaysAgo = new Date();
@@ -167,7 +168,7 @@ export function Dashboard() {
     const currAmount = currentMonthTxs.filter(t => t.type === 'expense' && (t.category === catTag || t.category === c.id)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const lastMonthAmount = transactions.filter(t => {
       const d = new Date(t.date);
-      return !t.isOpeningBalance && d >= sixtyDaysAgo && d < thirtyDaysAgo && t.type === 'expense' && (t.category === catTag || t.category === c.id);
+      return !t.isOpeningBalance && d >= sixtyDaysAgo && d < thirtyDaysAgo && isCashFlowTransaction(t) && t.type === 'expense' && (t.category === catTag || t.category === c.id);
     }).reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     return { name: c.name, currAmount, lastMonthAmount, increase: lastMonthAmount > 0 ? ((currAmount - lastMonthAmount) / lastMonthAmount) * 100 : 0 };

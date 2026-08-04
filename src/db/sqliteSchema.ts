@@ -2,6 +2,7 @@
  * Embedded SQLite Schema & Types for Local-First Personal Finance App
  */
 import { applyTransactionEffect } from '../domain/ledgerRules';
+import type { TransactionType } from '../types';
 
 // Enforce foreign keys pragmatically in SQLite connection setup
 export const SQLITE_PRAGMA_SETUP = `
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   type TEXT NOT NULL CHECK(type IN ('ASSET', 'LIABILITY')),
   subtype TEXT,
   credit_limit REAL,
+  overdraft_limit REAL NOT NULL DEFAULT 0,
   interest_rate REAL,
   monthly_emi REAL,
   interest_calculation_type TEXT CHECK(interest_calculation_type IN ('REDUCING', 'FLAT', 'INTEREST_ONLY')),
@@ -47,14 +49,21 @@ CREATE TABLE IF NOT EXISTS categories (
   type TEXT NOT NULL CHECK(type IN ('INCOME', 'EXPENSE')),
   icon_name TEXT,
   budget REAL NOT NULL DEFAULT 0,
+  is_rollover INTEGER NOT NULL DEFAULT 0,
   tags_json TEXT,
   group_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  event_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3. Transactions Table
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
-  transaction_type TEXT NOT NULL CHECK(transaction_type IN ('INCOME', 'EXPENSE', 'TRANSFER', 'OPENING_BALANCE')),
+  transaction_type TEXT NOT NULL CHECK(transaction_type IN ('INCOME', 'EXPENSE', 'TRANSFER', 'OPENING_BALANCE', 'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT')),
   title TEXT NOT NULL,
   subtitle TEXT,
   amount REAL NOT NULL CHECK(amount > 0),
@@ -70,10 +79,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_recurring INTEGER NOT NULL DEFAULT 0,
   is_opening_balance INTEGER NOT NULL DEFAULT 0,
   is_interest_only INTEGER NOT NULL DEFAULT 0,
-  transaction_group_id TEXT,
+  event_id TEXT,
   FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL
 );
 
 -- 4. Credit Cards Table
@@ -111,6 +121,12 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  currency TEXT NOT NULL DEFAULT 'INR',
+  month_cycle_day INTEGER NOT NULL DEFAULT 25 CHECK (month_cycle_day BETWEEN 1 AND 31)
+);
+
 -- A schedule is not a ledger entry. Each generated ledger entry references its
 -- source rule and exact due date, giving deterministic de-duplication.
 CREATE TABLE IF NOT EXISTS recurring_rules (
@@ -139,6 +155,7 @@ SELECT
   a.type,
   a.subtype,
   a.credit_limit,
+  a.overdraft_limit,
   a.interest_rate,
   a.monthly_emi,
   a.interest_calculation_type,
@@ -165,6 +182,10 @@ SELECT
           CASE WHEN a.type = 'ASSET' THEN -t.amount ELSE t.amount END
         WHEN t.transaction_type = 'TRANSFER' AND t.to_account_id = a.id THEN 
           CASE WHEN a.type = 'ASSET' THEN t.amount ELSE -t.amount END
+        WHEN t.transaction_type IN ('MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT') AND t.from_account_id = a.id THEN
+          CASE WHEN a.type = 'ASSET' THEN -t.amount ELSE t.amount END
+        WHEN t.transaction_type IN ('MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT') AND t.to_account_id = a.id THEN
+          CASE WHEN a.type = 'ASSET' THEN t.amount ELSE -t.amount END
         ELSE 0
       END
     ),
@@ -181,7 +202,7 @@ GROUP BY a.id;
 
 export type AccountType = 'ASSET' | 'LIABILITY';
 export type CategoryType = 'INCOME' | 'EXPENSE';
-export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OPENING_BALANCE';
+export type { TransactionType } from '../types';
 
 export interface LoanRevisionRow {
   id: string;
@@ -199,6 +220,7 @@ export interface AccountRow {
   type: AccountType;
   subtype?: string | null;
   credit_limit?: number | null;
+  overdraft_limit?: number | null;
   interest_rate?: number | null;
   monthly_emi?: number | null;
   interest_calculation_type?: 'REDUCING' | 'FLAT' | 'INTEREST_ONLY' | null;
@@ -246,6 +268,10 @@ export const SELECT_ALL_CATEGORIES_SQL = `
   SELECT * FROM categories ORDER BY name ASC;
 `;
 
+export const SELECT_ALL_EVENTS_SQL = `
+  SELECT * FROM events ORDER BY created_at DESC, name ASC;
+`;
+
 export const SELECT_ALL_CREDIT_CARDS_SQL = `
   SELECT cc.*, a.name as account_name, a.credit_limit, a.cached_balance
   FROM credit_cards cc
@@ -270,12 +296,14 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE accounts ADD COLUMN invested_amount REAL;`,
   `ALTER TABLE accounts ADD COLUMN monthly_sip_amount REAL;`,
   `ALTER TABLE accounts ADD COLUMN next_sip_date TEXT;`,
+  `ALTER TABLE accounts ADD COLUMN overdraft_limit REAL NOT NULL DEFAULT 0;`,
   `ALTER TABLE categories ADD COLUMN budget REAL NOT NULL DEFAULT 0;`,
+  `ALTER TABLE categories ADD COLUMN is_rollover INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE categories ADD COLUMN tags_json TEXT;`,
   `ALTER TABLE categories ADD COLUMN group_name TEXT;`,
   `ALTER TABLE transactions ADD COLUMN recurring_rule_id TEXT;`,
   `ALTER TABLE transactions ADD COLUMN due_date TEXT;`,
-  `ALTER TABLE transactions ADD COLUMN transaction_group_id TEXT;`,
+  `ALTER TABLE transactions ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -348,6 +376,7 @@ export interface CategoryRow {
   name: string;
   type: CategoryType;
   icon_name?: string | null;
+  is_rollover: number;
 }
 
 export interface TransactionRow {
@@ -368,6 +397,13 @@ export interface TransactionRow {
   is_recurring: number; // 1 for true, 0 for false
   is_opening_balance: number; // 1 for true, 0 for false
   is_interest_only: number; // 1 for true, 0 for false
+  event_id?: string | null;
+}
+
+export interface EventRow {
+  event_id: string;
+  name: string;
+  created_at: string;
 }
 
 export type InsertTransactionPayload = Omit<Partial<TransactionRow>, 'id'> & {
@@ -527,10 +563,12 @@ export async function updateOpeningBalance(
           WHEN transaction_type = 'EXPENSE' AND from_account_id = ? THEN CASE WHEN ? = 'LIABILITY' AND is_interest_only = 1 THEN 0 WHEN ? = 'ASSET' THEN -amount ELSE amount END
           WHEN transaction_type = 'TRANSFER' AND from_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN -amount ELSE amount END
           WHEN transaction_type = 'TRANSFER' AND to_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN amount ELSE -amount END
+          WHEN transaction_type IN ('MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT') AND from_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN -amount ELSE amount END
+          WHEN transaction_type IN ('MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT') AND to_account_id = ? THEN CASE WHEN ? = 'ASSET' THEN amount ELSE -amount END
           ELSE 0 END) OVER (ORDER BY date, id) AS running_balance
         FROM transactions WHERE is_verified = 1 AND (from_account_id = ? OR to_account_id = ?)
       )`,
-      [accountType, accountId, accountType, accountId, accountId, accountType, accountId, accountType, accountType, accountId, accountType, accountId, accountType, accountId, accountId]
+      [accountType, accountId, accountType, accountId, accountId, accountType, accountId, accountType, accountType, accountId, accountType, accountId, accountType, accountId, accountType, accountId, accountType, accountId, accountId]
     );
     const minimumBalance = Number(runningRows[0]?.minimum_balance ?? 0) + delta;
     const maximumBalance = Number(runningRows[0]?.maximum_balance ?? 0) + delta;

@@ -28,13 +28,29 @@ export default defineConfig(() => {
         runtimeCaching: []
       },
       devOptions: {
-        enabled: true,
+        // Development has no emitted asset bundle to precache; enabling the
+        // service worker here makes Workbox scan an empty dev-dist directory.
+        enabled: false,
         type: 'module',
       }
     })],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      // ExcelJS is intentionally lazy-loaded for export and is ~940 kB.
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-dom/client', 'scheduler'],
+            charts: ['recharts'],
+            motion: ['motion', 'motion/react'],
+            database: ['sql.js'],
+          },
+        },
       },
     },
     server: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Building2, Wallet, TrendingUp, CreditCard, Car, HardDrive, Trash2, Target, Pencil, Percent } from 'lucide-react';
+import { Plus, Building2, Wallet, TrendingUp, CreditCard, Car, HardDrive, Trash2, Target, Pencil, Percent, RefreshCw } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { AnimatedNumber } from './AnimatedNumber';
 import { motion } from 'framer-motion';
@@ -8,6 +8,7 @@ import { Account } from '../types';
 import { isSafeMathError } from '../utils/safeMath';
 import { SafeValueBadge } from './SafeValueBadge';
 import { getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
+import { ReconcileWizard } from './ReconcileWizard';
 
 export function Cards() {
   const { 
@@ -28,6 +29,7 @@ export function Cards() {
   const [deleteError, setDeleteError] = useState<{ message: string; id: number } | null>(null);
   const [rateUpdateAccount, setRateUpdateAccount] = useState<Account | null>(null);
   const [accountToDelete, setAccountToDelete] = useState<{ id: string, name: string } | null>(null);
+  const [adjustmentTarget, setAdjustmentTarget] = useState<{ account: Account; kind: 'BALANCE_ADJUSTMENT' | 'MARKET_ADJUSTMENT' } | null>(null);
 
   useEffect(() => {
     if (deleteError) {
@@ -126,15 +128,19 @@ export function Cards() {
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0">
                   {isInvestment && profitLoss !== null && (
-                    <div className="text-right mr-2 hidden sm:block">
-                      <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-0.5">Returns</p>
+                    <div className="text-right mr-2 hidden sm:block space-y-1">
+                      <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Invested Principal: <span className="font-numeric text-on-surface">{formatCurrency(account.investedAmount ?? 0)}</span></p>
+                      <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Current Market Value: <span className="font-numeric text-emerald-400">{formatCurrency(account.balance)}</span></p>
+                      <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">ROI</p>
                       <p className={`text-xs font-bold font-numeric ${profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {profitLoss >= 0 ? '+' : ''}{formatCurrency(profitLoss)} ({profitLoss >= 0 ? '+' : ''}{profitLossPercent?.toFixed(2)}%)
                       </p>
                     </div>
                   )}
                   <div className="text-right flex items-center gap-2 sm:gap-3">
-                    <p className="text-xl font-bold font-numeric text-emerald-400"><AnimatedNumber value={account.balance} format={formatCurrency} /></p>
+                    <div className="text-right"><p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant sm:hidden">{isInvestment ? 'Market Value' : 'Balance'}</p><p className="text-xl font-bold font-numeric text-emerald-400"><AnimatedNumber value={account.balance} format={formatCurrency} /></p></div>
+                    <button onClick={() => setAdjustmentTarget({ account, kind: 'BALANCE_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg" title="Reconcile balance">Reconcile</button>
+                    {isInvestment && <button onClick={() => setAdjustmentTarget({ account, kind: 'MARKET_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-emerald-500 hover:bg-emerald-500/10 rounded-lg" title="Update market value">Market</button>}
                     <button 
                       onClick={() => handleEditAsset(account)}
                       className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
@@ -178,6 +184,7 @@ export function Cards() {
         <div className="space-y-4">
           {liabilities.map(account => {
             const ccDetails = creditCards.find(c => c.id === account.id);
+            const isLoan = account.group?.toUpperCase().includes('LOAN');
             
             let dueDateStr = '';
             let isDueSoon = false;
@@ -218,6 +225,8 @@ export function Cards() {
                   )}
                   
                   <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/10">
+                    <button onClick={() => setAdjustmentTarget({ account, kind: 'BALANCE_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg" title="Reconcile balance">Reconcile</button>
+                    {isLoan && <button onClick={() => setAdjustmentTarget({ account, kind: 'MARKET_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-emerald-500 hover:bg-emerald-500/10 rounded-lg" title="Update market value">Market</button>}
                     <div className="flex items-center gap-2 sm:gap-3">
                       <p className="text-lg sm:text-xl font-bold font-numeric text-rose-400">
                         {isSafeMathError(account.balance) ? (
@@ -418,6 +427,7 @@ export function Cards() {
           </div>
         </div>
       )}
+      {adjustmentTarget && <ReconcileWizard account={adjustmentTarget.account} kind={adjustmentTarget.kind} onClose={() => setAdjustmentTarget(null)} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import type { Account, Transaction } from '../types';
+import type { Account, Transaction, TransactionType } from '../types';
 
-type LedgerTransactionType = 'OPENING_BALANCE' | 'INCOME' | 'EXPENSE' | 'TRANSFER';
+type LedgerTransactionType = TransactionType;
 type AccountKind = 'asset' | 'liability';
 type Direction = 'from' | 'to';
 
@@ -10,7 +10,16 @@ export const SIGN_RULES: Record<LedgerTransactionType, Partial<Record<Direction,
   INCOME: { to: { asset: 1, liability: -1 } },
   EXPENSE: { from: { asset: -1, liability: 1 } },
   TRANSFER: { from: { asset: -1, liability: 1 }, to: { asset: 1, liability: -1 } },
+  // Adjustments are single-leg entries: `to` is a positive (IN) adjustment
+  // and `from` is a negative (OUT) adjustment. This mirrors the SQL view.
+  MARKET_ADJUSTMENT: { from: { asset: -1, liability: 1 }, to: { asset: 1, liability: -1 } },
+  BALANCE_ADJUSTMENT: { from: { asset: -1, liability: 1 }, to: { asset: 1, liability: -1 } },
 };
+
+export function isCashFlowTransaction(tx: Pick<Transaction, 'type' | 'transaction_type'>): boolean {
+  const type = (tx.transaction_type ?? tx.type).toUpperCase();
+  return type === 'INCOME' || type === 'EXPENSE';
+}
 
 export function isOpeningBalanceTransaction(tx: Transaction): boolean {
   return tx.isOpeningBalance === true || tx.transaction_type === 'OPENING_BALANCE';
@@ -62,7 +71,7 @@ export function applyTransactionEffect(transaction: Transaction, account: Pick<A
   const to = transaction.toAccountId ?? (type === 'INCOME' ? transaction.account : undefined);
   const isAsset = account.type === 'asset';
 
-  if (type === 'TRANSFER' && from === account.id && to === account.id) return 0;
+  if ((type === 'TRANSFER' || type === 'MARKET_ADJUSTMENT' || type === 'BALANCE_ADJUSTMENT') && from === account.id && to === account.id) return 0;
   if (type === 'EXPENSE' && transaction.isInterestOnly && !isAsset) return 0;
   const kind: AccountKind = isAsset ? 'asset' : 'liability';
   if (from === account.id) return amount * (SIGN_RULES[type]?.from?.[kind] ?? 0);

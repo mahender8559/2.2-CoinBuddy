@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
 import type { ComponentType, SVGProps } from 'react';
-import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown } from 'lucide-react';
+import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown, Layers } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { isCashFlowTransaction } from '../domain/ledgerRules';
 
 
 export function Activity() {
-  const { transactions, formatCurrency, setAddModalOpen, categories, deleteTransaction, setEditingTransaction, getCycleDetails, accounts, approveTransaction, rejectTransaction } = useAppContext();
+  const { transactions, formatCurrency, setAddModalOpen, categories, events, createEvent, groupTransactionsToEvent, deleteTransaction, setEditingTransaction, getCycleDetails, accounts, approveTransaction, rejectTransaction } = useAppContext();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
@@ -39,7 +40,8 @@ export function Activity() {
 
   const selectedSum = useMemo(() => {
     return transactions.filter(t => selectedIds.has(t.id)).reduce((acc, t) => {
-      return acc + (t.type === 'income' ? t.amount : -Math.abs(t.amount));
+      if (t.type === 'income' || t.type === 'transfer') return acc + Math.abs(t.amount);
+      return acc - Math.abs(t.amount);
     }, 0);
   }, [selectedIds, transactions]);
 
@@ -51,6 +53,18 @@ export function Activity() {
         console.error(e);
       }
     });
+    setSelectedIds(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const groupSelectedToEvent = () => {
+    if (!selectedIds.size) return;
+    const options = events.map(event => event.name).join(', ');
+    const response = window.prompt(`Enter an existing event name or a new event name.${options ? ` Existing events: ${options}` : ''}`);
+    const name = response?.trim();
+    if (!name) return;
+    const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
+    groupTransactionsToEvent([...selectedIds], event.id);
     setSelectedIds(new Set());
     setIsSelectionMode(false);
   };
@@ -124,7 +138,7 @@ export function Activity() {
     });
   }, [transactions, searchQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedSort]);
 
-  const outflow = filteredTransactions.filter(t => !t.isOpeningBalance && t.type === 'expense').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
+  const outflow = filteredTransactions.filter(t => !t.isOpeningBalance && isCashFlowTransaction(t) && t.type === 'expense').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
   
   const totalSavings = filteredTransactions
     .filter(t => {
@@ -340,6 +354,15 @@ export function Activity() {
               className="text-on-surface-variant hover:text-on-surface text-sm font-medium"
             >
               Cancel
+            </button>
+            <button 
+              onClick={groupSelectedToEvent}
+              disabled={selectedIds.size === 0}
+              className="px-3 h-12 bg-primary/10 text-primary rounded-xl flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-xs font-bold"
+              title="Group selected transactions to an event"
+            >
+              <Layers className="w-4 h-4" />
+              Event
             </button>
             <button 
               onClick={deleteSelected}

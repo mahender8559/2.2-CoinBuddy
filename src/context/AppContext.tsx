@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Widget, LoanRevision } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -17,6 +17,8 @@ import {
   insertCategoryRow,
   updateCategoryRow,
   deleteCategoryRow,
+  insertEventRow,
+  updateTransactionEvents,
   insertCreditCardRow,
   updateCreditCardRow,
   deleteCreditCardRow,
@@ -29,6 +31,8 @@ import {
   validateLedgerImport,
   loadAppSettings,
   upsertAppSetting,
+  loadUserConfig,
+  upsertUserConfig,
   createRecurringRule,
   generateDueRecurringTransactions,
   SqlJsDatabaseDriver,
@@ -49,6 +53,7 @@ type LedgerImportData = {
   accounts?: Account[];
   transactions?: Transaction[];
   categories?: Category[];
+  events?: Event[];
   creditCards?: CreditCardInfo[];
   widgets?: Widget[];
   loanRevisions?: LoanRevision[];
@@ -122,6 +127,10 @@ interface AppContextType {
   payLiability: (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => void;
   deleteCreditCard: (cardId: string) => void;
   categories: Category[];
+  events: Event[];
+  createEvent: (name: string) => Event;
+  fetchEvents: () => Event[];
+  groupTransactionsToEvent: (transactionIds: string[], eventId: string) => void;
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, category: Omit<Category, 'id'>) => void;
   deleteCategory: (id: string) => void;
@@ -371,6 +380,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const getAccountBalance = (accountId: string) => accounts.find(a => a.id === accountId)?.balance ?? 0;
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
 
   const [widgets, setWidgets] = useState<Widget[]>([]);
   const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: crypto.randomUUID() }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
@@ -385,9 +395,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const txDate = new Date(dateString);
     let year = txDate.getFullYear();
     let month = txDate.getMonth();
-    let day = txDate.getDate();
+    const day = txDate.getDate();
+    const clampedCycleDay = Math.min(Math.max(monthCycleDay, 1), new Date(year, month + 1, 0).getDate());
     
-    if (day >= monthCycleDay && monthCycleDay > 1) {
+    if (day >= clampedCycleDay && monthCycleDay > 1) {
       month += 1;
       if (month > 11) {
         month = 0;
@@ -407,6 +418,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     accounts: Account[];
     transactions: Transaction[];
     categories: Category[];
+    events: Event[];
     creditCards: CreditCardInfo[];
     widgets: Widget[];
     loanRevisions: LoanRevision[];
@@ -414,6 +426,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setAccountRecords(stripAccountBalances(state.accounts));
     setTransactions(state.transactions);
     setCategories(state.categories);
+    setEvents(state.events);
     setCreditCardRecords(stripCardBalances(state.creditCards));
     setWidgets(state.widgets);
     setLoanRevisions(state.loanRevisions);
@@ -478,7 +491,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         const settings = await loadAppSettings(driver);
         if (settings.theme === 'light' || settings.theme === 'dark') setTheme(settings.theme);
         if (typeof settings.colorPalette === 'string') setColorPalette(settings.colorPalette);
-        if (typeof settings.currency === 'string') setCurrency(settings.currency);
         if (typeof settings.autoRecur === 'boolean') setAutoRecur(settings.autoRecur);
         if (typeof settings.biometric === 'boolean') setBiometric(settings.biometric);
         if (typeof settings.passcode === 'string' || settings.passcode === null) {
@@ -486,7 +498,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           if (storedPasscode && !storedPasscode.startsWith('sha256:')) setPasscode(storedPasscode);
           else setPasscodeHash(storedPasscode);
         }
-        if (typeof settings.monthCycleDay === 'number') setMonthCycleDay(settings.monthCycleDay);
+        const userConfig = await loadUserConfig(driver);
+        setCurrency(userConfig.currency);
+        setMonthCycleDay(userConfig.monthCycleDay);
         if (settings.profile && typeof settings.profile === 'object') setProfile(settings.profile as typeof profile);
         setDbReady(true);
       })
@@ -507,13 +521,12 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       void Promise.all([
         persistAppSetting('theme', theme),
         persistAppSetting('colorPalette', colorPalette),
-        persistAppSetting('currency', currency),
         persistAppSetting('autoRecur', autoRecur),
         persistAppSetting('biometric', biometric),
         persistAppSetting('passcode', passcode),
-        persistAppSetting('monthCycleDay', monthCycleDay),
         persistAppSetting('profile', profile),
       ]);
+      void persistDbAction(() => upsertUserConfig(dbDriver!, { currency, monthCycleDay }));
     }
   }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
 
@@ -542,9 +555,26 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     existingTx?: Transaction
   ): { valid: boolean; error?: string } => {
     const numAmount = Math.abs(Number(tx.amount));
+    const ledgerType = (tx.transaction_type ?? tx.type).toUpperCase();
+    const allowedTypes = new Set([
+      'INCOME', 'EXPENSE', 'TRANSFER', 'OPENING_BALANCE',
+      'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT',
+    ]);
 
     if (isNaN(numAmount) || numAmount <= 0) {
       return { valid: false, error: 'Transaction amount must strictly be a positive number (> 0).' };
+    }
+
+    if (!allowedTypes.has(ledgerType)) {
+      return { valid: false, error: `Unsupported transaction type: ${ledgerType}.` };
+    }
+
+    if (ledgerType === 'MARKET_ADJUSTMENT' || ledgerType === 'BALANCE_ADJUSTMENT') {
+      const hasFrom = Boolean(tx.fromAccountId);
+      const hasTo = Boolean(tx.toAccountId);
+      if (hasFrom === hasTo) {
+        return { valid: false, error: 'An adjustment must have exactly one account direction: to for an increase or from for a decrease.' };
+      }
     }
 
     if (tx.type === 'income') {
@@ -566,15 +596,22 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
         if (sourceAcc.type === 'asset') {
-          if (numAmount > sourceAcc.balance) {
+          const subtype = sourceAcc.group?.trim().toUpperCase();
+          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT'
+            ? -Math.max(0, sourceAcc.overdraftLimit ?? 0)
+            : 0;
+          if (sourceAcc.balance - numAmount < minimumBalance) {
             return { 
               valid: false, 
-              error: `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.` 
+              error: minimumBalance === 0
+                ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
+                : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
             };
           }
         } else if (sourceAcc.type === 'liability') {
           const limit = sourceAcc.limit;
-          if (limit !== undefined && limit > 0) {
+          const isRevolvingCredit = sourceAcc.group?.toUpperCase() === 'CREDIT CARD';
+          if (isRevolvingCredit && limit !== undefined && limit > 0) {
             if ((sourceAcc.balance + numAmount) > limit) {
               return {
                 valid: false,
@@ -589,15 +626,22 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
         if (sourceAcc.type === 'asset') {
-          if (numAmount > sourceAcc.balance) {
+          const subtype = sourceAcc.group?.trim().toUpperCase();
+          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT'
+            ? -Math.max(0, sourceAcc.overdraftLimit ?? 0)
+            : 0;
+          if (sourceAcc.balance - numAmount < minimumBalance) {
             return { 
               valid: false, 
-              error: `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.` 
+              error: minimumBalance === 0
+                ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
+                : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
             };
           }
         } else if (sourceAcc.type === 'liability') {
           const limit = sourceAcc.limit;
-          if (limit !== undefined && limit > 0) {
+          const isRevolvingCredit = sourceAcc.group?.toUpperCase() === 'CREDIT CARD';
+          if (isRevolvingCredit && limit !== undefined && limit > 0) {
             if ((sourceAcc.balance + numAmount) > limit) {
               return {
                 valid: false,
@@ -928,9 +972,16 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-    const updateAccount = (id: string, account: Omit<Account, 'id'>) => {
+  const updateAccount = (id: string, account: Omit<Account, 'id'>) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
+
+    if (targetAccount.type === 'liability' && account.type === 'liability' && account.limit !== targetAccount.limit) {
+      const newLimit = Math.max(0, Number(account.limit ?? 0));
+      if (newLimit < targetAccount.balance) {
+        throw new Error(`Credit limit cannot be lower than the current outstanding balance of ${targetAccount.balance}.`);
+      }
+    }
 
     const existingTxIndex = transactions.findIndex(t => 
       (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
@@ -1155,6 +1206,27 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
+  const createEvent = (name: string): Event => {
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new Error('Event name is required.');
+    const existing = events.find(event => event.name.localeCompare(normalizedName, undefined, { sensitivity: 'accent' }) === 0);
+    if (existing) return existing;
+    const event: Event = { id: crypto.randomUUID(), name: normalizedName, createdAt: new Date().toISOString() };
+    setEvents(previous => [event, ...previous]);
+    if (dbDriver) persistDbAction(() => insertEventRow(dbDriver, event));
+    return event;
+  };
+
+  const fetchEvents = () => events;
+
+  const groupTransactionsToEvent = (transactionIds: string[], eventId: string) => {
+    if (!events.some(event => event.id === eventId)) throw new Error('Selected event does not exist.');
+    const ids = transactionIds.filter(id => transactions.some(transaction => transaction.id === id));
+    if (!ids.length) return;
+    setTransactions(previous => previous.map(transaction => ids.includes(transaction.id) ? { ...transaction, eventId } : transaction));
+    if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
+  };
+
   const deleteCategory = (id: string) => {
     const category = categories.find(item => item.id === id);
     if (!category) return;
@@ -1222,6 +1294,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setBiometric(false);
     setProfile(defaultProf);
     setCategories(defaultCats);
+    setEvents([]);
 
     if (dbDriver) {
       persistDbAction(async () => {
@@ -1257,6 +1330,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);
       if (data.categories && Array.isArray(data.categories)) setCategories(data.categories);
+      if (data.events && Array.isArray(data.events)) setEvents(data.events);
       if (data.creditCards && Array.isArray(data.creditCards)) setCreditCardRecords(stripCardBalances(data.creditCards));
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
       if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
@@ -1273,6 +1347,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     accounts,
     transactions,
     categories,
+    events,
     creditCards,
     widgets,
     loanRevisions,
@@ -1299,7 +1374,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       loanRevisions, addLoanRevision, deleteLoanRevision,
       isWalletModalOpen, setWalletModalOpen,
       payCardModalState, setPayCardModalState,
-      categories, addCategory, updateCategory, deleteCategory,
+      categories, events, createEvent, fetchEvents, groupTransactionsToEvent, addCategory, updateCategory, deleteCategory,
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,

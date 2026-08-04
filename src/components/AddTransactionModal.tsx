@@ -5,7 +5,7 @@ import { icons } from '../icons';
 
 
 export function AddTransactionModal() {
-  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, setManageCategoriesOpen } = useAppContext();
+  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, createEvent, setManageCategoriesOpen } = useAppContext();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -74,7 +74,7 @@ export function AddTransactionModal() {
       setToAccountId(editingTransaction.toAccountId || '');
       setIsRecurring(editingTransaction.isRecurring || false);
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
-      setGroupId(editingTransaction.groupId || '');
+      setGroupId(events.find(event => event.id === editingTransaction.eventId)?.name || '');
       
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
       if (catObj) setCategoryId(catObj.id);
@@ -179,6 +179,10 @@ export function AddTransactionModal() {
     const selectedAccount = accounts.find(a => a.id === account);
     const isLiabilityAcc = selectedAccount && selectedAccount.type === 'liability';
 
+    const eventName = groupId.trim();
+    const eventId = eventName
+      ? (events.find(event => event.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
+      : undefined;
     const newTx = {
       title: finalTitle,
       subtitle: `${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
@@ -192,7 +196,7 @@ export function AddTransactionModal() {
       toAccountId: type === 'transfer' ? toAccountId : (type === 'expense' && isLiabilityAcc ? account : undefined),
       isRecurring,
       isInterestOnly,
-      groupId: groupId.trim() || undefined,
+      eventId,
       is_verified: isFuture ? 0 : 1
     };
 
