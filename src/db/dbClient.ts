@@ -1,4 +1,5 @@
 import initSqlJs from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
 import { Account, Category, CreditCardInfo, LoanRevision, Transaction, Widget } from '../types';
@@ -12,6 +13,8 @@ const OPFS_SNAPSHOT_FILE = 'coinbuddy.sqlite';
 
 export interface SqlJsDatabaseDriver {
   rawDb: any;
+  /** True only when startup found no previously persisted database snapshot. */
+  isNewDatabase?: boolean;
   execute: (sql: string, params?: (string | number | null | undefined)[]) => Promise<void>;
   query: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
   exportToBase64: () => string;
@@ -102,9 +105,10 @@ async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
   return true;
 }
 
-function createDriver(db: any): SqlJsDatabaseDriver {
+function createDriver(db: any, isNewDatabase = false): SqlJsDatabaseDriver {
   return {
     rawDb: db,
+    isNewDatabase,
     async execute(sql, params = []) {
       if (params.length === 0) {
         db.exec(sql);
@@ -134,7 +138,9 @@ function createDriver(db: any): SqlJsDatabaseDriver {
 }
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
-  const SQL = await initSqlJs({ locateFile: (file) => file });
+  // Importing the binary lets Vite emit it under /assets, where Workbox
+  // precaches it with the rest of the application shell.
+  const SQL = await initSqlJs({ locateFile: (file) => file.endsWith('.wasm') ? sqlWasmUrl : file });
   let saved = await readOpfsSnapshot() ?? await readSnapshot();
   if (!saved) {
     const legacy = localStorage.getItem(DB_STORAGE_KEY);
@@ -149,6 +155,7 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
       localStorage.removeItem(DB_STORAGE_KEY);
     }
   }
+  const isNewDatabase = !saved;
   const db = saved ? new SQL.Database(saved) : new SQL.Database();
 
   db.run(SQLITE_PRAGMA_SETUP);
@@ -163,15 +170,35 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     }
   }
 
-  return createDriver(db);
+  return createDriver(db, isNewDatabase);
 }
 
 export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
+  const snapshot = driver.rawDb.export();
+  let indexedDbError: unknown;
+  let opfsError: unknown;
+  let indexedDbSaved = false;
+  let opfsSaved = false;
+
+  // Keep IndexedDB current even when OPFS succeeds. It is the durable fallback
+  // if OPFS is unavailable or reset when the page is refreshed.
   try {
-    const snapshot = driver.rawDb.export();
-    if (!await writeOpfsSnapshot(snapshot)) await writeSnapshot(snapshot);
+    await writeSnapshot(snapshot);
+    indexedDbSaved = true;
+  } catch (error) {
+    indexedDbError = error;
   }
-  catch (error) { throw new Error(`Unable to save your ledger locally: ${error instanceof Error ? error.message : String(error)}`); }
+
+  try {
+    opfsSaved = await writeOpfsSnapshot(snapshot);
+  } catch (error) {
+    opfsError = error;
+  }
+
+  if (!indexedDbSaved && !opfsSaved) {
+    const cause = indexedDbError ?? opfsError ?? new Error('No persistent browser storage is available.');
+    throw new Error(`Unable to save your ledger locally: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
 }
 
 export async function deletePersistedDatabase(): Promise<void> {

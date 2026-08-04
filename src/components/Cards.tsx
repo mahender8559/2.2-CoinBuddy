@@ -50,19 +50,19 @@ export function Cards() {
     try {
       setDeleteError(null);
       deleteAccount(accountToDelete.id);
-    } catch (err: any) {
-      setDeleteError({ message: err.message || 'Failed to delete account', id: Date.now() });
+    } catch (err: unknown) {
+      setDeleteError({ message: err instanceof Error ? err.message : 'Failed to delete account', id: Date.now() });
     }
     setAccountToDelete(null);
   };
 
-  const handleEditAsset = (account: any) => {
+  const handleEditAsset = (account: Account) => {
     setEditingAccount(account);
     setEditingCreditCard(null);
     setAddAccountModalType('asset');
   };
 
-  const handleEditLiability = (account: any, ccDetails: any) => {
+  const handleEditLiability = (account: Account, ccDetails?: import('../types').CreditCardInfo) => {
     if (ccDetails) {
       setEditingCreditCard(ccDetails);
       setEditingAccount(null);
@@ -74,14 +74,14 @@ export function Cards() {
   };
 
   // Simple heuristic for icons
-  const getAssetIcon = (account: any) => {
+  const getAssetIcon = (account: Account) => {
     const l = (account.group || account.name).toLowerCase();
     if (l.includes('cash') || l.includes('wallet')) return <Wallet className="w-5 h-5 text-emerald-400" />;
     if (l.includes('invest') || l.includes('broker') || l.includes('vanguard')) return <TrendingUp className="w-5 h-5 text-emerald-400" />;
     return <Building2 className="w-5 h-5 text-emerald-400" />;
   };
 
-  const getLiabilityIcon = (account: any) => {
+  const getLiabilityIcon = (account: Account) => {
     const l = (account.group || account.name).toLowerCase();
     if (l.includes('car') || l.includes('auto') || l.includes('vehicle')) return <Car className="w-5 h-5 text-rose-400" />;
     return <CreditCard className="w-5 h-5 text-rose-400" />;

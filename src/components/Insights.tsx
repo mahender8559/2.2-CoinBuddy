@@ -10,6 +10,7 @@ import { AnimatedNumber } from './AnimatedNumber';
 import { icons } from '../icons';
 import { LoanAmortizationExplorer } from './LoanAmortizationExplorer';
 import { getOriginalPrincipal } from '../utils/emi';
+import type { ComponentType, SVGProps } from 'react';
 
 export function Insights() {
   const { 
@@ -63,13 +64,18 @@ export function Insights() {
   const top4 = categoryTotals.slice(0, 4);
   const topCategoryInfo = top4.length > 0 ? top4[0] : null;
 
-  const eventTotals = useMemo(() => Object.entries(
-    transactions.reduce<Record<string, number>>((totals, transaction) => {
-      if (!transaction.groupId || transaction.isOpeningBalance || transaction.is_verified === 0 || transaction.type !== 'expense') return totals;
-      totals[transaction.groupId] = (totals[transaction.groupId] || 0) + Math.abs(transaction.amount);
-      return totals;
+  const eventSummaries = useMemo(() => Object.values(
+    transactions.reduce<Record<string, { name: string; expenses: number; income: number }>>((groups, transaction) => {
+      const name = transaction.groupId?.trim();
+      if (!name || transaction.isOpeningBalance || transaction.is_verified === 0) return groups;
+
+      const group = groups[name] ?? (groups[name] = { name, expenses: 0, income: 0 });
+      if (transaction.type === 'expense') group.expenses += Math.abs(transaction.amount);
+      if (transaction.type === 'income') group.income += Math.abs(transaction.amount);
+      return groups;
     }, {})
-  ).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total), [transactions]);
+  ).map(group => ({ ...group, netSpent: group.expenses - group.income }))
+    .sort((a, b) => b.netSpent - a.netSpent), [transactions]);
 
   const getCategoryDetails = (catIdentifier: string) => {
     const matchedCategory = categories.find(c => 
@@ -609,18 +615,30 @@ export function Insights() {
           <LoanAmortizationExplorer />
         </div>
 
-        {eventTotals.length > 0 && (
-          <div className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
-            <h3 className="text-xl font-bold text-on-surface mb-4">Event & Outing Spend</h3>
+        {eventSummaries.length > 0 && (
+          <section data-testid="grouped-spending-summary" className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
+            <div className="mb-4">
+              <h3 className="text-xl font-bold text-on-surface">Grouped Spending</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Events and outings, across all recorded transactions.</p>
+            </div>
             <div className="space-y-3">
-              {eventTotals.map(event => (
-                <div key={event.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-on-surface-variant">{event.name}</span>
-                  <span className="shrink-0 font-bold text-on-surface">{formatCurrency(event.total)}</span>
-                </div>
+              {eventSummaries.map(event => (
+                <article key={event.name} className="rounded-2xl bg-surface-container p-3 border border-outline-variant/20">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="min-w-0 truncate font-semibold text-on-surface" title={event.name}>{event.name}</h4>
+                    <span className={`shrink-0 text-sm font-bold font-numeric ${event.netSpent > 0 ? 'text-on-surface' : event.netSpent < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-on-surface-variant'}`}>
+                      {formatCurrency(event.netSpent)}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-semibold uppercase tracking-wide">
+                    <div><p className="text-on-surface-variant">Expenses</p><p className="mt-0.5 text-rose-600 dark:text-rose-400 font-numeric normal-case tracking-normal">{formatCurrency(event.expenses)}</p></div>
+                    <div><p className="text-on-surface-variant">Income</p><p className="mt-0.5 text-emerald-600 dark:text-emerald-400 font-numeric normal-case tracking-normal">{formatCurrency(event.income)}</p></div>
+                    <div><p className="text-on-surface-variant">Net spent</p><p className="mt-0.5 text-on-surface font-numeric normal-case tracking-normal">{formatCurrency(event.netSpent)}</p></div>
+                  </div>
+                </article>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Net Worth Trend */}
@@ -673,7 +691,7 @@ export function Insights() {
   );
 }
 
-function CategoryStat({ dot, label, amount, percentage }: any) {
+function CategoryStat({ dot, label, amount, percentage }: { dot: string; label: string; amount: string; percentage?: string }) {
   return (
     <div className="p-3 bg-surface-container rounded-2xl border border-outline-variant/20 flex flex-col justify-center min-w-0">
       <div className="flex items-center gap-2 mb-1.5 justify-between min-w-0">
@@ -688,8 +706,8 @@ function CategoryStat({ dot, label, amount, percentage }: any) {
   );
 }
 
-function TipCard({ icon: Icon, color, title, desc }: any) {
-  const colorMap: Record<string, any> = {
+function TipCard({ icon: Icon, color, title, desc }: { icon: ComponentType<SVGProps<SVGSVGElement>>; color: string; title: string; desc: string }) {
+  const colorMap: Record<string, { border: string; bg: string; icon: string }> = {
     primary: { border: 'border-l-primary', bg: 'bg-primary/10', icon: 'text-primary' },
     secondary: { border: 'border-l-secondary', bg: 'bg-secondary/10', icon: 'text-secondary' },
     tertiary: { border: 'border-l-tertiary', bg: 'bg-tertiary/10', icon: 'text-tertiary' },

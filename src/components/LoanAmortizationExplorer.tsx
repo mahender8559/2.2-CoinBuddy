@@ -10,8 +10,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?: Array<{ payload: LoanScheduleRow }>;
+  formatCurrency: (amount: number) => string;
+};
 
-function CustomTooltip({ active, payload, label, formatCurrency }: any) {
+function CustomTooltip({ active, payload, formatCurrency }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const data: LoanScheduleRow = payload[0].payload;
     const totalMonthPayment = data.principalPortion + data.interestPortion;

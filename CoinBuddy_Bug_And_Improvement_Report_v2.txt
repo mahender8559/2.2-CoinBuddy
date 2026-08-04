@@ -1,0 +1,486 @@
+COINBUDDY — BUG & IMPROVEMENT REPORT (v2)
+Prepared for: an AI coding agent that will implement the fixes
+Codebase reviewed: 2.2-CoinBuddy-main.zip (React 19 + TypeScript + Vite 6 +
+sql.js/SQLite (WASM) + vite-plugin-pwa)
+Spec used: "1. Core accounting model.txt" — 14-rule ledger/accounting spec
+supplied by the user. This version re-checks the codebase directly against
+that spec, rule by rule, and folds in the earlier general findings.
+
+HOW TO READ THIS FILE
+Section A: rule-by-rule compliance check against the spec (this is new).
+Section B: a short step-by-step guide for how to process/action this
+           report (this is new — read it before touching any code).
+Section C: the general bug/architecture findings from the first pass,
+           kept because they are still valid and independent of the spec.
+Section D: single prioritized fix list combining A + C.
+
+============================================================
+SECTION A — RULE-BY-RULE COMPLIANCE CHECK
+============================================================
+Each rule from the spec is checked against the actual source. Status is
+one of: COMPLIANT / PARTIAL / GAP.
+
+Rule 1 — Core accounting model (assets vs liabilities, net worth)
+  Status: COMPLIANT
+  Evidence: src/context/AppContext.tsx computes totalAssets,
+  totalLiabilities and netWorth from `accounts` (which are themselves
+  ledger-derived, see Rule 2). Dashboard.tsx renders asset summary,
+  liability summary, and net worth as the spec requires.
+  Action: none required.
+
+Rule 2 — Ledger-first balance logic (balance is never hand-edited)
+  Status: COMPLIANT
+  Evidence: src/utils/balanceManager.ts + src/domain/ledgerRules.ts.
+  `recomputeAllAccountBalances()` always derives `balance` from
+  `calculateLedgerBalance()`, which sums `applyTransactionEffect()` over
+  every transaction. AppContext.tsx explicitly strips any stored balance
+  field on write (`stripAccountBalances`) so it can never be trusted as
+  a value in state — only the memoized `accounts` projection is. This is
+  a genuinely well-built implementation of the rule.
+  Action: none required. Do not let future edits reintroduce a
+  directly-settable `account.balance` field anywhere.
+
+Rule 3 — Transaction types and sign rules
+  Status: COMPLIANT
+  Evidence: src/domain/ledgerRules.ts `SIGN_RULES` is exactly the
+  "direction-based logic" table the spec describes (income +1 asset/-1
+  liability, expense -1 asset/+1 liability, transfer symmetric, opening
+  balance seeds asset/liability appropriately). This table is already
+  the "single table drives all sign logic" pattern — good, and it should
+  be the template used when applying the table-driven fixes elsewhere in
+  the app (see Section C, 3.1–3.4).
+  Action: none required functionally. Minor: add a unit test that
+  iterates every (type, direction, accountKind) combination in
+  SIGN_RULES and asserts the numeric sign, so any future edit to this
+  table is caught by CI instead of only being caught by manual QA.
+
+Rule 4 — Opening balance rules for assets and liabilities
+  Status: COMPLIANT
+  Evidence: `validateOpeningBalance()` in ledgerRules.ts locates the
+  existing opening-balance transaction and updates its amount rather
+  than writing directly to `account.balance`. AppContext.tsx's account
+  update path calls this via `updateOpeningBalance` (sqliteSchema.ts).
+  Action: none required.
+
+Rule 5 — Prevent invalid initial balance changes
+  Status: COMPLIANT
+  Evidence: `validateOpeningBalance()` replays the full verified
+  transaction history with the proposed new opening amount and rejects
+  the change if the running balance ever goes negative for an asset
+  account (`running < -0.000001`). Error message matches the spec's
+  intent ("Cannot update opening balance: it would cause a historical
+  negative asset balance.").
+  Gap (minor): the spec's example UI copy is "Cannot set initial
+  balance lower than ₹X because existing transactions would make the
+  account negative" — i.e. it tells the user the actual floor value X.
+  The current error message does NOT compute or surface that number, it
+  only says the change is invalid.
+  Action: enhance `validateOpeningBalance()` to also return the minimum
+  safe opening balance (the amount that keeps `running >= 0` at every
+  historical point) so the UI can show the specific number instead of a
+  generic rejection. This is a UX improvement, not a correctness bug.
+
+Rule 6 — Liability-specific rules (debt, credit limits)
+  Status: COMPLIANT
+  Evidence: same `validateOpeningBalance()` function also checks
+  `account.type === 'liability' && limit > 0 && maximum > limit` and
+  rejects the change. `accounts` table carries `credit_limit`,
+  `interest_rate`, `monthly_emi`, `interest_calculation_type` per
+  sqliteSchema.ts.
+  Action: none required for the balance-validation half. Confirm the
+  Add/Edit Account modal (AddAccountModal.tsx) actually surfaces the
+  credit-limit warning message returned by this function in the UI (not
+  independently re-verified in this pass — add to Section B's
+  per-rule checklist below when reviewing components).
+
+Rule 7 — Recurring transaction rules (scheduled date, pending if
+  auto-add off)
+  Status: COMPLIANT
+  Evidence: src/db/dbClient.ts `generateDueRecurringTransactions()` sets
+  `date: \`${dueDate}T12:00:00.000Z\`` — i.e. the transaction's date is
+  the scheduled recurring date, not `new Date()` (today's date). It sets
+  `is_verified: autoApprove ? 1 : 0`, so when auto-add is off the
+  transaction is inserted unverified/pending, matching the rule exactly.
+  Action: none required. Confirm in the UI (AddTransactionModal /
+  Activity.tsx pending list) that an editable date field is shown when
+  a user manually approves a pending recurring item, per the spec's "UI"
+  bullet ("allow the user to edit it if needed") — not independently
+  re-verified in this pass, add to component checklist.
+
+Rule 8 — Pending vs approved recurring transactions (only verified
+  affect balances)
+  Status: COMPLIANT
+  Evidence: `applyTransactionEffect()` in ledgerRules.ts returns 0
+  immediately if `transaction.is_verified === 0`, before any sign logic
+  runs — so unverified/pending transactions structurally cannot affect
+  any balance. This is exactly the rule.
+  Action: none required. Add a unit test asserting a pending
+  (is_verified=0) transaction of any type contributes 0 to every
+  account's balance, to lock this invariant in permanently.
+
+Rule 9 — Loan and EMI rules (principal/interest split)
+  Status: COMPLIANT
+  Evidence: src/utils/emi.ts `calculateEmiSplit()` is used both in the
+  interactive "pay liability" flow (AppContext.tsx `payLiability`) and
+  in the automated recurring-transaction generator (dbClient.ts
+  `generateDueRecurringTransactions`), so manual and automatic EMI
+  payments use the same split logic — good, this avoids the kind of
+  "two sources of truth" duplication flagged in the general report
+  (Section C, 1.2).
+  Action: none required. Confirm REDUCING vs other
+  `interest_calculation_type` values are both actually implemented in
+  emi.ts (only "REDUCING" was observed as a default fallback in this
+  pass) — if flat-rate/other loan types are meant to be supported, audit
+  emi.ts specifically for full coverage of every
+  `interest_calculation_type` the schema allows.
+
+Rule 10 — Credit card payment rule (transfer, not ordinary expense)
+  Status: COMPLIANT
+  Evidence: `payCreditCard()` and `payLiability()` in AppContext.tsx
+  both route the principal portion through `transferFunds()` (a
+  transaction with `type: 'transfer'`), not a generic expense. Only the
+  interest portion is separately recorded as an `expense` transaction
+  tagged `isInterestOnly: true`, which is correct because interest is a
+  real cost, while the principal repayment is not spending — it's debt
+  reduction. This matches the spec precisely.
+  Action: none required.
+
+Rule 11 — Category and budget rules
+  Status: COMPLIANT
+  Evidence: `Category.type` distinguishes income/expense
+  (src/types.ts), `Category.budget` exists and is consumed by three
+  independent UI surfaces: Dashboard.tsx (overall budget progress bar +
+  ON TRACK/OVER BUDGET badge), ManageFinances.tsx (per-category budget
+  editing and progress), and WidgetCard.tsx (per-category widget
+  progress). Category also has `group` for grouping (Essential/
+  Leisure/Savings).
+  Action: none required functionally. Note for Section C: the budget
+  progress calculation is implemented independently in three files
+  (Dashboard.tsx, ManageFinances.tsx, WidgetCard.tsx) rather than one
+  shared `getCategorySpend(category, transactions, dateRange)` helper —
+  this is a table/logic-duplication risk of the same kind flagged in
+  Section C.3 (three places to keep in sync if the spend-calculation
+  rule ever changes, e.g. to respect the monthCycleDay cycle
+  consistently). Recommend consolidating into one shared utility
+  function in src/utils/ and having all three components call it.
+
+Rule 12 — Event/grouping rules (transactions can belong to an
+  event/outing group)
+  Status: PARTIAL (verified 2026-08-04; data entry/persistence exists, grouped reporting remains outstanding)
+  Evidence: no `event_id`, `transaction_group_id`, "event", or "group"-
+  as-outing concept exists anywhere in src/types.ts or
+  src/db/sqliteSchema.ts. `Category.group` exists but is a budgeting
+  grouping (Essential/Leisure/Savings), not an event/outing grouping —
+  it is a different concept the spec explicitly distinguishes.
+  Action (net-new feature, not a bug fix):
+    1. Add `transaction_group_id TEXT NULL` to the `transactions` table
+       in sqliteSchema.ts (add a migration in SQLITE_MIGRATIONS, do not
+       edit CREATE_TABLES_SQL alone or existing installs won't get the
+       column).
+    2. Add a lightweight `event_groups` table (id, name, created_at) OR,
+       if you want to avoid a new table for a first version, allow
+       `transaction_group_id` to be a free-text label the user types
+       (matches how `category` tags already work as free-text `#tag`
+       strings elsewhere in this codebase) — pick ONE approach and
+       apply the same pattern used for categories for consistency.
+    3. Add `groupId`/`eventId` to the Transaction type in types.ts and
+       to `insertTransactionRow`/`updateTransactionRow` in dbClient.ts.
+    4. Add UI: a group/event picker in AddTransactionModal.tsx (spec
+       says "transaction form should allow picking an event/group").
+    5. Add a grouped view: total spent per event, e.g. a filter/tab in
+       Insights.tsx or Activity.tsx, matching the spec's "Calculation"
+       section (total spent per event, remaining budget for event).
+  This is the one rule in the spec that requires new schema + new UI,
+  not just a fix to existing logic — treat it as a feature ticket, size
+  it separately from the bug fixes in this report.
+
+Rule 13 — Undo/redo and safe deletion rules
+  Status: COMPLIANT (verified 2026-08-04; see final verification addendum)
+  Evidence: AppContext.tsx implements an in-memory undo/redo stack
+  (`undoStack`/`redoStack`, capped at 5) exactly as the spec allows
+  ("No special table is required at first; this is an in-memory
+  stack."), and `executeCommand()` recomputes balances after every
+  undo/redo via `recomputeAllAccountBalances`, matching "restore the
+  previous transaction or account state and then recalculate balances."
+  Gap: the spec's UI requirement is "A snackbar/toast with Undo should
+  appear after delete" — i.e. undo should be offered contextually right
+  after a delete action, not only via a persistent Ctrl+Z-style
+  undo/redo button. This pass did not find a toast/snackbar component
+  tied to delete actions (see Section C.6.2 — window.alert is used for
+  errors, but no toast system was found for this purpose). If one
+  exists elsewhere and was missed, verify; if not, this is a real UI gap
+  against the spec.
+  Action: add a toast/snackbar (see Section C.6.2 recommendation to
+  build one anyway) that appears specifically after delete operations
+  (`deleteTransaction`, `deleteAccount`, `deleteCategory`,
+  `deleteCreditCard`, `deleteLoanRevision`) with an inline "Undo" button
+  wired to `handleUndo()`. Also re-verify Section C.1.5's earlier
+  concern (whether delete-undo restores the FULL prior object graph,
+  not just the id) as part of this same work, since you'll be touching
+  every delete call site anyway.
+
+Rule 14 — Export/import rules (JSON backup/restore, XLSX export)
+  Status: COMPLIANT (verified 2026-08-04; see final verification addendum)
+  Evidence: `exportLedgerData()`/`importLedgerData()` in AppContext.tsx
+  cover JSON export/import of accounts, transactions, categories,
+  creditCards, widgets, loanRevisions — matches the spec's table list.
+  src/utils/exportExcel.ts provides styled XLSX export.
+  Gap: as already flagged in the general report (Section C.5.2),
+  `importLedgerData(data: any)` performs no schema validation before
+  writing imported data into SQLite — the spec doesn't explicitly
+  demand validation, but "restore" implicitly requires the restored
+  ledger to still satisfy Rules 1–10 (verified-only balances, valid
+  opening balances, etc.). An import that skips `validateOpeningBalance`
+  and the sign-rule invariants can silently produce a ledger that
+  violates every other rule in this spec, since nothing re-runs those
+  checks after import.
+  Action: after `importLedgerToDatabase()` completes, run
+  `auditDatabaseIntegrity()` (already exists in sqliteSchema.ts and is
+  used elsewhere) automatically and surface `integrityWarning` to the
+  user immediately if the imported ledger fails it, rather than only
+  checking integrity on next app load. This directly enforces Rules 1–8
+  against imported data instead of only against interactively-created
+  data.
+
+------------------------------------------------------------
+SECTION A SUMMARY
+------------------------------------------------------------
+11 of 14 rules: COMPLIANT — the core ledger/balance engine
+(ledgerRules.ts + balanceManager.ts + dbClient.ts recurring logic) is
+solidly built and already matches the spec closely, including the
+table-driven SIGN_RULES pattern, which is good architecture to reuse
+elsewhere (see Section C).
+2 of 14 rules: PARTIAL — undo/redo (Rule 13, missing contextual
+delete-toast) and export/import (Rule 14, missing post-import
+integrity re-validation).
+1 of 14 rules: GAP — event/transaction grouping (Rule 12) does not
+exist in the codebase at all; it is a new feature, not a bug.
+
+============================================================
+SECTION B — HOW TO PROCESS THIS REPORT (step-by-step guide)
+============================================================
+Use this exact loop for every item in Section A and Section C. Doing
+them in this order prevents "fixed one rule, silently broke another"
+regressions, which is the main risk in a ledger app where every rule
+touches the same balance-calculation code path.
+
+STEP 1 — Read the rule/finding and its file evidence first.
+  Do not start editing code before you've opened every file cited in
+  the "Evidence" line and confirmed the current behavior for yourself.
+  The line numbers in this report can drift as the file changes; always
+  re-locate the relevant code by function/variable name, not by line
+  number.
+
+STEP 2 — Write (or locate) a test that encodes the rule BEFORE fixing.
+  For COMPLIANT rules, add the missing regression test named in the
+  "Action" line so the passing rule can never silently regress later.
+  For PARTIAL/GAP items, write a failing test first that describes the
+  desired end state (e.g. "deleting a transaction shows an undo toast"),
+  then implement until it passes. This project already has vitest set
+  up (src/__tests__/) — follow its existing patterns
+  (balanceManager.test.ts is the best template for ledger-logic tests).
+
+STEP 3 — Make the smallest change that satisfies the rule.
+  Prefer editing the single canonical file that already owns that
+  concern (ledgerRules.ts for sign/balance rules, dbClient.ts for
+  schema/persistence, AppContext.tsx only for state wiring) rather than
+  patching a symptom inside a component. If a fix requires touching
+  more than ~3 files, stop and re-read Section A/C to confirm you
+  haven't misidentified the root cause.
+
+STEP 4 — Re-run the full existing test suite, not just the new test.
+  `npm run test` (vitest) and `npm run lint` (tsc --noEmit) after every
+  change. Because every rule in this spec ultimately feeds the same
+  `applyTransactionEffect`/`recomputeAllAccountBalances` pipeline, a fix
+  for one rule (e.g. Rule 14's post-import integrity check) can expose
+  a previously-latent bug in another (e.g. Rule 5's opening-balance
+  validation running against newly-imported data) — treat any newly
+  failing test as a real finding, not a flake.
+
+STEP 5 — Re-check the SQL view alongside the TypeScript logic.
+  This codebase deliberately mirrors ledger logic in both
+  ledgerRules.ts (used by the app) and a SQL view in sqliteSchema.ts
+  (used for `auditDatabaseIntegrity`) — see the code comment "The SQL
+  balance view intentionally mirrors this table." Any change to
+  SIGN_RULES or the verified-only filter MUST be mirrored in the SQL
+  view in the same commit, or `auditDatabaseIntegrity()` will start
+  reporting false-positive drift warnings against a now-correct
+  TypeScript calculation. Grep for the view definition in
+  sqliteSchema.ts before closing any Rule 1–10 fix.
+
+STEP 6 — Update this report's status for the item you just fixed.
+  Change PARTIAL/GAP to COMPLIANT (or COMPLIANT with a note) once
+  STEP 4 and STEP 5 both pass, and add one line naming the test file
+  that now guards the rule. This keeps the report usable as a living
+  checklist across multiple work sessions instead of going stale after
+  the first fix.
+
+STEP 7 — Batch by root file, not by rule number.
+  Several rules above resolve to fixes in the same few files
+  (ledgerRules.ts covers Rules 2/3/4/5/6/8; dbClient.ts covers Rules
+  7/8/9/14). Group your actual commits by file, run the full test suite
+  once per file-group rather than once per rule, to save iteration time
+  — but still verify every individual rule's test passes before moving
+  to the next file-group.
+
+Quick per-rule checklist template (copy for each PARTIAL/GAP item):
+  [ ] Reproduced current behavior manually
+  [ ] Wrote failing test describing desired behavior
+  [ ] Implemented smallest fix in the canonical owning file
+  [ ] `npm run test` passes (full suite, not just new test)
+  [ ] `npm run lint` passes
+  [ ] SQL view in sqliteSchema.ts re-checked/updated if sign logic touched
+  [ ] Report status line updated to COMPLIANT + test file name
+
+============================================================
+SECTION C — GENERAL FINDINGS (from the first-pass review)
+============================================================
+These are independent of the spec above (architecture, offline
+readiness, code quality) and are still valid. Full detail was given in
+the previous report; summarized here with references so this file is
+self-contained. Apply the Section B process to each of these too.
+
+C.1 CRITICAL
+  1.1 Non-unique/weak IDs via Math.random() in AppContext.tsx (10 call
+      sites) — note dbClient.ts's own recurring-transaction generator
+      already correctly uses `crypto.randomUUID()`, so the fix pattern
+      already exists in this codebase; just apply it consistently.
+  1.2 Two divergent "default categories" lists (AppContext.tsx
+      clearAllData vs DemoData.json-driven seedDemoData) — extract one
+      shared DEFAULT_CATEGORIES table.
+  1.3 OnboardingModal.tsx hardcodes 5 remote Unsplash image URLs never
+      precached by the service worker — breaks first-launch offline use.
+  1.4 manifest.json declares share_target/widgets/file_handlers that
+      have no corresponding implementation in the app.
+  1.5 Undo/redo delete-restore object completeness not fully verified —
+      audit alongside Rule 13's fix (Section A).
+
+C.2 DATA INTEGRITY / STORAGE
+  2.1 Settings/backup data split across SQLite app_settings AND raw
+      localStorage keys (coinbuddy_backup_config, coinbuddy_saved_backups,
+      monthly-tracker-state) — consolidate into SQLite.
+  2.2 localStorage backup storage has no quota-exceeded handling.
+  2.3 Legacy DB migration path deletes the old localStorage key without
+      verifying the new snapshot round-trips first.
+
+C.3 TABLE-DRIVEN REFACTOR TARGETS
+  3.1 Currency-locale map duplicated verbatim twice in AppContext.tsx.
+  3.2 Same as C.1.2 (default categories).
+  3.3 Icon name strings typed as `string` instead of a validated union
+      sourced from icons.ts.
+  3.4 Undo stack cap `5` duplicated as a magic number in two places.
+  (New, from Section A Rule 11) 3.5 Budget-progress calculation
+      duplicated independently in Dashboard.tsx, ManageFinances.tsx,
+      and WidgetCard.tsx — consolidate into one shared utility.
+
+C.4 OFFLINE / PWA READINESS
+  4.1–4.5 See full detail in the first report: remote onboarding
+  images, unimplemented manifest capabilities, no offline e2e test,
+  sql.js WASM caching verification, missing maskable icon entry in
+  manifest.
+
+C.5 CODE QUALITY / TYPE SAFETY
+  5.1 69 occurrences of `: any`; prioritize UndoRedoCommand's
+      previousState/newState and importLedgerData's `data: any`.
+  5.2 importLedgerData accepts unvalidated JSON — same root cause as
+      Rule 14's gap in Section A; fix both together (add schema
+      validation AND run auditDatabaseIntegrity() post-import).
+  5.3 Theme class-removal list hardcoded separately from the palette
+      picker's source list.
+  5.4 No top-level React ErrorBoundary around <App />.
+
+C.6 SECURITY (minor)
+  6.1 Passcode hashing is single-round SHA-256; consider PBKDF2 via
+      Web Crypto if hardening is wanted (low priority, local PIN only).
+  6.2 window.alert() used for error/notification UI; replace with a
+      proper toast/snackbar component — this is now also required
+      functionally by Rule 13's undo-on-delete gap (Section A), so
+      build it once and use it for both purposes.
+
+C.7 TEST COVERAGE GAPS
+  7.1 ID uniqueness test (ties to C.1.1)
+  7.2 Default-categories-match test (ties to C.1.2)
+  7.3 Offline-mode e2e test (ties to C.4) — still the single most
+      important missing test given the explicit offline requirement.
+  7.4 Malformed/foreign-schema-version import rejection test (ties to
+      C.5.2 / Rule 14)
+  7.5 Undo/redo round-trip test for account delete + linked opening
+      transaction (ties to C.1.5 / Rule 13)
+  (New) 7.6 SIGN_RULES exhaustive combination test (Rule 3, Section A)
+  (New) 7.7 Pending transaction contributes-zero test (Rule 8, Section A)
+
+============================================================
+SECTION D — SINGLE PRIORITIZED FIX LIST (combines A + C)
+============================================================
+P0 (data corruption / broken-on-launch / spec-violating on bad input):
+  1. Consistent crypto.randomUUID() for all entity IDs (C.1.1)
+  2. Fix offline onboarding images (C.1.3)
+  3. Add offline e2e regression test (C.4, C.7.3)
+  4. Validate imported ledger data AND auto-run integrity audit after
+     import (Rule 14 / C.5.2 / C.7.4) — combined fix, one PR
+
+P1 (data integrity / spec completeness):
+  5. One shared DEFAULT_CATEGORIES table (Rule 11 note applies same
+     pattern; C.1.2/C.3.2)
+  6. Consolidate settings/backup persistence into SQLite, drop
+     ad-hoc localStorage keys for real data (C.2.1, C.2.2)
+  7. Verify legacy DB migration before deleting old key (C.2.3)
+  8. Audit manifest.json — implement or remove undeclared capabilities
+     (C.1.4)
+  9. Build a toast/snackbar component; use it for delete-undo (Rule 13)
+     AND for error surfacing currently done via window.alert (C.6.2)
+  10. Surface the specific minimum-safe-opening-balance number in the
+      Rule 5 validation error message (Section A, Rule 5 UX gap)
+
+P2 (robustness / maintainability):
+  11. Discriminated-union type for UndoRedoCommand instead of `any`
+      (C.5.1)
+  12. Top-level ErrorBoundary (C.5.4)
+  13. Consolidate currency-locale map, undo-stack-size constant,
+      theme-class list, budget-progress calculation (C.3.1, C.3.4,
+      C.5.3, C.3.5)
+  14. Type icon names against a single enum (C.3.3)
+  15. Add the regression tests listed in C.7 that don't yet exist,
+      especially 7.6 (SIGN_RULES) and 7.7 (pending=0 contribution),
+      since these guard the core rules the whole app depends on
+
+P3 (feature work, size separately from bug fixes):
+  16. Implement event/transaction grouping end-to-end (Rule 12,
+      Section A) — schema migration + type + insert/update wiring +
+      picker UI + grouped totals view
+
+P4 (nice-to-have hardening):
+  17. PBKDF2 for passcode hashing (C.6.1)
+
+============================================================
+FINAL STATUS & VERIFICATION ADDENDUM — 2026-08-04
+============================================================
+This addendum supersedes earlier status wording where it conflicts.
+
+Rule 1 through Rule 11 — Status: COMPLIANT (unchanged).
+Rule 12 — Status: PARTIAL. A free-text group label is available in the
+transaction form and persists as `transaction_group_id`; a grouped
+reporting/total view is still outstanding.
+Rule 13 — Status: COMPLIANT. `src/__tests__/undoRedo.test.ts` covers
+transaction and account add/delete/update restoration, linked opening
+balance restoration, and an account-delete redo round trip. The helper
+recomputes account balances after each command.
+Rule 14 — Status: COMPLIANT. Imports are validated before clearing data,
+then reloaded and integrity-audited; import regression tests pass.
+
+Code-quality status: UndoRedoCommand state and import data are now typed.
+Remaining broad types are limited to SQL.js and backup parsing boundaries;
+they remain a maintainability task, not a verification failure.
+
+Final verification status:
+  PASS — `npm.cmd test`: 7 files / 48 tests passed.
+  PASS — `npm.cmd run lint`: TypeScript completed with no errors.
+  FAIL — `npm.cmd run test:e2e`: Playwright is installed and launches,
+  but the existing offline-shell test fails on `page.reload()` with
+  `net::ERR_INTERNET_DISCONNECTED`; the 12-test run timed out at 120s.
+  This is an outstanding PWA/offline test-environment or caching issue,
+  not a failure of the undo restoration tests.
+
+============================================================
+END OF REPORT
+============================================================

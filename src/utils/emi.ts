@@ -18,11 +18,6 @@ export function getOriginalPrincipal(account: Account, transactions: Transaction
     return Math.abs(openingTx.amount);
   }
 
-  const initialProp = Math.abs(Number((account as any).initialBalance ?? (account as any).openingBalance ?? 0));
-  if (initialProp > 0) {
-    return Math.max(initialProp, account.balance);
-  }
-
   return account.balance;
 }
 

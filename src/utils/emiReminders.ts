@@ -158,7 +158,7 @@ export function registerDailyCronWorker(onTrigger: () => void): () => void {
     return timerId;
   }
 
-  let intervalId: any = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
   const timerId = scheduleNextRun();
 
   // Return cleanup function

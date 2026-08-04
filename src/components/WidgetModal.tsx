@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, X, List, TrendingUp, Building2, Tag } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
+import type { Account, Category } from '../types';
 
 export function WidgetModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const { categories, accounts, addWidget, widgets } = useAppContext();
@@ -86,8 +87,10 @@ export function WidgetModal({ isOpen, onClose }: { isOpen: boolean, onClose: () 
               {options.length === 0 ? (
                 <p className="text-center text-sm text-on-surface-variant py-8">No more items to track.</p>
               ) : (
-                options.map((opt: any) => {
-                  const Icon = type === 'category' ? icons[opt.icon as keyof typeof icons] || List : (type === 'asset' ? TrendingUp : Building2);
+                options.map((opt: Account | Category) => {
+                  const Icon = type === 'category' && 'icon' in opt
+                    ? icons[opt.icon as keyof typeof icons] || List
+                    : (type === 'asset' ? TrendingUp : Building2);
                   return (
                     <button 
                       key={opt.id}

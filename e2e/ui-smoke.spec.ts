@@ -23,6 +23,13 @@ async function openTab(page: Page, name: string) {
   else await mobileButton.click();
 }
 
+async function waitForActivatedServiceWorker(page: Page) {
+  await page.waitForFunction(async () => {
+    const registration = await navigator.serviceWorker?.ready;
+    return registration?.active?.state === 'activated' && navigator.serviceWorker.controller !== null;
+  });
+}
+
 test('primary navigation buttons work without runtime errors', async ({ page }) => {
   const errors = await prepareApp(page);
 
@@ -152,6 +159,7 @@ test('cached app shell remains usable offline after an initial load', async ({ p
   });
   await page.goto('/');
   await expect(page.getByText('Net Worth', { exact: true })).toBeVisible();
+  await waitForActivatedServiceWorker(page);
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByText('Net Worth', { exact: true })).toBeVisible();

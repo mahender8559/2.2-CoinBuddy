@@ -3,6 +3,8 @@ import { useAppContext } from '../context/AppContext';
 import { X, ShieldAlert, Info } from 'lucide-react';
 import { calculateEmiAmount } from '../utils/emi';
 
+const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
+
 export function AddAccountModal() {
   const { 
     addAccountModalType, 
@@ -102,8 +104,8 @@ export function AddAccountModal() {
         setInterestRate(editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : (editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : ''));
         setMonthlyEMI(editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : (editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : ''));
         setNextEMIDate(editingAccount.nextEMIDate || editingAccount.loanStartDate || editingAccount.loanStartDate || '');
-        setInterestCalculationType((editingAccount.interestCalculationType || editingAccount.interestCalculationType) as any || 'REDUCING');
-        setPaymentFrequency((editingAccount.paymentFrequency || editingAccount.paymentFrequency) as any || 'MONTHLY');
+        setInterestCalculationType(editingAccount.interestCalculationType || 'REDUCING');
+        setPaymentFrequency(editingAccount.paymentFrequency || 'MONTHLY');
         setTenureMonths(editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : (editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : ''));
         setLoanStartDate(editingAccount.loanStartDate || editingAccount.loanStartDate || editingAccount.nextEMIDate || '');
         setMonthlyInterestRate(editingAccount.monthlyInterestRate !== undefined ? editingAccount.monthlyInterestRate.toString() : '');
@@ -199,15 +201,15 @@ export function AddAccountModal() {
       if (editingAccount) {
         try {
           updateAccount(editingAccount.id, assetData);
-        } catch (err: any) {
-          showError(err.message || 'Failed to update account');
+        } catch (err: unknown) {
+          showError(getErrorMessage(err, 'Failed to update account'));
           return;
         }
       } else {
         try {
           addAccount(assetData);
-        } catch (err: any) {
-          showError(err.message || 'Failed to add account');
+        } catch (err: unknown) {
+          showError(getErrorMessage(err, 'Failed to add account'));
           return;
         }
       }
@@ -226,23 +228,23 @@ export function AddAccountModal() {
         if (editingCreditCard) {
           try {
             updateCreditCard(editingCreditCard.id, cardData);
-          } catch (err: any) {
-            showError(err.message || 'Failed to update credit card');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to update credit card'));
             return;
           }
         } else {
           if (editingAccount) {
             try {
               deleteAccount(editingAccount.id);
-            } catch (err: any) {
-              showError(err.message || 'Failed to update account type');
+            } catch (err: unknown) {
+              showError(getErrorMessage(err, 'Failed to update account type'));
               return;
             }
           }
           try {
             addCreditCard(cardData);
-          } catch (err: any) {
-            showError(err.message || 'Failed to add credit card');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to add credit card'));
             return;
           }
         }
@@ -272,16 +274,16 @@ export function AddAccountModal() {
         if (editingCreditCard) {
           try {
             deleteAccount(editingCreditCard.id);
-          } catch (err: any) {
-            showError(err.message || 'Failed to update account type');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to update account type'));
             return;
           }
           addAccount(loanData);
         } else if (editingAccount) {
           try {
             updateAccount(editingAccount.id, loanData);
-          } catch (err: any) {
-            showError(err.message || 'Failed to update account');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to update account'));
             return;
           }
         } else {
@@ -298,16 +300,16 @@ export function AddAccountModal() {
         if (editingCreditCard) {
           try {
             deleteAccount(editingCreditCard.id);
-          } catch (err: any) {
-            showError(err.message || 'Failed to update account type');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to update account type'));
             return;
           }
           addAccount(otherData);
         } else if (editingAccount) {
           try {
             updateAccount(editingAccount.id, otherData);
-          } catch (err: any) {
-            showError(err.message || 'Failed to update account');
+          } catch (err: unknown) {
+            showError(getErrorMessage(err, 'Failed to update account'));
             return;
           }
         } else {
