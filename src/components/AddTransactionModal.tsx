@@ -192,8 +192,12 @@ export function AddTransactionModal() {
       icon: type === 'transfer' ? 'ArrowRightLeft' : iconName,
       type,
       account: type === 'transfer' ? undefined : account,
-      fromAccountId: type === 'transfer' ? fromAccountId : (type === 'expense' && isLiabilityAcc ? (fromAccountId || assets[0]?.id || 'cash') : undefined),
-      toAccountId: type === 'transfer' ? toAccountId : (type === 'expense' && isLiabilityAcc ? account : undefined),
+      fromAccountId: type === 'transfer'
+        ? fromAccountId
+        : (type === 'expense' && isLiabilityAcc ? account : undefined),
+      toAccountId: type === 'transfer'
+        ? toAccountId
+        : (type === 'expense' && isLiabilityAcc ? undefined : undefined),
       isRecurring,
       isInterestOnly,
       eventId,

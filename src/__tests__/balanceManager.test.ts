@@ -187,6 +187,25 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
     expect(cardBalance).toBe(750);
   });
 
+  it('treats a liability expense as a single-leg debt increase and does not debit unrelated assets', () => {
+    const liabilityExpense: Transaction = {
+      id: 'tx_card_spend',
+      title: 'Card Spend',
+      subtitle: 'Retail',
+      amount: -200,
+      date: '2026-01-09T00:00:00.000Z',
+      category: 'Shopping',
+      icon: 'ShoppingBag',
+      type: 'expense',
+      account: 'card1',
+      fromAccountId: 'card1',
+      is_verified: 1,
+    };
+
+    expect(applyTransactionEffect(liabilityExpense, mockAccounts[2])).toBe(200);
+    expect(applyTransactionEffect(liabilityExpense, mockAccounts[0])).toBe(0);
+  });
+
   it('recomputeAccountStateFromLedger derives balance from transactions instead of stale local state', () => {
     const staleAccount = { ...mockAccounts[0], balance: 99999 };
     const derived = recomputeAccountStateFromLedger(staleAccount, mockTransactions);
