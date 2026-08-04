@@ -151,7 +151,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isUnlocked, setUnlocked] = useState(false);
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isOnboardingOpen, setOnboardingOpen] = useState(() => localStorage.getItem('coinbuddy_onboarding_seen') !== 'true');
-  const [isButtonTourOpen, setButtonTourOpen] = useState(() => localStorage.getItem('hasCompletedButtonTour') !== 'true');
+  const [isButtonTourOpen, setButtonTourOpen] = useState(() =>
+    localStorage.getItem('coinbuddy_onboarding_seen') === 'true' &&
+    localStorage.getItem('hasCompletedButtonTour') !== 'true'
+  );
   const [isManageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [addAccountModalType, setAddAccountModalType] = useState<'asset' | 'liability' | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);

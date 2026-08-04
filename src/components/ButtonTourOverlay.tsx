@@ -32,12 +32,30 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
 
   // Post-tour backup password setup modal state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordStepComplete, setPasswordStepComplete] = useState(false);
   const [newPwdInput, setNewPwdInput] = useState('');
   const [confirmPwdInput, setConfirmPwdInput] = useState('');
   const [pwdError, setPwdError] = useState<string | null>(null);
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
 
   const step = TOUR_STEPS[currentStepIndex];
+
+  useEffect(() => {
+    if (!isButtonTourOpen) {
+      setShowPasswordModal(false);
+      setPasswordStepComplete(false);
+      return;
+    }
+    if (passwordStepComplete) return;
+
+    try {
+      const savedConfig = localStorage.getItem('coinbuddy_backup_config');
+      const config = savedConfig ? JSON.parse(savedConfig) : null;
+      setShowPasswordModal(!config?.hasPassword || !config?.backupPassword);
+    } catch {
+      setShowPasswordModal(true);
+    }
+  }, [isButtonTourOpen, passwordStepComplete]);
 
   const updateTargetRect = useCallback(() => {
     if (!step || !isButtonTourOpen) return;
@@ -106,13 +124,6 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     localStorage.setItem('hasCompletedButtonTour', 'true');
     setButtonTourOpen(false);
     setCurrentStepIndex(0);
-    const savedConfig = localStorage.getItem('coinbuddy_backup_config');
-    try {
-      const config = savedConfig ? JSON.parse(savedConfig) : null;
-      setShowPasswordModal(!config?.hasPassword || !config?.backupPassword);
-    } catch {
-      setShowPasswordModal(true);
-    }
   };
 
   const generateRandomPassword = () => {
@@ -161,6 +172,7 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     setTimeout(() => {
       setPwdSuccess(null);
       setShowPasswordModal(false);
+      setPasswordStepComplete(true);
       setNewPwdInput('');
       setConfirmPwdInput('');
     }, 2000);
@@ -177,11 +189,14 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
               </div>
               <div>
                     <h3 className="font-bold text-lg text-on-surface">Set Backup Password</h3>
-                <p className="text-xs text-on-surface-variant">Post-Tour Security Setup</p>
+                <p className="text-xs text-on-surface-variant">Before Your Interactive Tour</p>
               </div>
             </div>
             <button 
-              onClick={() => setShowPasswordModal(false)}
+              onClick={() => {
+                setShowPasswordModal(false);
+                setPasswordStepComplete(true);
+              }}
               className="p-1.5 text-on-surface-variant hover:text-on-surface rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
@@ -249,7 +264,10 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
             <div className="flex items-center gap-3 pt-3 border-t border-outline-variant/20">
               <button
                 type="button"
-                onClick={() => setShowPasswordModal(false)}
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordStepComplete(true);
+                }}
                 className="w-1/2 py-3 rounded-xl border border-outline-variant/30 text-on-surface-variant font-bold text-xs hover:bg-surface-variant transition-colors"
               >
                 Skip For Now

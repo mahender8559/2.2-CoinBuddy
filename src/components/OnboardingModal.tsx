@@ -4,15 +4,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
 
 export function OnboardingModal() {
-  const { isOnboardingOpen, setOnboardingOpen } = useAppContext();
+  const { isOnboardingOpen, setOnboardingOpen, setButtonTourOpen } = useAppContext();
   const [currentStep, setCurrentStep] = useState(0);
 
   if (!isOnboardingOpen) return null;
 
   const handleClose = () => {
+    const isFirstUse = localStorage.getItem('coinbuddy_onboarding_seen') !== 'true';
     localStorage.setItem('coinbuddy_onboarding_seen', 'true');
     setOnboardingOpen(false);
     setCurrentStep(0);
+    if (isFirstUse && localStorage.getItem('hasCompletedButtonTour') !== 'true') {
+      setButtonTourOpen(true);
+    }
   };
 
   const steps = [

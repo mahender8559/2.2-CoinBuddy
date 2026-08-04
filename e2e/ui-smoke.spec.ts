@@ -89,6 +89,7 @@ test('first tour spotlight and description match the add transaction button', as
   await page.addInitScript(() => {
     localStorage.setItem('coinbuddy_onboarding_seen', 'true');
     localStorage.removeItem('hasCompletedButtonTour');
+    localStorage.setItem('coinbuddy_backup_config', JSON.stringify({ hasPassword: true, backupPassword: 'test-password' }));
   });
   await page.goto('/');
 
@@ -118,4 +119,28 @@ test('first tour spotlight and description match the add transaction button', as
   expect(tooltipBounds!.y).toBeGreaterThanOrEqual(0);
   expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(viewport.width + 1);
   expect(tooltipBounds!.y + tooltipBounds!.height).toBeLessThanOrEqual(viewport.height + 1);
+});
+
+test('first-use setup runs walkthrough, password step, then spotlight tour once', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem('coinbuddy_onboarding_seen');
+    localStorage.removeItem('hasCompletedButtonTour');
+    localStorage.removeItem('coinbuddy_backup_config');
+  });
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: 'Next' }).click();
+  }
+  await page.getByRole('button', { name: 'Get Started' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Set Backup Password' })).toBeVisible();
+  await page.getByRole('button', { name: 'Skip For Now' }).click();
+  await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Skip Tour' }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).not.toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add Transaction' })).not.toBeVisible();
 });
