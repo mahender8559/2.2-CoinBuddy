@@ -627,6 +627,7 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
   const creditCards: CreditCardInfo[] = Array.isArray(data.creditCards) ? data.creditCards : [];
   const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
   const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+  const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
   for (const category of categories) {
     await driver.execute(
@@ -657,6 +658,12 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
 
   for (const rev of loanRevisions) {
     await insertLoanRevisionRow(driver, rev);
+  }
+  if (userConfig) {
+    await upsertUserConfig(driver, {
+      currency: userConfig.currency_code ?? data.currency ?? 'INR',
+      monthCycleDay: Number(userConfig.month_cycle_day ?? 25),
+    });
   }
 }
 

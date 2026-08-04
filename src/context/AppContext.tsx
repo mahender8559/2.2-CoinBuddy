@@ -54,6 +54,7 @@ type LedgerImportData = {
   transactions?: Transaction[];
   categories?: Category[];
   events?: Event[];
+  users_config?: { month_cycle_day?: number; currency_code?: string }[];
   creditCards?: CreditCardInfo[];
   widgets?: Widget[];
   loanRevisions?: LoanRevision[];
@@ -1310,13 +1311,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const validationError = validateLedgerImport(data);
     if (validationError) throw new Error(validationError);
     if (dbDriver) {
-      persistDbAction(async () => {
+      await persistDbAction(async () => {
         await importLedgerToDatabase(dbDriver, data);
       });
       const refreshed = await loadStateFromDatabase(dbDriver);
       setAccountRecords(stripAccountBalances(refreshed.accounts));
       setTransactions(refreshed.transactions);
       setCategories(refreshed.categories);
+      setEvents(refreshed.events);
       setCreditCardRecords(stripCardBalances(refreshed.creditCards));
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
@@ -1337,6 +1339,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
 
     if (data.currency) setCurrency(data.currency);
+    const importedConfig = data.users_config?.[0];
+    if (importedConfig?.currency_code) setCurrency(importedConfig.currency_code);
+    if (typeof importedConfig?.month_cycle_day === 'number') setMonthCycleDay(importedConfig.month_cycle_day);
     clearStacks();
     setLastUpdated(new Date().toISOString());
   };
