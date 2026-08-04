@@ -6,8 +6,11 @@ import './index.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
-  (screen.orientation as any).lock('portrait').catch(() => {
+type LockableScreenOrientation = ScreenOrientation & { lock?: (orientation: 'portrait') => Promise<void> };
+const screenOrientation = typeof screen !== 'undefined' ? screen.orientation as LockableScreenOrientation : undefined;
+
+if (screenOrientation?.lock) {
+  screenOrientation.lock('portrait').catch(() => {
     // Ignore errors for devices/browsers that don't support locking
   });
 }

@@ -41,8 +41,18 @@ import { createDefaultCategories } from '../constants/defaultCategories';
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
   actionType: 'add' | 'update' | 'delete';
-  previousState: any;
-  newState: any;
+  previousState: AccountUndoState | Transaction | null;
+  newState: AccountUndoState | Transaction | null;
+};
+export type AccountUndoState = { account: Account; openingTx: Transaction | null };
+type LedgerImportData = {
+  accounts?: Account[];
+  transactions?: Transaction[];
+  categories?: Category[];
+  creditCards?: CreditCardInfo[];
+  widgets?: Widget[];
+  loanRevisions?: LoanRevision[];
+  currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
 
@@ -126,7 +136,7 @@ interface AppContextType {
   removeWidget: (id: string) => void;
   lastUpdated: string;
   exportLedgerData: () => Record<string, unknown>;
-  importLedgerData: (data: any) => void;
+  importLedgerData: (data: LedgerImportData) => void;
   clearAllData: () => void;
   resetToDemoData: () => void;
   integrityWarning: string | null;
@@ -139,6 +149,36 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+/** Applies a command without React state so every restore path is testable. */
+export function applyUndoRedoCommand(cmd: UndoRedoCommand, isUndo: boolean, accounts: Account[], transactions: Transaction[]) {
+  const targetState = isUndo ? cmd.previousState : cmd.newState;
+  const targetAction = isUndo ? (cmd.actionType === 'add' ? 'delete' : cmd.actionType === 'delete' ? 'add' : 'update') : cmd.actionType;
+  let nextTransactions = [...transactions];
+  let nextAccounts = [...accounts];
+  if (cmd.entityType === 'transaction') {
+    const transaction = targetState as Transaction;
+    if (targetAction === 'add') nextTransactions = [transaction, ...nextTransactions.filter(item => item.id !== transaction.id)];
+    else if (targetAction === 'delete') {
+      const removed = (isUndo ? cmd.newState : cmd.previousState) as Transaction;
+      nextTransactions = nextTransactions.filter(item => item.id !== removed.id);
+    } else nextTransactions = nextTransactions.map(item => item.id === transaction.id ? transaction : item);
+  } else {
+    const state = targetState as AccountUndoState;
+    if (targetAction === 'add') {
+      nextAccounts = [state.account, ...nextAccounts.filter(item => item.id !== state.account.id)];
+      if (state.openingTx) nextTransactions = [state.openingTx, ...nextTransactions.filter(item => item.id !== state.openingTx!.id)];
+    } else if (targetAction === 'delete') {
+      const stateToRemove = (isUndo ? cmd.newState : cmd.previousState) as AccountUndoState;
+      nextAccounts = nextAccounts.filter(item => item.id !== stateToRemove.account.id);
+      if (stateToRemove.openingTx) nextTransactions = nextTransactions.filter(item => item.id !== stateToRemove.openingTx!.id);
+    } else {
+      nextAccounts = nextAccounts.map(item => item.id === state.account.id ? state.account : item);
+      if (state.openingTx) nextTransactions = nextTransactions.map(item => item.id === state.openingTx!.id ? state.openingTx! : item);
+    }
+  }
+  return { accounts: recomputeAllAccountBalances(nextAccounts, nextTransactions), transactions: nextTransactions };
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -210,7 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRedoStack([]);
   };
 
-  const executeCommand = (cmd: UndoRedoCommand, isUndo: boolean) => {
+function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, accounts: Account[], transactions: Transaction[]) {
     const { entityType, actionType, previousState, newState } = cmd;
     const targetState = isUndo ? previousState : newState;
     const targetAction = isUndo ? (actionType === 'add' ? 'delete' : actionType === 'delete' ? 'add' : 'update') : actionType;
@@ -223,22 +263,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (targetAction === 'add') {
         nextTxs = [txToApply, ...nextTxs.filter(t => t.id !== txToApply.id)];
       } else if (targetAction === 'delete') {
-        const tx = isUndo ? newState : previousState;
+        const tx = (isUndo ? newState : previousState) as Transaction;
         nextTxs = nextTxs.filter(t => t.id !== tx.id);
       } else if (targetAction === 'update') {
         nextTxs = nextTxs.map(t => t.id === txToApply.id ? txToApply : t);
       }
     } else if (entityType === 'account') {
+      const accountState = targetState as AccountUndoState;
       if (targetAction === 'add') {
-         const { account, openingTx } = targetState;
+         const { account, openingTx } = accountState;
          nextAccs = [account, ...nextAccs.filter(a => a.id !== account.id)];
          if (openingTx) nextTxs = [openingTx, ...nextTxs.filter(t => t.id !== openingTx.id)];
       } else if (targetAction === 'delete') {
-         const { account, openingTx } = isUndo ? newState : previousState;
+         const { account, openingTx } = (isUndo ? newState : previousState) as AccountUndoState;
          nextAccs = nextAccs.filter(a => a.id !== account.id);
          if (openingTx) nextTxs = nextTxs.filter(t => t.id !== openingTx.id);
       } else if (targetAction === 'update') {
-         const { account, openingTx } = targetState;
+         const { account, openingTx } = accountState;
          nextAccs = nextAccs.map(a => a.id === account.id ? account : a);
          if (openingTx) {
             nextTxs = nextTxs.map(t => t.id === openingTx.id ? openingTx : t);
@@ -248,10 +289,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Recompute all account balances dynamically from scratch using the filtered transaction array
     nextAccs = recomputeAllAccountBalances(nextAccs, nextTxs);
-    const nextCards = projectCreditCards(nextAccs, creditCards);
+    return { accounts: nextAccs, transactions: nextTxs };
+}
 
-    setTransactions(nextTxs);
-    setAccountRecords(stripAccountBalances(nextAccs));
+  const executeCommand = (cmd: UndoRedoCommand, isUndo: boolean) => {
+    const nextState = applyUndoRedoCommand(cmd, isUndo, accounts, transactions);
+    const nextCards = projectCreditCards(nextState.accounts, creditCards);
+
+    setTransactions(nextState.transactions);
+    setAccountRecords(stripAccountBalances(nextState.accounts));
     setCreditCardRecords(stripCardBalances(nextCards));
   };
 
@@ -321,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const totalLiabilities = typeof totalLiabilitiesRes === 'number' ? totalLiabilitiesRes : 0;
   const netWorthRes = safeCompute(() => totalAssets - totalLiabilities, SAFE_MATH_ERRORS.DRIFT);
-  const netWorth = typeof netWorthRes === 'number' ? netWorthRes : (netWorthRes as any);
+  const netWorth = typeof netWorthRes === 'number' ? netWorthRes : 0;
   const getAccountBalance = (accountId: string) => accounts.find(a => a.id === accountId)?.balance ?? 0;
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -887,7 +933,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!targetAccount) return;
 
     const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
+      (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
     
@@ -978,7 +1024,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const hasHistory = transactions.some(t => {
-      const isOpening = t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE';
+      const isOpening = t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE';
       if (isOpening) return false;
 
       const isInvolved = t.account === id || t.fromAccountId === id || t.toAccountId === id;
@@ -987,7 +1033,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (!hasHistory) {
       setTransactions(prev => prev.filter(t => !(
-        (t.isOpeningBalance || t.category === '#opening' || (t as any).transaction_type === 'OPENING_BALANCE') &&
+        (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
         (t.account === id || t.fromAccountId === id || t.toAccountId === id)
       )));
       setAccountRecords(prev => prev.filter(a => a.id !== id));
@@ -1187,7 +1233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const importLedgerData = async (data: any) => {
+  const importLedgerData = async (data: LedgerImportData) => {
     const validationError = validateLedgerImport(data);
     if (validationError) throw new Error(validationError);
     if (dbDriver) {

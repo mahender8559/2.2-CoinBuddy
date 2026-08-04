@@ -1,4 +1,5 @@
 import initSqlJs from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
 import { Account, Category, CreditCardInfo, LoanRevision, Transaction, Widget } from '../types';
@@ -134,7 +135,9 @@ function createDriver(db: any): SqlJsDatabaseDriver {
 }
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
-  const SQL = await initSqlJs({ locateFile: (file) => file });
+  // Importing the binary lets Vite emit it under /assets, where Workbox
+  // precaches it with the rest of the application shell.
+  const SQL = await initSqlJs({ locateFile: (file) => file.endsWith('.wasm') ? sqlWasmUrl : file });
   let saved = await readOpfsSnapshot() ?? await readSnapshot();
   if (!saved) {
     const legacy = localStorage.getItem(DB_STORAGE_KEY);

@@ -5,6 +5,9 @@ import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
 import { exportToExcel } from '../utils/exportExcel';
 import { BackupManager } from '../utils/backupManager';
+import type { ComponentType, SVGProps } from 'react';
+
+const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
   const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen } = useAppContext();
@@ -119,8 +122,8 @@ export function Settings() {
                     try {
                       await exportToExcel(transactions, accounts, categories, currency);
                       showAlert('Export Complete', 'Your Excel file was downloaded successfully.');
-                    } catch (err: any) {
-                      showAlert('Export Error', err?.message || 'Failed to export Excel file.');
+                    } catch (err: unknown) {
+                      showAlert('Export Error', getErrorMessage(err, 'Failed to export Excel file.'));
                     }
                   }
                   setExportModalOpen(false);
@@ -142,8 +145,8 @@ export function Settings() {
                     }
                     await BackupManager.executeManualBackup(parsed.backupPassword, 'LOCAL');
                     showAlert('Success', 'Encrypted backup generated and downloaded successfully.');
-                  } catch (err: any) {
-                    showAlert('Backup Error', err?.message || 'Failed to generate encrypted backup.');
+                  } catch (err: unknown) {
+                    showAlert('Backup Error', getErrorMessage(err, 'Failed to generate encrypted backup.'));
                   }
                   setExportModalOpen(false);
                 }}
@@ -609,7 +612,7 @@ export function Settings() {
   );
 }
 
-function SettingToggle({ icon: Icon, title, desc, checked, onChange, tourId }: any) {
+function SettingToggle({ icon: Icon, title, desc, checked, onChange, tourId }: { icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; desc: string; checked: boolean; onChange: () => void; tourId?: string }) {
   return (
     <div data-tour-id={tourId} className="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors cursor-pointer group" onClick={onChange}>
       <div className="flex items-center gap-4">
@@ -628,7 +631,7 @@ function SettingToggle({ icon: Icon, title, desc, checked, onChange, tourId }: a
   );
 }
 
-function DataCard({ icon: Icon, label, title, desc, onClick }: any) {
+function DataCard({ icon: Icon, label, title, desc, onClick }: { icon: ComponentType<SVGProps<SVGSVGElement>>; label: string; title: string; desc: string; onClick: () => void }) {
   return (
     <div className="bg-surface-container rounded-2xl p-5 border border-outline-variant/30 flex flex-col gap-3 hover:border-primary/50 transition-colors cursor-pointer group" onClick={onClick}>
       <div className="flex items-center justify-between">

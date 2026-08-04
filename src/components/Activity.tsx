@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
@@ -171,7 +172,7 @@ export function Activity() {
         {typeFilters.map(type => (
           <button
             key={type}
-            onClick={() => setSelectedTypeFilter(type as any)}
+            onClick={() => setSelectedTypeFilter(type)}
             className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${selectedTypeFilter === type ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface hover:bg-surface-variant'}`}
           >
             {type}
@@ -225,7 +226,7 @@ export function Activity() {
             <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
             <select 
               value={selectedSort}
-              onChange={(e) => setSelectedSort(e.target.value as any)}
+              onChange={(e) => setSelectedSort(e.target.value as typeof selectedSort)}
               className="w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none"
             >
               <option value="date-desc">Date (Latest)</option>
@@ -354,7 +355,25 @@ export function Activity() {
   );
 }
 
-function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, tourId }: any) {
+type TransactionRowProps = {
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  title: string;
+  subtitle: string;
+  amount: string;
+  tag?: string;
+  color: string;
+  isIncome?: boolean;
+  isTransfer?: boolean;
+  type: string;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  tourId?: string;
+};
+
+function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, tourId }: TransactionRowProps) {
   const colorMap: Record<string, { bg: string, text: string }> = {
     primary: { bg: 'bg-primary-container/20', text: 'text-primary' },
     secondary: { bg: 'bg-secondary-container/20', text: 'text-secondary' },

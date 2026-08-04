@@ -15,7 +15,13 @@ export default defineConfig(() => {
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,wasm,woff2}'],
+        // Keep the complete app shell, including sql.js' emitted WASM file,
+        // available before the browser is taken offline.
+        globPatterns: [
+          '**/*.{html,ico,png,svg,json}',
+          'assets/**/*.{js,css,wasm,woff2}',
+          '**/sql-wasm*.wasm',
+        ],
         // OAuth and Drive endpoints must never be satisfied by the SPA
         // navigation fallback or a cached response.
         navigateFallbackDenylist: [/^\/api\//],

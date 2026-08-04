@@ -195,10 +195,10 @@ export function ManageFinances() {
           </div>
 
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-            {['All', 'Essential', 'Leisure'].map(group => (
+            {(['All', 'Essential', 'Leisure'] as const).map(group => (
               <button
                 key={group}
-                onClick={() => setFilterGroup(group as any)}
+                onClick={() => setFilterGroup(group)}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${filterGroup === group ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-variant'}`}
               >
                 {group}
