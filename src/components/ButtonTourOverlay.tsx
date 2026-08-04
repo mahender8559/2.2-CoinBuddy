@@ -295,9 +295,10 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     pointerEvents: 'none',
   };
 
+  const tooltipWidth = Math.min(320, window.innerWidth - 32);
   let tooltipTop = '50%';
   let tooltipLeft = '50%';
-  let tooltipTransform = 'translate(-50%, -50%)';
+  let tooltipTranslate = '-50% -50%';
 
   if (targetRect) {
     const spaceBelow = window.innerHeight - targetRect.bottom;
@@ -305,16 +306,16 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     
     if (spaceBelow > 200) {
       tooltipTop = `${targetRect.bottom + pad + 16}px`;
-      tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - 300 - 16, targetRect.left + targetRect.width / 2 - 150))}px`;
-      tooltipTransform = 'none';
+      tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - tooltipWidth - 16, targetRect.left + targetRect.width / 2 - tooltipWidth / 2))}px`;
+      tooltipTranslate = '0 0';
     } else if (spaceAbove > 200) {
       tooltipTop = `${targetRect.top - pad - 16}px`;
-      tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - 300 - 16, targetRect.left + targetRect.width / 2 - 150))}px`;
-      tooltipTransform = 'translateY(-100%)';
+      tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - tooltipWidth - 16, targetRect.left + targetRect.width / 2 - tooltipWidth / 2))}px`;
+      tooltipTranslate = '0 -100%';
     } else {
       tooltipTop = '50%';
       tooltipLeft = '50%';
-      tooltipTransform = 'translate(-50%, -50%)';
+      tooltipTranslate = '-50% -50%';
     }
   }
 
@@ -325,16 +326,16 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
 
       <motion.div
         layout
-        initial={{ opacity: 0, scale: 0.9, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: 10 }}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.3 }}
         style={{
           position: 'fixed',
           top: tooltipTop,
           left: tooltipLeft,
-          transform: tooltipTransform,
-          width: '320px',
+          translate: tooltipTranslate,
+          width: `${tooltipWidth}px`,
           maxWidth: 'calc(100vw - 32px)',
           zIndex: 9999,
           pointerEvents: 'auto'

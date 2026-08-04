@@ -84,3 +84,38 @@ test('interactive buttons expose an accessible name', async ({ page }) => {
 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
+
+test('first tour spotlight and description match the add transaction button', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
+    localStorage.removeItem('hasCompletedButtonTour');
+  });
+  await page.goto('/');
+
+  const target = page.locator('[data-tour-id="tour-add-transaction"]');
+  const tooltip = page.getByRole('heading', { name: 'Add Transaction' }).locator('xpath=../../..');
+  const spotlight = page.locator('div[style*="box-shadow"]').first();
+
+  await expect(target).toBeVisible();
+  await expect(tooltip).toContainText('quickly log income, expenses, or transfers');
+  await expect(spotlight).toBeVisible();
+
+  const [targetBounds, tooltipBounds, spotlightBounds, viewport] = await Promise.all([
+    target.boundingBox(),
+    tooltip.boundingBox(),
+    spotlight.boundingBox(),
+    page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
+  ]);
+
+  expect(targetBounds).not.toBeNull();
+  expect(tooltipBounds).not.toBeNull();
+  expect(spotlightBounds).not.toBeNull();
+  expect(spotlightBounds!.x).toBeCloseTo(targetBounds!.x - 8, 0);
+  expect(spotlightBounds!.y).toBeCloseTo(targetBounds!.y - 8, 0);
+  expect(spotlightBounds!.width).toBeCloseTo(targetBounds!.width + 16, 0);
+  expect(spotlightBounds!.height).toBeCloseTo(targetBounds!.height + 16, 0);
+  expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(tooltipBounds!.y + tooltipBounds!.height).toBeLessThanOrEqual(viewport.height + 1);
+});
