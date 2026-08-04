@@ -5,6 +5,7 @@ import { Category } from '../types';
 import { icons } from '../icons';
 import { Cards } from './Cards';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { getCategorySpend } from '../utils/budget';
 
 
 export function ManageFinances() {
@@ -64,11 +65,8 @@ export function ManageFinances() {
   });
 
   const getSpent = (catId: string, catName: string) => {
-    const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0);
-    const catTag = `#${catName.toLowerCase().replace(/\s+/g, '')}`;
-    return currentMonthTxs
-      .filter(t => t.type === 'expense' && (t.category === catTag || t.category === catId))
-      .reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const category = categories.find(item => item.id === catId || item.name === catName);
+    return category ? getCategorySpend(category, transactions, isDateInCurrentCycle) : 0;
   };
 
   const getSavingsTotal = (catId: string, catName: string) => {
