@@ -239,7 +239,7 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
   });
 
   it('treats a same-account transfer as net zero and identifies only non-opening history', () => {
-    const selfTransfer: Transaction = { id: 'self', title: 'Bad transfer', subtitle: '', amount: 100, date: '2026-01-01', category: '', icon: '', type: 'transfer', fromAccountId: 'checking', toAccountId: 'checking', is_verified: 1 };
+    const selfTransfer: Transaction = { id: 'self', title: 'Bad transfer', subtitle: '', amount: 100, date: '2026-01-01', category: '', icon: 'Tag', type: 'transfer', fromAccountId: 'checking', toAccountId: 'checking', is_verified: 1 };
     expect(applyTransactionEffect(selfTransfer, mockAccounts[0])).toBe(0);
     expect(hasRealTransactionHistory('checking', mockTransactions.filter(tx => tx.isOpeningBalance))).toBe(false);
     expect(hasRealTransactionHistory('checking', mockTransactions)).toBe(true);
@@ -248,7 +248,7 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
   it('blocks opening-balance edits that would create historical overdraft or exceed a card limit', () => {
     const ledgerWithLaterSpend = [...mockTransactions, {
       id: 'late-spend', title: 'Later spend', subtitle: '', amount: 4_500, date: '2026-01-20T00:00:00.000Z',
-      category: 'Bills', icon: '', type: 'expense' as const, fromAccountId: 'checking', is_verified: 1,
+      category: 'Bills', icon: 'Tag' as const, type: 'expense' as const, fromAccountId: 'checking', is_verified: 1,
     }];
     expect(validateOpeningBalance(mockAccounts[0], ledgerWithLaterSpend, 1000).valid).toBe(false);
     expect(validateOpeningBalance(mockAccounts[0], ledgerWithLaterSpend, 1000).error).toContain('Cannot set initial balance lower than');

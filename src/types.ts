@@ -1,4 +1,5 @@
 export type Tab = 'dashboard' | 'activity' | 'insights' | 'manage' | 'settings';
+import type { IconName } from './icons';
 
 export interface LoanRevision {
   id: string;
@@ -41,7 +42,7 @@ export interface Account {
 export type Category = {
   id: string;
   name: string;
-  icon: string;
+  icon: IconName;
   budget?: number;
   tags?: string[];
   group?: 'Essential' | 'Leisure' | 'Savings';
@@ -55,7 +56,7 @@ export type Transaction = {
   amount: number;
   date: string;
   category: string;
-  icon: string;
+  icon: IconName;
   type: 'income' | 'expense' | 'transfer';
   account?: string;
   isRecurring?: boolean;
