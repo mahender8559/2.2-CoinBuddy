@@ -807,9 +807,9 @@ export function AddAccountModal() {
                   {interestCalculationType === 'INTEREST_ONLY' && (
                     <p className="text-[11px] text-primary mt-1.5 flex items-center gap-1 font-medium">
                       <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-                      {paymentFrequency === 'QUARTERLY' && 'Quarterly: balance Ã— (rate / 400)'}
-                      {paymentFrequency === 'ANNUALLY' && 'Annually: balance Ã— (rate / 100)'}
-                      {paymentFrequency === 'MONTHLY' && 'Monthly: balance Ã— (rate / 1200)'}
+                      {paymentFrequency === 'QUARTERLY' && 'Quarterly: balance × (rate / 400)'}
+                      {paymentFrequency === 'ANNUALLY' && 'Annually: balance × (rate / 100)'}
+                      {paymentFrequency === 'MONTHLY' && 'Monthly: balance × (rate / 1200)'}
                     </p>
                   )}
                 </div>
@@ -832,7 +832,7 @@ export function AddAccountModal() {
                 <div className="grid grid-cols-3 gap-2.5 pt-1">
                   <div>
                     <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Fixed Late Fee (â‚¹)
+                      Fixed Late Fee (₹)
                     </label>
                     <input 
                       type="number"
