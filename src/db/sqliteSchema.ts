@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS categories (
   icon_name TEXT,
   budget REAL NOT NULL DEFAULT 0,
   is_rollover INTEGER NOT NULL DEFAULT 0,
+  rollover_account_id TEXT,
   tags_json TEXT,
   group_name TEXT
 );
@@ -304,6 +305,7 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE transactions ADD COLUMN recurring_rule_id TEXT;`,
   `ALTER TABLE transactions ADD COLUMN due_date TEXT;`,
   `ALTER TABLE transactions ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
+  `ALTER TABLE categories ADD COLUMN rollover_account_id TEXT;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -377,6 +379,7 @@ export interface CategoryRow {
   type: CategoryType;
   icon_name?: string | null;
   is_rollover: number;
+  rollover_account_id?: string | null;
 }
 
 export interface TransactionRow {

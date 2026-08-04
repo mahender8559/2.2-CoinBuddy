@@ -10,6 +10,7 @@ const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
 const SNAPSHOT_STORE = 'snapshots';
 const SNAPSHOT_KEY = 'primary';
 const OPFS_SNAPSHOT_FILE = 'coinbuddy.sqlite';
+const SKIP_DEMO_SEED_KEY = 'coinbuddy_skip_demo_seed';
 
 /** SQLite cannot alter a CHECK constraint in place, so persisted ledgers need
  * a one-time table rebuild when adjustment transaction types are introduced. */
@@ -190,6 +191,7 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
   }
   const isNewDatabase = !saved;
   const db = saved ? new SQL.Database(saved) : new SQL.Database();
+  const shouldSkipDemoSeed = localStorage.getItem(SKIP_DEMO_SEED_KEY) === 'true';
 
   db.run(SQLITE_PRAGMA_SETUP);
   db.run(CREATE_TABLES_SQL);
@@ -203,6 +205,10 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     }
   }
   migrateTransactionTypeConstraint(db);
+
+  if (shouldSkipDemoSeed) {
+    localStorage.removeItem(SKIP_DEMO_SEED_KEY);
+  }
 
   return createDriver(db, isNewDatabase);
 }
@@ -247,6 +253,28 @@ export async function deletePersistedDatabase(): Promise<void> {
   if (getDirectory) {
     try { await (await getDirectory()).removeEntry(OPFS_SNAPSHOT_FILE); } catch { /* file did not exist */ }
   }
+}
+
+export function clearAppBrowserStorage(): void {
+  const appStorageKeys = [
+    'coinbuddy_backup_config',
+    'coinbuddy_onboarding_seen',
+    'hasCompletedButtonTour',
+    'coinbuddy_balances_visible',
+    'monthly-tracker-state',
+    'coinbuddy_saved_backups',
+    'coinbuddy_sqlite_db',
+    'coinbuddy_drive_oauth_result',
+  ];
+
+  for (const key of appStorageKeys) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
+}
+
+export function markClearStoragePending(): void {
+  localStorage.setItem(SKIP_DEMO_SEED_KEY, 'true');
 }
 
 export function normalizeAccountRow(row: any): Account {
@@ -464,15 +492,15 @@ export async function updateAccountRow(driver: SqlJsDatabaseDriver, account: Acc
 
 export async function insertCategoryRow(driver: SqlJsDatabaseDriver, category: Category): Promise<void> {
   await driver.execute(
-    `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-    [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+    `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
   );
 }
 
 export async function updateCategoryRow(driver: SqlJsDatabaseDriver, id: string, category: Category): Promise<void> {
   await driver.execute(
-    `UPDATE categories SET name = ?, type = ?, icon_name = ?, budget = ?, is_rollover = ?, tags_json = ?, group_name = ? WHERE id = ?;`,
-    [category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, id]
+    `UPDATE categories SET name = ?, type = ?, icon_name = ?, budget = ?, is_rollover = ?, rollover_account_id = ?, tags_json = ?, group_name = ? WHERE id = ?;`,
+    [category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, id]
   );
 }
 
@@ -550,7 +578,7 @@ export async function deleteTransactionRow(driver: SqlJsDatabaseDriver, id: stri
 }
 
 export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
-  await driver.execute(`DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts;`);
+  await driver.execute(`DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
 }
 
 export async function createRecurringRule(driver: SqlJsDatabaseDriver, template: Omit<Transaction, 'id'> & { id?: string }): Promise<string> {
@@ -618,52 +646,45 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
 export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {
   const validationError = validateLedgerImport(data);
   if (validationError) throw new Error(validationError);
-  await clearDatabase(driver);
+  await driver.execute('BEGIN TRANSACTION');
+  try {
+    await clearDatabase(driver);
 
-  const accounts: Account[] = Array.isArray(data.accounts) ? data.accounts : [];
-  const categories: Category[] = Array.isArray(data.categories) ? data.categories : [];
-  const events: Event[] = Array.isArray(data.events) ? data.events : [];
-  const transactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions : [];
-  const creditCards: CreditCardInfo[] = Array.isArray(data.creditCards) ? data.creditCards : [];
-  const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
-  const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
-  const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
+    const accounts: Account[] = Array.isArray(data.accounts) ? data.accounts : [];
+    const categories: Category[] = Array.isArray(data.categories) ? data.categories : [];
+    const events: Event[] = Array.isArray(data.events) ? data.events : [];
+    const transactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions : [];
+    const creditCards: CreditCardInfo[] = Array.isArray(data.creditCards) ? data.creditCards : [];
+    const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
+    const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+    const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
-  for (const category of categories) {
-    await driver.execute(
-      `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-      [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
-    );
-  }
+    for (const category of categories) {
+      await driver.execute(
+        `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+      );
+    }
 
-  for (const account of accounts) {
-    await insertAccountRow(driver, account, 0);
-  }
+    for (const account of accounts) {
+      await insertAccountRow(driver, account, 0, crypto.randomUUID(), false);
+    }
 
-  for (const event of events) {
-    await insertEventRow(driver, event);
-  }
-
-  for (const tx of transactions) {
-    await insertTransactionRow(driver, tx);
-  }
-
-  for (const card of creditCards) {
-    await insertCreditCardRow(driver, card);
-  }
-
-  for (const widget of widgets) {
-    await insertWidgetRow(driver, widget);
-  }
-
-  for (const rev of loanRevisions) {
-    await insertLoanRevisionRow(driver, rev);
-  }
-  if (userConfig) {
-    await upsertUserConfig(driver, {
-      currency: userConfig.currency_code ?? data.currency ?? 'INR',
-      monthCycleDay: Number(userConfig.month_cycle_day ?? 25),
-    });
+    for (const event of events) await insertEventRow(driver, event);
+    for (const tx of transactions) await insertTransactionRow(driver, tx);
+    for (const card of creditCards) await insertCreditCardRow(driver, card);
+    for (const widget of widgets) await insertWidgetRow(driver, widget);
+    for (const rev of loanRevisions) await insertLoanRevisionRow(driver, rev);
+    if (userConfig) {
+      await upsertUserConfig(driver, {
+        currency: userConfig.currency_code ?? data.currency ?? 'INR',
+        monthCycleDay: Number(userConfig.month_cycle_day ?? 25),
+      });
+    }
+    await driver.execute('COMMIT');
+  } catch (error) {
+    await driver.execute('ROLLBACK');
+    throw error;
   }
 }
 
@@ -681,6 +702,7 @@ export function normalizeCategoryRow(row: any): Category {
     icon: row.icon_name ?? row.icon ?? 'Tag',
     budget: Number(row.budget ?? 0),
     isRollover: Number(row.is_rollover ?? 0) === 1,
+    rolloverAccountId: row.rollover_account_id ?? undefined,
     tags,
     group: row.group_name ?? undefined,
     type: row.type?.toLowerCase() === 'income' ? 'income' : 'expense',

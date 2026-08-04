@@ -91,6 +91,7 @@ export function LoanAmortizationExplorer() {
 
   // Table expand & pagination
   const [isTableExpanded, setIsTableExpanded] = useState<boolean>(false);
+  const [isExplorerExpanded, setIsExplorerExpanded] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const rowsPerPage = 12;
 
@@ -163,10 +164,10 @@ export function LoanAmortizationExplorer() {
               onChange={(e) => handleAccountSelect(e.target.value)}
               className="bg-surface-container border border-outline-variant/30 rounded-xl py-1.5 px-3 text-xs font-medium text-on-surface focus:outline-none focus:border-primary"
             >
-              <option value="custom">âš™ï¸ Custom Loan Scenario</option>
+              <option value="custom"> Custom Loan Scenario</option>
               {loanAccounts.map(acc => (
                 <option key={acc.id} value={acc.id}>
-                  ðŸ¦ {acc.name} ({formatCurrency(acc.balance)})
+                   {acc.name} ({formatCurrency(acc.balance)})
                 </option>
               ))}
             </select>
@@ -182,13 +183,18 @@ export function LoanAmortizationExplorer() {
             )}
           </div>
         )}
+        <button onClick={() => setIsExplorerExpanded(open => !open)} className="self-end sm:self-auto px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-xs font-bold flex items-center gap-1.5 hover:bg-primary/20">
+          {isExplorerExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          {isExplorerExpanded ? 'Collapse' : 'Open'}
+        </button>
       </div>
 
+      <div className={isExplorerExpanded ? 'space-y-6' : 'hidden'}>
       {/* Input Controls Grid */}
       <div className="bg-surface-container p-3 sm:p-4 rounded-2xl border border-outline-variant/20 grid grid-cols-1 min-[390px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mobile-compact-grid">
         <div>
           <label className="block text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1 flex items-center gap-1">
-            <Landmark className="w-3.5 h-3.5 text-primary" /> Principal (â‚¹)
+            <Landmark className="w-3.5 h-3.5 text-primary" /> Principal ()
           </label>
           <input
             type="number"
@@ -397,7 +403,7 @@ export function LoanAmortizationExplorer() {
                 <YAxis 
                   yAxisId="monthly"
                   tick={{ fontSize: 10, fill: 'var(--color-on-surface-variant)' }}
-                  tickFormatter={(val) => `â‚¹${val}`}
+                  tickFormatter={(val) => `${val}`}
                   axisLine={false}
                   tickLine={false}
                   width={60}
@@ -406,7 +412,7 @@ export function LoanAmortizationExplorer() {
                   yAxisId="balance"
                   orientation="right"
                   tick={{ fontSize: 10, fill: 'var(--color-on-surface-variant)' }}
-                  tickFormatter={(val) => `â‚¹${Math.round(val/1000)}k`}
+                  tickFormatter={(val) => `${Math.round(val/1000)}k`}
                   axisLine={false}
                   tickLine={false}
                   width={55}
@@ -553,6 +559,8 @@ export function LoanAmortizationExplorer() {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
       </div>
 
       <UpdateLoanRateModal

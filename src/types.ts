@@ -46,6 +46,7 @@ export type Category = {
   icon: IconName;
   budget?: number;
   isRollover?: boolean;
+  rolloverAccountId?: string;
   tags?: string[];
   group?: 'Essential' | 'Leisure' | 'Savings';
   type?: 'expense' | 'income';
