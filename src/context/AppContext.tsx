@@ -964,6 +964,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteAccount = (id: string) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
+    const openingTransactions = transactions.filter(transaction =>
+      (transaction.isOpeningBalance || transaction.category === '#opening' || transaction.transaction_type === 'OPENING_BALANCE') &&
+      (transaction.account === id || transaction.toAccountId === id || transaction.fromAccountId === id)
+    );
+    const relatedCard = creditCards.find(card => card.id === id);
     clearStacks();
 
     if (dbDriver) {
@@ -994,6 +999,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccountRecords(prev => prev.map(a => a.id === id ? { ...a, is_archived: 1 } : a));
       setCreditCardRecords(prev => prev.filter(c => c.id !== id));
     }
+    showToast(hasHistory ? 'Account archived' : 'Account deleted', 'Undo', () => {
+      if (hasHistory) {
+        setAccountRecords(prev => prev.map(account => account.id === id ? { ...account, is_archived: 0 } : account));
+        if (relatedCard) setCreditCardRecords(prev => prev.some(card => card.id === id) ? prev : [relatedCard, ...prev]);
+        if (dbDriver) persistDbAction(() => updateAccountRow(dbDriver, { ...targetAccount, is_archived: 0 }));
+      } else {
+        setAccountRecords(prev => prev.some(account => account.id === id) ? prev : [targetAccount, ...prev]);
+        setTransactions(prev => [...openingTransactions.filter(transaction => !prev.some(existing => existing.id === transaction.id)), ...prev]);
+        if (relatedCard) setCreditCardRecords(prev => prev.some(card => card.id === id) ? prev : [relatedCard, ...prev]);
+        if (dbDriver) persistDbAction(async () => {
+          await insertAccountRow(dbDriver, targetAccount, 0);
+          for (const transaction of openingTransactions) await insertTransactionRow(dbDriver, transaction);
+          if (relatedCard) await insertCreditCardRow(dbDriver, relatedCard);
+        });
+      }
+    });
   };
 
   const transferFunds = (amount: number, fromId: string, toId: string) => {
