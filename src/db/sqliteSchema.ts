@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_recurring INTEGER NOT NULL DEFAULT 0,
   is_opening_balance INTEGER NOT NULL DEFAULT 0,
   is_interest_only INTEGER NOT NULL DEFAULT 0,
+  transaction_group_id TEXT,
   FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -274,6 +275,7 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE categories ADD COLUMN group_name TEXT;`,
   `ALTER TABLE transactions ADD COLUMN recurring_rule_id TEXT;`,
   `ALTER TABLE transactions ADD COLUMN due_date TEXT;`,
+  `ALTER TABLE transactions ADD COLUMN transaction_group_id TEXT;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `

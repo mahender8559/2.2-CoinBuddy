@@ -18,6 +18,7 @@ export function AddTransactionModal() {
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [isRecurring, setIsRecurring] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [groupId, setGroupId] = useState('');
 
   const activeAccounts = useMemo(() => accounts.filter(a => !a.is_archived), [accounts]);
   const assets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived), [accounts]);
@@ -73,6 +74,7 @@ export function AddTransactionModal() {
       setToAccountId(editingTransaction.toAccountId || '');
       setIsRecurring(editingTransaction.isRecurring || false);
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
+      setGroupId(editingTransaction.groupId || '');
       
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
       if (catObj) setCategoryId(catObj.id);
@@ -82,6 +84,7 @@ export function AddTransactionModal() {
       setType('expense');
       setIsRecurring(false);
       setDate(new Date().toISOString().split('T')[0]);
+      setGroupId('');
       setCategoryId(categories[0]?.id || '');
       
       if (assets.length > 0) setAccount(assets[0].id);
@@ -189,6 +192,7 @@ export function AddTransactionModal() {
       toAccountId: type === 'transfer' ? toAccountId : (type === 'expense' && isLiabilityAcc ? account : undefined),
       isRecurring,
       isInterestOnly,
+      groupId: groupId.trim() || undefined,
       is_verified: isFuture ? 0 : 1
     };
 
@@ -240,6 +244,16 @@ export function AddTransactionModal() {
               <span className="text-xs font-bold leading-tight">{error.message}</span>
             </div>
           )}
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Event / outing (optional)</label>
+            <input
+              value={groupId}
+              onChange={event => setGroupId(event.target.value)}
+              placeholder="e.g. Goa trip, Birthday dinner"
+              className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
+            />
+          </div>
           
           {editingTransaction ? null : (
             <div className="flex gap-2 p-1 bg-surface-container-low rounded-2xl border border-outline-variant/30">

@@ -63,6 +63,14 @@ export function Insights() {
   const top4 = categoryTotals.slice(0, 4);
   const topCategoryInfo = top4.length > 0 ? top4[0] : null;
 
+  const eventTotals = useMemo(() => Object.entries(
+    transactions.reduce<Record<string, number>>((totals, transaction) => {
+      if (!transaction.groupId || transaction.isOpeningBalance || transaction.is_verified === 0 || transaction.type !== 'expense') return totals;
+      totals[transaction.groupId] = (totals[transaction.groupId] || 0) + Math.abs(transaction.amount);
+      return totals;
+    }, {})
+  ).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total), [transactions]);
+
   const getCategoryDetails = (catIdentifier: string) => {
     const matchedCategory = categories.find(c => 
       `#${c.name.toLowerCase().replace(/\s+/g, '')}` === catIdentifier || c.id === catIdentifier
@@ -600,6 +608,20 @@ export function Insights() {
         <div className="lg:col-span-12">
           <LoanAmortizationExplorer />
         </div>
+
+        {eventTotals.length > 0 && (
+          <div className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
+            <h3 className="text-xl font-bold text-on-surface mb-4">Event & Outing Spend</h3>
+            <div className="space-y-3">
+              {eventTotals.map(event => (
+                <div key={event.name} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="truncate text-on-surface-variant">{event.name}</span>
+                  <span className="shrink-0 font-bold text-on-surface">{formatCurrency(event.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Net Worth Trend */}
         <div className="lg:col-span-8 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">

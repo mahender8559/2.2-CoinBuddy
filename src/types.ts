@@ -65,6 +65,8 @@ export type Transaction = {
   isOpeningBalance?: boolean;
   recurringRuleId?: string;
   dueDate?: string;
+  /** Optional free-text event or outing label for grouped reporting. */
+  groupId?: string;
   transaction_type?: string;
   is_verified?: number;
   notes?: string;
