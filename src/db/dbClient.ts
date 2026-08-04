@@ -17,6 +17,19 @@ export interface SqlJsDatabaseDriver {
   exportToBase64: () => string;
 }
 
+/** Reject malformed backups before clearing the existing ledger. */
+export function validateLedgerImport(data: unknown): string | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Backup must be a JSON object.';
+  const ledger = data as Record<string, unknown>;
+  if (ledger.schemaVersion !== 'coinbuddy-ledger-v3') return 'This backup is not a supported CoinBuddy ledger export.';
+  for (const key of ['accounts', 'transactions', 'categories', 'creditCards', 'widgets', 'loanRevisions']) {
+    if (!Array.isArray(ledger[key])) return `Backup field "${key}" must be an array.`;
+  }
+  if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
+  if (!(ledger.transactions as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown; amount?: unknown }).id === 'string' && Number.isFinite(Number((value as { amount?: unknown }).amount)) && Number((value as { amount?: unknown }).amount) > 0)) return 'Every imported transaction must have an id and positive amount.';
+  return null;
+}
+
 function bufferToBase64(buffer: Uint8Array): string {
   let binary = '';
   const bytes = buffer;
@@ -521,6 +534,8 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
 }
 
 export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {
+  const validationError = validateLedgerImport(data);
+  if (validationError) throw new Error(validationError);
   await clearDatabase(driver);
 
   const accounts: Account[] = Array.isArray(data.accounts) ? data.accounts : [];

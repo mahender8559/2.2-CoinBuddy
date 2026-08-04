@@ -26,6 +26,7 @@ import {
   deleteLoanRevisionRow,
   clearDatabase,
   importLedgerToDatabase,
+  validateLedgerImport,
   loadAppSettings,
   upsertAppSetting,
   createRecurringRule,
@@ -303,7 +304,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [widgets, setWidgets] = useState<Widget[]>([]);
-  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: Math.random().toString(36).substr(2, 9) }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
+  const addWidget = (widget: Omit<Widget, 'id'>) => { const newWidget: Widget = { ...widget, id: crypto.randomUUID() }; setWidgets([...widgets, newWidget]); if (dbDriver) { insertWidgetRow(dbDriver, newWidget).then(() => persistDatabase(dbDriver)).catch(console.error); } };
   const removeWidget = (id: string) => { setWidgets(widgets.filter(w => w.id !== id)); if (dbDriver) { deleteWidgetRow(dbDriver, id).then(() => persistDatabase(dbDriver)).catch(console.error); } };
 
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
@@ -641,7 +642,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addLoanRevision = (revision: Omit<LoanRevision, 'id'>) => {
-    const newId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newId = crypto.randomUUID();
     const accId = revision.accountId;
     const newRev: LoanRevision = {
       ...revision,
@@ -693,7 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addCreditCard = (card: Omit<CreditCardInfo, 'id'>) => {
-    const newId = Math.random().toString();
+    const newId = crypto.randomUUID();
     const initialBalance = card.balance || 0;
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
     const newAccount: Account = { id: newId, name: card.name, type: 'liability', group: 'Credit Card', balance: 0, limit: card.limit };
@@ -706,7 +707,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const now = new Date();
       const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       const newOpeningTx: Transaction = {
-        id: Math.random().toString(),
+        id: crypto.randomUUID(),
         title: 'Opening Balance',
         subtitle: `${formattedDate} • Initial Debt`,
         amount: initialBalance,
@@ -750,7 +751,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
         const openingTx: Transaction = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
           subtitle: `${formattedDate} • Initial Balance`,
           amount: card.balance,
@@ -787,7 +788,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addAccount = (account: Omit<Account, 'id'>) => {
-    const newId = Math.random().toString();
+    const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
     
@@ -798,7 +799,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       if (account.type === 'asset') {
         openingTx = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
           subtitle: `${formattedDate} • Initial Balance`,
           amount: initialBalance,
@@ -813,7 +814,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
       } else if (account.type === 'liability') {
         openingTx = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
           subtitle: `${formattedDate} • Initial Debt`,
           amount: initialBalance,
@@ -890,7 +891,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
         const openingTx: Transaction = {
-          id: Math.random().toString(),
+          id: crypto.randomUUID(),
           title: 'Opening Balance',
           subtitle: `${formattedDate} • Initial Balance`,
           amount: account.balance,
@@ -1037,7 +1038,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
-    const newCategory = { ...category, id: Math.random().toString() };
+    const newCategory = { ...category, id: crypto.randomUUID() };
     setCategories(prev => [newCategory, ...prev]);
     if (dbDriver) {
       persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
@@ -1133,6 +1134,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const importLedgerData = async (data: any) => {
+    const validationError = validateLedgerImport(data);
+    if (validationError) throw new Error(validationError);
     if (dbDriver) {
       persistDbAction(async () => {
         await importLedgerToDatabase(dbDriver, data);
@@ -1144,6 +1147,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCreditCardRecords(stripCardBalances(refreshed.creditCards));
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
+      const integrity = await auditDatabaseIntegrity(dbDriver);
+      if (integrity.mismatches.length > 0) {
+        setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
+      } else {
+        setIntegrityWarning(null);
+      }
     } else {
       if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);

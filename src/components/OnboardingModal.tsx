@@ -24,35 +24,35 @@ export function OnboardingModal() {
       id: 'welcome',
       title: 'Welcome to CoinBuddy',
       description: 'Your offline-first, highly secure financial ledger. Take complete control over your wealth with advanced tracking and zero-drift relational balances.',
-      image: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80',
+      image: '/logo.png',
       icon: <Wallet className="w-8 h-8 text-blue-500" />
     },
     {
       id: 'accounts',
       title: 'Accounts & Relational Ledger',
       description: 'Create assets, liabilities, and track everything in a unified view. Real-time computed views ensure absolutely zero balance drift.',
-      image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=80',
+      image: '/logo.png',
       icon: <Database className="w-8 h-8 text-indigo-500" />
     },
     {
       id: 'transactions',
       title: 'Transactions & Transfers',
       description: 'Log your income, expenses, and cross-account transfers. Our robust dual-entry system ensures accurate ledger balances.',
-      image: 'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800&auto=format&fit=crop&q=80',
+      image: '/logo.png',
       icon: <Activity className="w-8 h-8 text-emerald-500" />
     },
     {
       id: 'loans',
       title: 'Loans & Liability Tracking',
       description: 'Specialized math support for bullet payments, EMI schedules, and variable interest loans. Know exactly how much you owe.',
-      image: 'https://images.unsplash.com/photo-1633158829585-23ba8f7c8caf?w=800&auto=format&fit=crop&q=80',
+      image: '/logo.png',
       icon: <Shield className="w-8 h-8 text-purple-500" />
     },
     {
       id: 'security',
       title: 'Encrypted Backups & Security',
       description: 'Your data stays with you. Enjoy AES-256-GCM encrypted local storage and optional cloud synchronization for ultimate peace of mind.',
-      image: 'https://images.unsplash.com/photo-1614064641913-6b20a22eb8a9?w=800&auto=format&fit=crop&q=80',
+      image: '/logo.png',
       icon: <Lock className="w-8 h-8 text-rose-500" />
     }
   ];
