@@ -462,9 +462,12 @@ export function Settings() {
           <div 
             className="bg-surface-container rounded-2xl p-5 border border-error/20 flex flex-col gap-3 hover:bg-error/10 transition-colors cursor-pointer group"
             onClick={() => {
-              showConfirm("Clear Storage", "Are you sure you want to permanently delete all data from this device? All transactions, credit cards, and goals will be wiped.", () => {
-                clearAllData();
-                showAlert("Storage Cleared", "All local data has been successfully cleared.");
+              showConfirm("Clear Storage", "Are you sure you want to permanently delete all data from this device? All transactions, accounts, schedules, events, categories, and settings will be wiped.", () => {
+                void clearAllData().then(() => {
+                  showAlert("Storage Cleared", "All local data has been successfully cleared.");
+                }).catch((error: unknown) => {
+                  showAlert("Clear Failed", getErrorMessage(error, 'Your local data could not be cleared.'));
+                });
               });
             }}
           >

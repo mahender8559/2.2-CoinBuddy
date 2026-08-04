@@ -13,6 +13,7 @@ import { getOriginalPrincipal } from '../utils/emi';
 import type { ComponentType, SVGProps } from 'react';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { calculateFinancialRunway, projectDebtPayoff } from '../utils/metrics';
+import { buildSankeySplitLabel } from '../utils/sankeyLabels';
 
 export function Insights() {
   const { 
@@ -268,6 +269,11 @@ export function Insights() {
     return tips;
   }, [topCategoryInfo, transactions, formatCurrency, categories, profile]);
 
+  // Color palette for Sankey chart
+  const chartColors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#f43f5e'];
+  const dotClasses = ['bg-[#8b5cf6]', 'bg-[#10b981]', 'bg-[#f59e0b]', 'bg-[#ec4899]', 'bg-[#0ea5e9]', 'bg-[#f43f5e]'];
+  const getCategoryColor = (index: number) => chartColors[index % chartColors.length];
+
   // Liability Paydown & Credit Utilization progress metrics
   const liabilityMetrics = useMemo(() => {
     return liabilities.map(liability => {
@@ -326,11 +332,14 @@ export function Insights() {
     });
     transactions.filter(transaction => transaction.is_verified !== 0 && isDateInCurrentCycle(transaction.date) && transaction.type === 'transfer').forEach(transaction => outgoing.set('Transfers / savings', (outgoing.get('Transfers / savings') ?? 0) + Math.abs(transaction.amount)));
     const nodes = [{ name: 'Income' }, ...Array.from(outgoing.keys()).map(name => ({ name }))];
-    return { nodes, links: Array.from(outgoing.entries()).map(([name, value]) => ({ source: 0, target: nodes.findIndex(node => node.name === name), value })), income };
-  }, [transactions, categories, accounts, isDateInCurrentCycle]);
-
-  const chartColors = ['#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#f43f5e'];
-  const dotClasses = ['bg-[#8b5cf6]', 'bg-[#10b981]', 'bg-[#f59e0b]', 'bg-[#ec4899]', 'bg-[#0ea5e9]', 'bg-[#f43f5e]'];
+    const flows = Array.from(outgoing.entries()).map(([name, value], idx) => ({
+      name,
+      value,
+      color: chartColors[idx % chartColors.length],
+      ...buildSankeySplitLabel(name, value, income),
+    }));
+    return { nodes, links: flows.map(({ name, value, color }) => ({ source: 0, target: nodes.findIndex(node => node.name === name), value, color })), income, flows };
+  }, [transactions, categories, accounts, isDateInCurrentCycle, chartColors]);
 
   return (
     <div className="space-y-8 pb-24 md:pb-0 animate-fade-in">
@@ -360,7 +369,26 @@ export function Insights() {
 
       <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
         <div className="flex items-center justify-between"><div><h3 className="font-bold text-on-surface">Current Cycle Cash Flow</h3><p className="text-xs text-on-surface-variant">Income flowing to spending, savings transfers, and debt payments.</p></div><span className="text-sm font-bold text-emerald-500">{formatCurrency(sankeyData.income)} income</span></div>
-        {sankeyData.links.length ? <div className="h-64 mt-4"><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={24} nodeWidth={12} link={{ stroke: 'var(--color-primary)', strokeOpacity: 0.35 }}><Tooltip formatter={(value: number) => formatCurrency(value)} /></Sankey></ResponsiveContainer></div> : <p className="py-12 text-center text-sm text-on-surface-variant">No verified cash-flow activity in this cycle yet.</p>}
+        {sankeyData.links.length ? <div className="relative"><div className="h-96 mt-4"><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={60} nodeWidth={20} margin={{ top: 40, right: 160, bottom: 40, left: 160 }} link={(props: any) => {
+          const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, index } = props;
+          const color = sankeyData.links[index]?.color || 'rgba(99, 102, 241, 0.35)';
+          return <path d={`M${sourceX},${sourceY}C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`} fill="none" stroke={color} strokeOpacity={0.4} strokeWidth={linkWidth} />;
+        }} node={(node: any) => {
+          const name = node.payload?.name ?? '';
+          const flow = sankeyData.flows.find(item => item.name === name);
+          const isIncome = node.index === 0;
+          const categoryIndex = isIncome ? 0 : node.index - 1;
+          const nodeColor = isIncome ? '#6366f1' : getCategoryColor(categoryIndex);
+          
+          return (
+            <g>
+              <rect x={node.x} y={node.y} width={node.width} height={node.height} fill={nodeColor} rx={6} opacity={0.9} />
+              {/* Label positioned to the side of the node */}
+              <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={node.y + node.height / 2 - 2} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="12" fontWeight="600" fill="white">{name}</text>
+              {flow && <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={node.y + node.height / 2 + 14} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#d0d0d0">{flow.percentage.toFixed(1)}% · {formatCurrency(flow.value)}</text>}
+            </g>
+          );
+        }}><Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563', borderRadius: '8px', color: '#fff', padding: '8px 12px' }} formatter={(value: number) => [formatCurrency(value), '']} /></Sankey></ResponsiveContainer></div></div> : <p className="py-12 text-center text-sm text-on-surface-variant">No verified cash-flow activity in this cycle yet.</p>}
       </section>
 
       {/* NEW: Category Specific Trend & Growth Chart Section */}
@@ -663,7 +691,7 @@ export function Insights() {
         {eventSummaries.length > 0 && (
           <section data-testid="grouped-spending-summary" className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
             <div className="mb-4">
-              <h3 className="text-xl font-bold text-on-surface">Grouped Spending</h3>
+              <h3 className="text-xl font-bold text-on-surface">Event Insights</h3>
               <p className="mt-1 text-xs text-on-surface-variant">Events and outings, across all recorded transactions.</p>
             </div>
             <div className="space-y-3">
@@ -676,8 +704,8 @@ export function Insights() {
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-semibold uppercase tracking-wide">
-                    <div><p className="text-on-surface-variant">Expenses</p><p className="mt-0.5 text-rose-600 dark:text-rose-400 font-numeric normal-case tracking-normal">{formatCurrency(event.expenses)}</p></div>
-                    <div><p className="text-on-surface-variant">Income</p><p className="mt-0.5 text-emerald-600 dark:text-emerald-400 font-numeric normal-case tracking-normal">{formatCurrency(event.income)}</p></div>
+                    <div><p className="text-on-surface-variant">Total expenses</p><p className="mt-0.5 text-rose-600 dark:text-rose-400 font-numeric normal-case tracking-normal">{formatCurrency(event.expenses)}</p></div>
+                    <div><p className="text-on-surface-variant">Total income</p><p className="mt-0.5 text-emerald-600 dark:text-emerald-400 font-numeric normal-case tracking-normal">{formatCurrency(event.income)}</p></div>
                     <div><p className="text-on-surface-variant">Net spent</p><p className="mt-0.5 text-on-surface font-numeric normal-case tracking-normal">{formatCurrency(event.netSpent)}</p></div>
                   </div>
                 </article>

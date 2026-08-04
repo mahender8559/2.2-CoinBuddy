@@ -9,7 +9,7 @@ import { getCategorySpend } from '../utils/budget';
 
 
 export function ManageFinances() {
-  const { categories, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
+  const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
   
   const [mainTab, setMainTab] = useState<'Accounts' | 'Categories'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
   const mainTabSwipe = useHorizontalSwipe(() => {
@@ -32,6 +32,7 @@ export function ManageFinances() {
       setEditType('expense');
       setEditBudget(0);
       setEditIsRollover(false);
+      setEditRolloverAccountId(undefined);
       setIsEditingModalOpen(true);
     };
     document.addEventListener('openAddCategoryModal', handleOpenModal);
@@ -48,6 +49,7 @@ export function ManageFinances() {
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
   const [editBudget, setEditBudget] = useState(0);
   const [editIsRollover, setEditIsRollover] = useState(false);
+  const [editRolloverAccountId, setEditRolloverAccountId] = useState<string | undefined>(undefined);
   const [filterType, setFilterType] = useState<'All' | 'expense' | 'income'>('All');
 
   const totalMonthlyBudget = categories
@@ -85,6 +87,7 @@ export function ManageFinances() {
     setEditType(c.type || 'expense');
     setEditBudget(c.budget || 0);
     setEditIsRollover(Boolean(c.isRollover));
+    setEditRolloverAccountId(c.rolloverAccountId);
     setIsEditingModalOpen(true);
   };
 
@@ -94,11 +97,12 @@ export function ManageFinances() {
     const finalBudget = categoryType === 'income' ? 0 : editBudget;
     
     if (editingId) {
-      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover });
+      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined });
     } else {
-      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, group: activeTab === 'Savings Goals' ? 'Savings' : 'Essential' });
+      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, group: activeTab === 'Savings Goals' ? 'Savings' : 'Essential' });
     }
     setIsEditingModalOpen(false);
+    setEditRolloverAccountId(undefined);
   };
 
   return (
@@ -138,6 +142,7 @@ export function ManageFinances() {
                 setEditIcon('ShoppingBag');
                 setEditBudget(0);
                 setEditIsRollover(false);
+                setEditRolloverAccountId(undefined);
                 setIsEditingModalOpen(true);
               }}
               className="p-2 text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
@@ -288,6 +293,7 @@ export function ManageFinances() {
             setEditType('expense');
             setEditBudget(0);
             setEditIsRollover(false);
+            setEditRolloverAccountId(undefined);
             setIsEditingModalOpen(true);
           }}
           className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"
@@ -305,7 +311,10 @@ export function ManageFinances() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-on-surface">{editingId ? 'Edit' : 'Add'} {activeTab === 'Savings Goals' ? 'Goal' : 'Category'}</h2>
               <button 
-                onClick={() => setIsEditingModalOpen(false)}
+                onClick={() => {
+                  setIsEditingModalOpen(false);
+                  setEditRolloverAccountId(undefined);
+                }}
                 className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -381,10 +390,32 @@ export function ManageFinances() {
                 </div>
               )}
               {activeTab !== 'Savings Goals' && editType === 'expense' && (
-                <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
-                  <span><span className="block text-sm font-semibold text-on-surface">Enable Rollover / Sinking Fund</span><span className="block text-xs text-on-surface-variant mt-0.5">Carry unused budget into the next cycle.</span></span>
-                  <input type="checkbox" checked={editIsRollover} onChange={event => setEditIsRollover(event.target.checked)} className="h-5 w-5 accent-primary" />
-                </label>
+                <>
+                  <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
+                    <span><span className="block text-sm font-semibold text-on-surface">Enable Rollover / Sinking Fund</span><span className="block text-xs text-on-surface-variant mt-0.5">Carry unused budget into the next cycle.</span></span>
+                    <input type="checkbox" checked={editIsRollover} onChange={event => setEditIsRollover(event.target.checked)} className="h-5 w-5 accent-primary" />
+                  </label>
+                  
+                  {editIsRollover && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-semibold text-on-surface">Where should leftover funds go?</label>
+                      <select 
+                        value={editRolloverAccountId || ''} 
+                        onChange={(e) => setEditRolloverAccountId(e.target.value || undefined)}
+                        className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary/50"
+                      >
+                        <option value="">Select an account</option>
+                        {accounts
+                          .filter(acc => acc.type === 'asset' && acc.group && !['Cash', 'Physical Assets'].includes(acc.group))
+                          .map(acc => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.group})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
               
               <button 

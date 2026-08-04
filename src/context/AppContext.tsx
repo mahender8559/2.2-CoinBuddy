@@ -6,6 +6,8 @@ import {
   initializeDatabase,
   persistDatabase,
   deletePersistedDatabase,
+  clearAppBrowserStorage,
+  markClearStoragePending,
   loadStateFromDatabase,
   seedDemoData,
   insertAccountRow,
@@ -40,7 +42,6 @@ import {
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
-import { createDefaultCategories } from '../constants/defaultCategories';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -147,7 +148,7 @@ interface AppContextType {
   lastUpdated: string;
   exportLedgerData: () => Record<string, unknown>;
   importLedgerData: (data: LedgerImportData) => void;
-  clearAllData: () => void;
+  clearAllData: () => Promise<void>;
   resetToDemoData: () => void;
   integrityWarning: string | null;
   dismissIntegrityWarning: () => void;
@@ -482,7 +483,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setDbDriver(driver);
         // Seed only a genuinely new database. An intentionally empty persisted
         // ledger must remain empty after refresh.
-        if (driver.isNewDatabase) {
+        if (driver.isNewDatabase && localStorage.getItem('coinbuddy_skip_demo_seed') !== 'true') {
           await seedDemoData(driver);
           await persistDatabase(driver);
         }
@@ -1278,14 +1279,35 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }).replace(/\d/g, '').trim();
   };
 
-  const clearAllData = () => {
-    const defaultCats = createDefaultCategories();
+  const clearAllData = async () => {
     const defaultProf = {
       name: 'Financial Sovereign',
       email: 'sovereign@vault.vellum',
       avatar: '',
       offlineReady: true
     };
+
+    try {
+      if (dbDriver) {
+        await persistDbAction(async () => {
+          await dbDriver.execute('BEGIN TRANSACTION');
+          try {
+            await clearDatabase(dbDriver);
+            await dbDriver.execute('COMMIT');
+          } catch (error) {
+            await dbDriver.execute('ROLLBACK');
+            throw error;
+          }
+        });
+      }
+
+      await deletePersistedDatabase();
+      clearAppBrowserStorage();
+      markClearStoragePending();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not clear the local database.';
+      throw new Error(message);
+    }
 
     setTransactions([]);
     setCreditCardRecords([]);
@@ -1294,26 +1316,24 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setPasscode(null);
     setBiometric(false);
     setProfile(defaultProf);
-    setCategories(defaultCats);
+    setCategories([]);
     setEvents([]);
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await clearDatabase(dbDriver);
-        for (const category of defaultCats) {
-          await insertCategoryRow(dbDriver, category);
-        }
-      });
-    }
+    setLoanRevisions([]);
+    setIntegrityWarning(null);
+    clearStacks();
+    setLastUpdated(new Date().toISOString());
   };
 
   const importLedgerData = async (data: LedgerImportData) => {
     const validationError = validateLedgerImport(data);
     if (validationError) throw new Error(validationError);
     if (dbDriver) {
-      await persistDbAction(async () => {
+      const imported = await persistDbAction(async () => {
         await importLedgerToDatabase(dbDriver, data);
       });
+      if (!imported) {
+        throw new Error('Import failed. Your existing ledger was left unchanged.');
+      }
       const refreshed = await loadStateFromDatabase(dbDriver);
       setAccountRecords(stripAccountBalances(refreshed.accounts));
       setTransactions(refreshed.transactions);
