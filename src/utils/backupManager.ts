@@ -342,7 +342,33 @@ export interface IStorageAdapter {
   authenticate(provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'): Promise<boolean>;
 }
 
+type BackupHistoryStore = { get: () => Promise<unknown>; set: (records: unknown[]) => Promise<void> };
+
 export class BackupStorageAdapter {
+  private static historyStore: BackupHistoryStore | null = null;
+
+  static configureHistoryStore(store: BackupHistoryStore | null) { this.historyStore = store; }
+
+  private static async readHistory(): Promise<any[]> {
+    const stored = await this.historyStore?.get();
+    if (Array.isArray(stored)) return stored;
+    const legacy = localStorage.getItem('coinbuddy_saved_backups');
+    if (!legacy) return [];
+    try {
+      const records = JSON.parse(legacy);
+      if (Array.isArray(records)) {
+        await this.historyStore?.set(records);
+        if (this.historyStore) localStorage.removeItem('coinbuddy_saved_backups');
+        return records;
+      }
+    } catch { /* ignore malformed legacy history */ }
+    return [];
+  }
+
+  private static async writeHistory(records: any[]): Promise<void> {
+    if (this.historyStore) await this.historyStore.set(records);
+    else localStorage.setItem('coinbuddy_saved_backups', JSON.stringify(records));
+  }
   /**
    * Uploads or stores backup file according to target provider
    */
@@ -368,11 +394,7 @@ export class BackupStorageAdapter {
     }
 
     // Save to virtual backup storage registry in localStorage for history list
-    const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups') || '[]';
-    let savedBackups: any[] = [];
-    try {
-      savedBackups = JSON.parse(existingBackupsJson);
-    } catch (e) {}
+    let savedBackups = await this.readHistory();
 
     let parsedMeta: any = {};
     try {
@@ -393,7 +415,7 @@ export class BackupStorageAdapter {
     savedBackups.unshift(newRecord);
     
     // Save to local registry first
-    localStorage.setItem('coinbuddy_saved_backups', JSON.stringify(savedBackups));
+    await this.writeHistory(savedBackups);
 
     // Enforce 5-file retention policy
     await this.pruneOldBackups(5, provider);
@@ -424,11 +446,7 @@ export class BackupStorageAdapter {
     maxFiles: number = 5,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM' = 'LOCAL'
   ): Promise<void> {
-    const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups') || '[]';
-    let savedBackups: any[] = [];
-    try {
-      savedBackups = JSON.parse(existingBackupsJson);
-    } catch (e) {}
+    let savedBackups = await this.readHistory();
 
     // Sort files by modified date descending (newest first)
     savedBackups.sort((a, b) => {
@@ -442,7 +460,7 @@ export class BackupStorageAdapter {
       savedBackups = savedBackups.slice(0, maxFiles);
     }
 
-    localStorage.setItem('coinbuddy_saved_backups', JSON.stringify(savedBackups));
+    await this.writeHistory(savedBackups);
   }
 
   /**
@@ -482,15 +500,8 @@ export class BackupStorageAdapter {
         transactionsCount: 0,
       }));
     }
-    const existingBackupsJson = localStorage.getItem('coinbuddy_saved_backups');
-    if (existingBackupsJson) {
-      try {
-        const list = JSON.parse(existingBackupsJson);
-        if (list.length > 0) {
-          return list.filter((b: any) => !b.provider || b.provider === provider || provider === 'LOCAL');
-        }
-      } catch (e) {}
-    }
+    const list = await this.readHistory();
+    if (list.length > 0) return list.filter((b: any) => !b.provider || b.provider === provider || provider === 'LOCAL');
 
     return [];
   }

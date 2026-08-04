@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { WidgetModal } from './WidgetModal';
 import { WidgetCard } from './WidgetCard';
 import { AnimatedNumber } from './AnimatedNumber';
+import { getBudgetSummary } from '../utils/budget';
 import { icons } from '../icons';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip, ReferenceLine } from 'recharts';
 
@@ -153,8 +154,7 @@ export function Dashboard() {
     })
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
     
-  const totalMonthlyBudget = categories.filter(c => c.type !== 'income' && c.group !== "Savings").reduce((acc, c) => acc + (c.budget || 0), 0);
-  const budgetProgress = totalMonthlyBudget > 0 ? (expenses / totalMonthlyBudget) * 100 : 0;
+  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, isDateInCurrentCycle);
   const budgetStatus = budgetProgress <= 100 ? 'ON TRACK' : 'OVER BUDGET';
 
   const thirtyDaysAgo = new Date();

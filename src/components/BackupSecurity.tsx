@@ -65,6 +65,14 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     });
   }, [getStoredSetting]);
 
+  useEffect(() => {
+    BackupStorageAdapter.configureHistoryStore({
+      get: () => getStoredSetting('backupHistory'),
+      set: records => setStoredSetting('backupHistory', records),
+    });
+    return () => BackupStorageAdapter.configureHistoryStore(null);
+  }, [getStoredSetting, setStoredSetting]);
+
   // SQLite is canonical; localStorage is read once above only for migration.
   useEffect(() => {
     if (settingsLoaded) void setStoredSetting('backupConfig', config);

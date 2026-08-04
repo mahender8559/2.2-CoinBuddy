@@ -12,3 +12,9 @@ export function getCategorySpend(category: Category, transactions: Transaction[]
     transaction.type === 'expense' && (transaction.category === tag || transaction.category === category.id)
   ).reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
 }
+
+export function getBudgetSummary(categories: Category[], transactions: Transaction[], isInCycle: (date: string) => boolean) {
+  const budget = categories.filter(category => category.type !== 'income' && category.group !== 'Savings').reduce((total, category) => total + (category.budget || 0), 0);
+  const spent = categories.filter(category => category.type !== 'income' && category.group !== 'Savings').reduce((total, category) => total + getCategorySpend(category, transactions, isInCycle), 0);
+  return { budget, spent, progress: budget > 0 ? spent / budget * 100 : 0 };
+}
