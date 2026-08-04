@@ -21,7 +21,7 @@ interface BackupSecurityProps {
 }
 
 export function BackupSecurity({ onBack }: BackupSecurityProps) {
-  const { accounts, transactions, categories, creditCards, currency, importLedgerData } = useAppContext();
+  const { accounts, transactions, categories, creditCards, currency, importLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
 
   // 1. State Management (Settings Store)
   const [config, setConfig] = useState<BackupSettings>(() => {
@@ -50,11 +50,25 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     }
     return DEFAULT_BACKUP_SETTINGS;
   });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  // Save Settings Store changes directly to localStorage
   useEffect(() => {
-    localStorage.setItem('coinbuddy_backup_config', JSON.stringify(config));
-  }, [config]);
+    void getStoredSetting('backupConfig').then(saved => {
+      if (saved && typeof saved === 'object') setConfig(saved as BackupSettings);
+      else {
+        const legacy = localStorage.getItem('coinbuddy_backup_config');
+        if (legacy) {
+          try { setConfig(JSON.parse(legacy) as BackupSettings); localStorage.removeItem('coinbuddy_backup_config'); } catch { /* ignore malformed legacy settings */ }
+        }
+      }
+      setSettingsLoaded(true);
+    });
+  }, [getStoredSetting]);
+
+  // SQLite is canonical; localStorage is read once above only for migration.
+  useEffect(() => {
+    if (settingsLoaded) void setStoredSetting('backupConfig', config);
+  }, [config, settingsLoaded, setStoredSetting]);
 
   // UI Feedback States
   const [isBackingUp, setIsBackingUp] = useState(false);

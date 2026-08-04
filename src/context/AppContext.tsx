@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
 import { Transaction, CreditCardInfo, Category, Account, Widget, LoanRevision } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
@@ -131,6 +131,8 @@ interface AppContextType {
   integrityWarning: string | null;
   dismissIntegrityWarning: () => void;
   verifyDataIntegrity: () => Promise<boolean>;
+  getStoredSetting: (key: string) => Promise<unknown>;
+  setStoredSetting: (key: string, value: unknown) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -170,6 +172,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dbReady, setDbReady] = useState(false);
   const [integrityWarning, setIntegrityWarning] = useState<string | null>(null);
   const pendingLiabilityPayments = useRef(new Set<string>());
+
+  const getStoredSetting = useCallback(async (key: string): Promise<unknown> => {
+    if (!dbDriver) return undefined;
+    return (await loadAppSettings(dbDriver))[key];
+  }, [dbDriver]);
+  const setStoredSetting = useCallback(async (key: string, value: unknown): Promise<void> => {
+    if (!dbDriver) return;
+    await upsertAppSetting(dbDriver, key, value);
+    await persistDatabase(dbDriver);
+  }, [dbDriver]);
 
   const [undoStack, setUndoStack] = useState<UndoRedoCommand[]>([]);
   const [redoStack, setRedoStack] = useState<UndoRedoCommand[]>([]);
@@ -1204,7 +1216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,
-      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity
+      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, getStoredSetting, setStoredSetting
     }}>
       {children}
     </AppContext.Provider>
