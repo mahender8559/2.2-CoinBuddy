@@ -28,7 +28,7 @@ export default function App() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
   });
-  const { accounts, transactions, biometric, passcode, verifyPasscode, integrityWarning, dismissIntegrityWarning, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, setEditingTransaction, addAccountModalType, setAddAccountModalType, isWalletModalOpen, setWalletModalOpen, payCardModalState, setPayCardModalState, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
+  const { accounts, transactions, biometric, passcode, verifyPasscode, integrityWarning, dismissIntegrityWarning, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, setEditingTransaction, addAccountModalType, setAddAccountModalType, isWalletModalOpen, setWalletModalOpen, payCardModalState, setPayCardModalState, isManageCategoriesOpen, setManageCategoriesOpen, toast } = useAppContext();
 
   // Daily Cron Job Worker at 09:00 AM local time for Smart EMI Reminders
   useEffect(() => {
@@ -386,6 +386,7 @@ export default function App() {
       <AddAccountModal />
       <WalletSummaryModal />
       <PayCardModal />
+      {toast && <div role="status" className="fixed bottom-5 left-1/2 z-[200] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-surface-container-high px-4 py-3 text-sm text-on-surface shadow-2xl border border-outline-variant/30"><span>{toast.message}</span>{toast.actionLabel && <button className="font-bold text-primary" onClick={toast.onAction}>{toast.actionLabel}</button>}</div>}
     </div>
   );
 }

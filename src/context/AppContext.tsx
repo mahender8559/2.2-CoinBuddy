@@ -133,6 +133,8 @@ interface AppContextType {
   verifyDataIntegrity: () => Promise<boolean>;
   getStoredSetting: (key: string) => Promise<unknown>;
   setStoredSetting: (key: string, value: unknown) => Promise<void>;
+  toast: { message: string; actionLabel?: string; onAction?: () => void } | null;
+  showToast: (message: string, actionLabel?: string, onAction?: () => void) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -171,7 +173,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dbDriver, setDbDriver] = useState<SqlJsDatabaseDriver | null>(null);
   const [dbReady, setDbReady] = useState(false);
   const [integrityWarning, setIntegrityWarning] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const pendingLiabilityPayments = useRef(new Set<string>());
+  const toastTimer = useRef<number | null>(null);
+  const showToast = useCallback((message: string, actionLabel?: string, onAction?: () => void) => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast({ message, actionLabel, onAction });
+    toastTimer.current = window.setTimeout(() => setToast(null), 6000);
+  }, []);
 
   const getStoredSetting = useCallback(async (key: string): Promise<unknown> => {
     if (!dbDriver) return undefined;
@@ -630,12 +639,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         newState: null
       });
       setTransactions(nextTxs);
+      showToast('Transaction deleted', 'Undo', handleUndo);
 
       if (dbDriver) {
         persistDbAction(() => deleteTransactionRow(dbDriver, id));
       }
     } else {
       setTransactions(txs => txs.filter(t => t.id !== id));
+      showToast('Transaction deleted', 'Undo', handleUndo);
     }
   };
 
@@ -1216,7 +1227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,
-      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, getStoredSetting, setStoredSetting
+      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, getStoredSetting, setStoredSetting, toast, showToast
     }}>
       {children}
     </AppContext.Provider>
