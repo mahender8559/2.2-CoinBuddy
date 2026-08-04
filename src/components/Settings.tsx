@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
 import { exportToExcel } from '../utils/exportExcel';
+import { COINBUDDY_TEST_DATA } from '../constants/coinbuddyTestData';
 import { BackupManager } from '../utils/backupManager';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -16,6 +17,15 @@ export function Settings() {
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
     new URLSearchParams(window.location.search).has('drive') ? 'backup' : 'main'
   );
+  const loadTestData = async () => {
+    if (!window.confirm('Replace this device\'s current ledger with the built-in CoinBuddy test data?')) return;
+    try {
+      await importLedgerData(COINBUDDY_TEST_DATA as any);
+      showAlert('Test Data Loaded', 'HDFC Bank, Bike Loan, categories, event, and test transactions are ready.');
+    } catch (error) {
+      showAlert('Test Data Error', getErrorMessage(error, 'Could not load test data.'));
+    }
+  };
   const [isEditProfileOpen, setEditProfileOpen] = useState(false);
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
@@ -434,6 +444,13 @@ export function Settings() {
               };
               input.click();
             }}
+          />
+          <DataCard
+            icon={RefreshCw}
+            label="Built-in Fixture"
+            title="Load CoinBuddy Test Data"
+            desc="Replace local records with the HDFC Bank and Bike Loan test fixture."
+            onClick={() => { void loadTestData(); }}
           />
           <DataCard 
             icon={ShieldCheck}
