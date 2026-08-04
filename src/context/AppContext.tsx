@@ -466,9 +466,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       .then(async (driver) => {
         if (!mounted) return;
         setDbDriver(driver);
-        const row = (await driver.query(`SELECT COUNT(*) as count FROM accounts;`))[0] || { count: 0 };
-        const count = Number(row.count ?? 0);
-        if (count === 0) {
+        // Seed only a genuinely new database. An intentionally empty persisted
+        // ledger must remain empty after refresh.
+        if (driver.isNewDatabase) {
           await seedDemoData(driver);
           await persistDatabase(driver);
         }
