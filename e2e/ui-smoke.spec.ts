@@ -144,3 +144,16 @@ test('first-use setup runs walkthrough, password step, then spotlight tour once'
   await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).not.toBeVisible();
   await expect(page.getByRole('heading', { name: 'Add Transaction' })).not.toBeVisible();
 });
+
+test('cached app shell remains usable offline after an initial load', async ({ page, context }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
+    localStorage.setItem('hasCompletedButtonTour', 'true');
+  });
+  await page.goto('/');
+  await expect(page.getByText('Net Worth', { exact: true })).toBeVisible();
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByText('Net Worth', { exact: true })).toBeVisible();
+  await context.setOffline(false);
+});
