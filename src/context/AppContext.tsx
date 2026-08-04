@@ -639,22 +639,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addLoanRevision = (revision: Omit<LoanRevision, 'id'>) => {
     const newId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const accId = revision.accountId || revision.account_id || '';
+    const accId = revision.accountId;
     const newRev: LoanRevision = {
       ...revision,
       id: newId,
       accountId: accId,
-      account_id: accId,
-      effectiveDate: revision.effectiveDate || revision.effective_date || '',
-      effective_date: revision.effectiveDate || revision.effective_date || '',
-      newInterestRate: revision.newInterestRate ?? revision.new_interest_rate ?? 0,
-      new_interest_rate: revision.newInterestRate ?? revision.new_interest_rate ?? 0,
-      newEmi: revision.newEmi ?? revision.new_emi ?? 0,
-      new_emi: revision.newEmi ?? revision.new_emi ?? 0,
-      newTenureMonths: revision.newTenureMonths ?? revision.new_tenure_months ?? 0,
-      new_tenure_months: revision.newTenureMonths ?? revision.new_tenure_months ?? 0,
-      paymentFrequency: revision.paymentFrequency || revision.payment_frequency,
-      payment_frequency: revision.paymentFrequency || revision.payment_frequency,
+      effectiveDate: revision.effectiveDate,
+      newInterestRate: revision.newInterestRate,
+      newEmi: revision.newEmi,
+      newTenureMonths: revision.newTenureMonths,
+      paymentFrequency: revision.paymentFrequency,
     };
 
     setLoanRevisions(prev => [...prev, newRev]);
@@ -664,13 +658,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return {
           ...acc,
           interestRate: newRev.newInterestRate,
-          interest_rate: newRev.newInterestRate,
           monthlyEMI: newRev.newEmi,
-          monthly_emi: newRev.newEmi,
           tenureMonths: newRev.newTenureMonths,
-          tenure_months: newRev.newTenureMonths,
           paymentFrequency: newRev.paymentFrequency || acc.paymentFrequency,
-          payment_frequency: newRev.payment_frequency || acc.payment_frequency,
           revisions: [...existing, newRev]
         };
       }
@@ -1008,8 +998,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (pAmount === undefined || iAmount === undefined) {
       if (liabilityAcc && (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined)) {
-        const rate = liabilityAcc.interestRate ?? liabilityAcc.interest_rate ?? 0;
-        const type = (liabilityAcc.interestCalculationType || liabilityAcc.interest_calculation_type || 'REDUCING') as any;
+        const rate = liabilityAcc.interestRate ?? 0;
+        const type = liabilityAcc.interestCalculationType || 'REDUCING';
         const split = calculateEmiSplit(liabilityAcc.balance, rate, amount, type);
         pAmount = split.principalAmount;
         iAmount = split.interestAmount;

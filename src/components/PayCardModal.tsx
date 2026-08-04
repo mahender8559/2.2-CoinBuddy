@@ -55,19 +55,17 @@ export function PayCardModal() {
   const selectedCard = creditCards.find(c => c.id === payCardModalState.cardId);
   const selectedLiability = accounts.find(a => a.id === payCardModalState.cardId && a.type === 'liability');
 
-  const interestType = (selectedLiability?.interestCalculationType || selectedLiability?.interest_calculation_type || 'REDUCING') as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY';
+  const interestType = selectedLiability?.interestCalculationType || 'REDUCING';
 
   const isLoan = selectedLiability && (
     selectedLiability.group === 'Loan' ||
     selectedLiability.group === 'Interest-Only Loan' ||
     selectedLiability.group === 'Bank Loan' ||
     selectedLiability.monthlyEMI !== undefined ||
-    selectedLiability.monthly_emi !== undefined ||
-    selectedLiability.interestRate !== undefined ||
-    selectedLiability.interest_rate !== undefined
+    selectedLiability.interestRate !== undefined
   );
 
-  const annualRate = selectedLiability?.interestRate ?? selectedLiability?.interest_rate ?? 0;
+  const annualRate = selectedLiability?.interestRate ?? 0;
 
   useEffect(() => {
     setError(null);
@@ -75,7 +73,7 @@ export function PayCardModal() {
     if (selectedCard) {
       setAmount(selectedCard.dueAmount.toString());
     } else if (selectedLiability) {
-      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.monthly_emi ?? selectedLiability.balance ?? 0;
+      const emiVal = selectedLiability.monthlyEMI ?? selectedLiability.balance ?? 0;
       setAmount(emiVal > 0 ? emiVal.toString() : '');
     }
     setCelebration(null);
