@@ -6,7 +6,7 @@ import {
   recomputeAllAccountBalances,
   syncCreditCardsWithAccounts,
 } from '../utils/balanceManager';
-import { applyTransactionEffect, hasRealTransactionHistory, validateOpeningBalance } from '../domain/ledgerRules';
+import { applyTransactionEffect, hasRealTransactionHistory, SIGN_RULES, validateOpeningBalance } from '../domain/ledgerRules';
 import { generateLoanSchedule } from '../utils/emi';
 
 describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
@@ -258,5 +258,17 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
   it('reconciles amortization schedule principal exactly to the loan principal', () => {
     const result = generateLoanSchedule(1_000_000, 8.35, 360);
     expect(result.schedule.at(-1)?.cumulativePrincipal).toBe(result.totalPrincipal);
+  });
+});
+
+describe('ledger sign rule invariants', () => {
+  it('exposes only numeric signs for every configured rule', () => {
+    for (const directions of Object.values(SIGN_RULES)) for (const kinds of Object.values(directions)) for (const sign of Object.values(kinds ?? {})) for (const value of Object.values(sign)) expect(typeof value).toBe('number');
+  });
+
+  it('never lets pending transactions affect an account balance', () => {
+    const pending: Transaction = { id: 'pending', title: 'Pending', subtitle: '', amount: 100, date: new Date().toISOString(), category: '#test', icon: 'Tag', type: 'expense', account: 'checking', fromAccountId: 'checking', is_verified: 0 };
+    expect(applyTransactionEffect(pending, { id: 'checking', type: 'asset' })).toBe(0);
+    expect(applyTransactionEffect(pending, { id: 'checking', type: 'liability' })).toBe(0);
   });
 });

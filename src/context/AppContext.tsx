@@ -43,6 +43,7 @@ export type UndoRedoCommand = {
   previousState: any;
   newState: any;
 };
+const MAX_UNDO_HISTORY = 5;
 
 interface AppContextType {
   canUndo: boolean;
@@ -176,7 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pushCommand = (cmd: UndoRedoCommand) => {
     setUndoStack(prev => {
       const next = [...prev, cmd];
-      if (next.length > 5) return next.slice(next.length - 5);
+      if (next.length > MAX_UNDO_HISTORY) return next.slice(next.length - MAX_UNDO_HISTORY);
       return next;
     });
     setRedoStack([]);
@@ -246,7 +247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRedoStack(prev => prev.slice(1));
     setUndoStack(prev => {
       const next = [...prev, cmd];
-      return next.length > 5 ? next.slice(next.length - 5) : next;
+      return next.length > MAX_UNDO_HISTORY ? next.slice(next.length - MAX_UNDO_HISTORY) : next;
     });
     executeCommand(cmd, false);
   };

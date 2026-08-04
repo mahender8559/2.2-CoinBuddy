@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { AppProvider } from './context/AppContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
   (screen.orientation as any).lock('portrait').catch(() => {
@@ -13,9 +14,7 @@ if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation a
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppProvider>
-      <App />
-    </AppProvider>
+    <ErrorBoundary><AppProvider><App /></AppProvider></ErrorBoundary>
   </StrictMode>,
 );
 
