@@ -141,6 +141,10 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     if (legacy) {
       saved = base64ToUint8Array(legacy);
       await writeSnapshot(saved);
+      const verifiedSnapshot = await readSnapshot();
+      if (!verifiedSnapshot || verifiedSnapshot.byteLength !== saved.byteLength) {
+        throw new Error('Legacy ledger migration could not be verified; the original backup was preserved.');
+      }
       await writeOpfsSnapshot(saved).catch(() => false);
       localStorage.removeItem(DB_STORAGE_KEY);
     }

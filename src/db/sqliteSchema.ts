@@ -533,7 +533,8 @@ export async function updateOpeningBalance(
     const minimumBalance = Number(runningRows[0]?.minimum_balance ?? 0) + delta;
     const maximumBalance = Number(runningRows[0]?.maximum_balance ?? 0) + delta;
     if (accountType === 'ASSET' && minimumBalance < -0.000001) {
-      throw new Error('Cannot update opening balance: it would cause a historical negative asset balance.');
+      const minimumSafeOpening = newAmount + Math.abs(minimumBalance);
+      throw new Error(`Cannot set initial balance lower than ${minimumSafeOpening.toFixed(2)} because existing transactions would make the account negative.`);
     }
     if (accountType === 'LIABILITY' && creditLimit > 0 && maximumBalance > creditLimit + 0.000001) {
       throw new Error('Cannot update opening balance: it would exceed this account credit limit.');

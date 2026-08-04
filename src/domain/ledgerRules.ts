@@ -35,7 +35,8 @@ export function validateOpeningBalance(account: Account, transactions: Transacti
     running += applyTransactionEffect(tx, account);
     maximum = Math.max(maximum, running);
     if (account.type === 'asset' && running < -0.000001) {
-      return { valid: false, error: 'Cannot update opening balance: it would cause a historical negative asset balance.' };
+      const minimumSafeOpening = newAmount + Math.abs(running);
+      return { valid: false, error: `Cannot set initial balance lower than ${minimumSafeOpening.toFixed(2)} because existing transactions would make the account negative.` };
     }
   }
   if (account.type === 'liability' && (account.limit ?? 0) > 0 && maximum > (account.limit ?? 0) + 0.000001) {

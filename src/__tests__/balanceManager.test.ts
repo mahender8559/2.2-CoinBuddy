@@ -251,6 +251,7 @@ describe('Balance Recomputation and Migration Suite (balanceManager)', () => {
       category: 'Bills', icon: '', type: 'expense' as const, fromAccountId: 'checking', is_verified: 1,
     }];
     expect(validateOpeningBalance(mockAccounts[0], ledgerWithLaterSpend, 1000).valid).toBe(false);
+    expect(validateOpeningBalance(mockAccounts[0], ledgerWithLaterSpend, 1000).error).toContain('Cannot set initial balance lower than');
     expect(validateOpeningBalance(mockAccounts[2], mockTransactions, 6000).valid).toBe(false);
   });
 
