@@ -702,6 +702,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteLoanRevision = (id: string) => {
+    const revision = loanRevisions.find(item => item.id === id);
+    if (!revision) return;
+    const accountsBeforeDelete = accountRecords;
     setLoanRevisions(prev => prev.filter(r => r.id !== id));
     setAccountRecords(prevAccs => prevAccs.map(acc => {
       if (acc.revisions) {
@@ -716,6 +719,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (dbDriver) {
       persistDbAction(() => deleteLoanRevisionRow(dbDriver, id));
     }
+    showToast('Loan revision deleted', 'Undo', () => {
+      setLoanRevisions(prev => prev.some(item => item.id === revision.id) ? prev : [...prev, revision]);
+      setAccountRecords(accountsBeforeDelete);
+      if (dbDriver) persistDbAction(() => insertLoanRevisionRow(dbDriver, revision));
+    });
   };
 
   const addCreditCard = (card: Omit<CreditCardInfo, 'id'>) => {
@@ -1059,7 +1067,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCreditCard = (cardId: string) => {
+    const card = creditCards.find(item => item.id === cardId);
+    if (!card) return;
     setCreditCardRecords(cards => cards.filter(c => c.id !== cardId));
+    showToast('Credit card removed', 'Undo', () => setCreditCardRecords(cards => cards.some(item => item.id === card.id) ? cards : [card, ...cards]));
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
@@ -1078,10 +1089,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCategory = (id: string) => {
+    const category = categories.find(item => item.id === id);
+    if (!category) return;
     setCategories(cats => cats.filter(c => c.id !== id));
     if (dbDriver) {
       persistDbAction(() => deleteCategoryRow(dbDriver, id));
     }
+    showToast('Category deleted', 'Undo', () => {
+      setCategories(cats => cats.some(item => item.id === category.id) ? cats : [category, ...cats]);
+      if (dbDriver) persistDbAction(() => insertCategoryRow(dbDriver, category));
+    });
   };
 
   const formatCurrency = (amount: number | string) => {
