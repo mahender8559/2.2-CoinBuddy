@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, CheckCircle2 } from 'lucide-react';
+import { X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Account } from '../types';
 import { useAppContext } from '../context/AppContext';
 
@@ -13,11 +13,19 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
   const difference = Number.isFinite(actual) ? actual - account.balance : 0;
   const isIncrease = difference > 0;
   const targetIsTo = account.type === 'asset' ? isIncrease : !isIncrease;
+  // A larger liability balance is new debt. Keep the adjustment out of income
+  // metrics while representing it as an expense-side charge in the activity ledger.
+  const isDebtIncrease = account.type === 'liability' && isIncrease;
+  const isCreditCard = account.type === 'liability' && account.group?.toUpperCase() === 'CREDIT CARD';
+  const reconciliationDelta = Math.abs(difference);
+  const reconciliationTooLarge = isCreditCard && Number.isFinite(actual) && actual >= 0 && (account.limit ?? 0) > 0 && reconciliationDelta > (account.limit ?? 0) * 0.2;
+  const reconciliationWarning = 'Reconciliation difference is too large. Please log missing transactions manually.';
   const label = kind === 'MARKET_ADJUSTMENT' ? 'Update Market Value' : 'Reconcile Balance';
 
   const summary = useMemo(() => difference === 0 ? 'Already in sync' : `${difference > 0 ? 'Increase' : 'Decrease'} ledger by ${formatCurrency(Math.abs(difference))}`, [difference, formatCurrency]);
   const submit = () => {
     if (!Number.isFinite(actual) || actual < 0) return setError('Enter a valid non-negative balance.');
+    if (reconciliationTooLarge) return setError(reconciliationWarning);
     if (Math.abs(difference) < 0.005) return onClose();
     const result = addTransaction({
       title: kind === 'MARKET_ADJUSTMENT' ? `Market value update: ${account.name}` : `Balance reconciliation: ${account.name}`,
@@ -26,7 +34,7 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
       date: new Date().toISOString(),
       category: kind === 'MARKET_ADJUSTMENT' ? '#market-adjustment' : '#balance-adjustment',
       icon: 'Landmark',
-      type: 'transfer',
+      type: isDebtIncrease ? 'expense' : 'transfer',
       account: account.id,
       fromAccountId: targetIsTo ? undefined : account.id,
       toAccountId: targetIsTo ? account.id : undefined,
@@ -43,8 +51,9 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
       <label className="block mt-6 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Current actual balance</label>
       <input autoFocus inputMode="decimal" type="number" min="0" value={actualValue} onChange={event => setActualValue(event.target.value)} className="mt-2 w-full rounded-2xl bg-surface-container-high px-4 py-3 text-lg font-bold font-numeric text-on-surface outline-none focus:ring-2 focus:ring-primary" />
       <div className={`mt-4 rounded-2xl p-4 text-sm font-semibold ${difference === 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-primary/10 text-primary'}`}>{summary}</div>
+      {reconciliationTooLarge && <p className="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-sm font-semibold text-rose-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{reconciliationWarning}</p>}
       {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
-      <button onClick={submit} className="mt-6 w-full rounded-2xl bg-primary px-4 py-3 font-bold text-on-primary flex items-center justify-center gap-2"><CheckCircle2 className="w-5 h-5" /> Save adjustment</button>
+      <button onClick={submit} disabled={reconciliationTooLarge} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 font-bold text-on-primary disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle2 className="w-5 h-5" /> Save adjustment</button>
     </div>
   </div>;
 }

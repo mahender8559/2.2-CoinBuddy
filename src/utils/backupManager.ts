@@ -8,6 +8,8 @@ import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './bala
 
 export interface BackupMetadata {
   date: string;
+  /** ISO timestamp used for schedule decisions; `date` remains display-only. */
+  completedAt?: string;
   filename: string;
   size: string;
   syncStatus: 'UP_TO_DATE' | 'PENDING_NETWORK' | 'NOT_CONFIGURED' | 'FAILED';
@@ -26,6 +28,8 @@ export interface BackupSettings {
   backupPassword?: string;
   authExpired?: boolean;
   lastBackupMetadata?: BackupMetadata;
+  /** Persisted so a remount or settings save cannot start another backup period early. */
+  lastAutoBackupAttemptAt?: string;
 }
 
 export interface EncryptedPayload {
@@ -50,6 +54,30 @@ export const DEFAULT_BACKUP_SETTINGS: BackupSettings = {
   isWifiOnly: true,
   hasPassword: false,
 };
+
+const BACKUP_INTERVALS: Record<BackupSettings['backupFrequency'], number> = {
+  DAILY: 24 * 60 * 60 * 1000,
+  WEEKLY: 7 * 24 * 60 * 60 * 1000,
+  MONTHLY: 30 * 24 * 60 * 60 * 1000,
+};
+
+export function getBackupIntervalMs(frequency: BackupSettings['backupFrequency']): number {
+  return BACKUP_INTERVALS[frequency] ?? BACKUP_INTERVALS.DAILY;
+}
+
+/** Returns the next permitted automatic-backup time, using ISO dates where available. */
+export function getNextAutoBackupAt(settings: BackupSettings, now = Date.now()): number {
+  const lastAttempt = Date.parse(settings.lastAutoBackupAttemptAt || '');
+  const lastSuccess = Date.parse(settings.lastBackupMetadata?.completedAt || settings.lastBackupMetadata?.date || '');
+  const lastRun = Math.max(Number.isFinite(lastAttempt) ? lastAttempt : 0, Number.isFinite(lastSuccess) ? lastSuccess : 0);
+  return lastRun ? lastRun + getBackupIntervalMs(settings.backupFrequency) : now;
+}
+
+/** Keep encrypted downloads opaque and give every platform exactly one .enc suffix. */
+export function toEncryptedBackupFilename(filename: string): string {
+  const basename = filename.trim().replace(/(?:\.(?:enc|json))+$/i, '');
+  return `${basename || 'backup'}.enc`;
+}
 
 // ============================================================================
 // 1. WEB CRYPTO AES-256-GCM ENCRYPTION & DECRYPTION ENGINE
@@ -377,12 +405,13 @@ export class BackupStorageAdapter {
     encryptedContent: string,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'
   ): Promise<void> {
+    const encryptedFilename = toEncryptedBackupFilename(filename);
     if (provider === 'GOOGLE_DRIVE') {
       const response = await fetch('/api/google-drive/backup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'X-CoinBuddy-Filename': encodeURIComponent(filename),
+          'X-CoinBuddy-Filename': encodeURIComponent(encryptedFilename),
         },
         body: new Blob([encryptedContent], { type: 'application/octet-stream' }),
       });
@@ -403,7 +432,7 @@ export class BackupStorageAdapter {
     } catch (e) {}
 
     const newRecord = {
-      name: filename,
+      name: encryptedFilename,
       date: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       size: `${(encryptedContent.length / 1024).toFixed(1)} KB`,
       accountsCount: parsedMeta.accountCount || 4,
@@ -423,11 +452,11 @@ export class BackupStorageAdapter {
     if (provider === 'LOCAL') {
       // Trigger browser file download if DOM is present
       if (typeof document !== 'undefined' && document.createElement) {
-        const blob = new Blob([encryptedContent], { type: 'application/json' });
+        const blob = new Blob([encryptedContent], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = encryptedFilename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -581,7 +610,7 @@ export class BackupManager {
       ', ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
     const fileDateStr = now.toISOString().slice(0, 10).replace(/-/g, '_');
-    const filename = `backup_${fileDateStr}.enc`;
+    const filename = toEncryptedBackupFilename(`backup_${fileDateStr}.enc`);
     const sizeStr = `${(encryptedPayload.length / 1024).toFixed(1)} KB`;
 
     let accCount = 0;
@@ -596,6 +625,7 @@ export class BackupManager {
 
     const metadata: BackupMetadata = {
       date: dateFormatted,
+      completedAt: now.toISOString(),
       filename,
       size: sizeStr,
       syncStatus: 'UP_TO_DATE',

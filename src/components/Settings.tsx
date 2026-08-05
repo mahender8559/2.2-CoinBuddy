@@ -11,7 +11,7 @@ import type { ComponentType, SVGProps } from 'react';
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
@@ -147,8 +147,11 @@ export function Settings() {
               <button 
                 onClick={async () => {
                   try {
+                    const storedConfig = await getStoredSetting('backupConfig');
                     const savedConfig = localStorage.getItem('coinbuddy_backup_config');
-                    const parsed = savedConfig ? JSON.parse(savedConfig) : null;
+                    const parsed = storedConfig && typeof storedConfig === 'object'
+                      ? storedConfig as { hasPassword?: boolean; backupPassword?: string }
+                      : savedConfig ? JSON.parse(savedConfig) : null;
                     if (!parsed?.hasPassword || !parsed.backupPassword) {
                       showAlert('Set Backup Password', 'Set a backup password in Backup & Security before downloading an encrypted backup.');
                       return;

@@ -340,6 +340,7 @@ export function Insights() {
     }));
     return { nodes, links: flows.map(({ name, value, color }) => ({ source: 0, target: nodes.findIndex(node => node.name === name), value, color })), income, flows };
   }, [transactions, categories, accounts, isDateInCurrentCycle, chartColors]);
+  const sankeyHeight = Math.max(300, sankeyData.nodes.length * 40);
 
   return (
     <div className="space-y-8 pb-24 md:pb-0 animate-fade-in">
@@ -369,7 +370,7 @@ export function Insights() {
 
       <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
         <div className="flex items-center justify-between"><div><h3 className="font-bold text-on-surface">Current Cycle Cash Flow</h3><p className="text-xs text-on-surface-variant">Income flowing to spending, savings transfers, and debt payments.</p></div><span className="text-sm font-bold text-emerald-500">{formatCurrency(sankeyData.income)} income</span></div>
-        {sankeyData.links.length ? <div className="relative"><div className="h-96 mt-4"><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={60} nodeWidth={20} margin={{ top: 40, right: 160, bottom: 40, left: 160 }} link={(props: any) => {
+        {sankeyData.links.length ? <div className="relative mt-4 overflow-x-auto"><div className="min-w-[700px]" style={{ minHeight: sankeyHeight, height: sankeyHeight }}><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={60} nodeWidth={20} margin={{ top: 40, right: 160, bottom: 40, left: 160 }} link={(props: any) => {
           const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, index } = props;
           const color = sankeyData.links[index]?.color || 'rgba(99, 102, 241, 0.35)';
           return <path d={`M${sourceX},${sourceY}C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`} fill="none" stroke={color} strokeOpacity={0.4} strokeWidth={linkWidth} />;
@@ -390,7 +391,6 @@ export function Insights() {
           );
         }}><Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563', borderRadius: '8px', color: '#fff', padding: '8px 12px' }} formatter={(value: number) => [formatCurrency(value), '']} /></Sankey></ResponsiveContainer></div></div> : <p className="py-12 text-center text-sm text-on-surface-variant">No verified cash-flow activity in this cycle yet.</p>}
       </section>
-
       {/* NEW: Category Specific Trend & Growth Chart Section */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-4 sm:p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">

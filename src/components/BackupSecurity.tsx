@@ -13,7 +13,9 @@ import {
   upgradeBackupData, 
   BackupSettings, 
   BackupMetadata,
-  DEFAULT_BACKUP_SETTINGS 
+  DEFAULT_BACKUP_SETTINGS,
+  getBackupIntervalMs,
+  getNextAutoBackupAt,
 } from '../utils/backupManager';
 
 interface BackupSecurityProps {
@@ -125,6 +127,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const [restoreSuccessCelebration, setRestoreSuccessCelebration] = useState(false);
 
   const localFileRef = useRef<HTMLInputElement>(null);
+  const autoBackupInFlight = useRef(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('coinbuddy_drive_oauth_result');
@@ -165,7 +168,8 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     return () => { mounted = false; };
   }, [restoreSource, isRestoreModalOpen]);
 
-  // 3. Background Sync Engine (Auto-Backup Listener)
+  // 3. Background Sync Engine. Schedule one run per selected period rather
+  // than attempting an upload on every timer tick.
   useEffect(() => {
     if (!config.isAutoBackupEnabled) {
       if (config.lastBackupMetadata?.syncStatus !== 'NOT_CONFIGURED') {
@@ -180,8 +184,31 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       return;
     }
 
-    // Listener for network condition & timer
+    // A password is required for encryption. Wait for the user to configure
+    // one instead of consuming an automatic-backup period with a no-op.
+    if (!config.hasPassword || !config.backupPassword) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const scheduleNext = (delay: number) => {
+      timer = setTimeout(() => { void checkAndTriggerAutoBackup(); }, Math.max(0, delay));
+    };
+
     const checkAndTriggerAutoBackup = async () => {
+      if (cancelled || autoBackupInFlight.current) return;
+      const now = Date.now();
+      const nextAllowedAt = getNextAutoBackupAt(config, now);
+      if (now < nextAllowedAt) {
+        scheduleNext(nextAllowedAt - now);
+        return;
+      }
+
+      // Record the attempt before async work begins. This debounce survives
+      // re-renders/remounts and prevents a failed request from looping.
+      autoBackupInFlight.current = true;
+      const attemptedAt = new Date(now).toISOString();
+      setConfig(prev => ({ ...prev, lastAutoBackupAttemptAt: attemptedAt }));
       const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
       if (config.isWifiOnly && !isOnline) {
         setConfig(prev => ({
@@ -191,22 +218,28 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             syncStatus: 'PENDING_NETWORK'
           }
         }));
+        autoBackupInFlight.current = false;
+        if (!cancelled) scheduleNext(getBackupIntervalMs(config.backupFrequency));
         return;
       }
 
-      // Perform silent background execution
-      const newMeta = await BackupManager.executeSilentBackup(config);
-      if (newMeta) {
-        setConfig(prev => ({
-          ...prev,
-          lastBackupMetadata: newMeta
-        }));
+      try {
+        const newMeta = await BackupManager.executeSilentBackup(config);
+        if (newMeta) {
+          setConfig(prev => ({
+            ...prev,
+            lastBackupMetadata: newMeta
+          }));
+        }
+      } finally {
+        autoBackupInFlight.current = false;
+        if (!cancelled) scheduleNext(getBackupIntervalMs(config.backupFrequency));
       }
     };
 
-    const interval = setInterval(checkAndTriggerAutoBackup, 60000); // Check background sync every 60s
-    return () => clearInterval(interval);
-  }, [config.isAutoBackupEnabled, config.backupFrequency, config.isWifiOnly, config.storageProvider]);
+    scheduleNext(Math.max(0, getNextAutoBackupAt(config) - Date.now()));
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [config.isAutoBackupEnabled, config.backupFrequency, config.isWifiOnly, config.storageProvider, config.hasPassword, config.backupPassword, config.lastAutoBackupAttemptAt, config.lastBackupMetadata?.completedAt, config.lastBackupMetadata?.date]);
 
   // Reconnect Storage Provider Action Handler
   const handleReconnectStorageProvider = async () => {
