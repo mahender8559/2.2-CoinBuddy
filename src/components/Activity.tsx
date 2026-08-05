@@ -99,8 +99,6 @@ export function Activity() {
 
   const filteredTransactions = useMemo(() => {
     let filtered = transactions.filter(tx => {
-      if (tx.is_verified === 0) return false;
-      
       const matchesSearch = tx.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             tx.category.toLowerCase().includes(searchQuery.toLowerCase());
       
@@ -290,6 +288,7 @@ export function Activity() {
               const Icon = icons[tx.icon as keyof typeof icons] || ShoppingBag;
               const isIncome = tx.type === 'income';
               const isTransfer = tx.type === 'transfer';
+              const isBalanceAdjustment = tx.transaction_type === 'BALANCE_ADJUSTMENT';
               let color = 'secondary';
               if (isIncome) color = 'primary';
               if (isTransfer) color = 'tertiary';
@@ -314,9 +313,10 @@ export function Activity() {
                   color={color} 
                   isIncome={isIncome}
                   isTransfer={isTransfer}
+                  isPending={tx.is_verified === 0}
                   type={tx.type}
                   onDelete={tx.isOpeningBalance ? undefined : () => deleteTransaction(tx.id)}
-                  onEdit={tx.isOpeningBalance ? undefined : () => {
+                  onEdit={tx.isOpeningBalance || isBalanceAdjustment ? undefined : () => {
                     setEditingTransaction(tx);
                     setAddModalOpen(true);
                   }}
@@ -387,6 +387,7 @@ type TransactionRowProps = {
   color: string;
   isIncome?: boolean;
   isTransfer?: boolean;
+  isPending?: boolean;
   type: string;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -396,7 +397,7 @@ type TransactionRowProps = {
   tourId?: string;
 };
 
-function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, tourId }: TransactionRowProps) {
+function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, tourId }: TransactionRowProps) {
   const colorMap: Record<string, { bg: string, text: string }> = {
     primary: { bg: 'bg-primary-container/20', text: 'text-primary' },
     secondary: { bg: 'bg-secondary-container/20', text: 'text-secondary' },
@@ -425,7 +426,10 @@ function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isInc
         <Icon className={`w-6 h-6 ${c.text}`} />
       </div>
       <div className="flex-grow min-w-0 pt-1">
-        <h3 className="font-semibold text-on-surface break-words whitespace-pre-wrap leading-tight">{title}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-on-surface break-words whitespace-pre-wrap leading-tight">{title}</h3>
+          {isPending && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending</span>}
+        </div>
         <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-1">
           {subtitle} {type && <span className="capitalize opacity-80">• {type}</span>}
         </p>

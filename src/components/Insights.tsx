@@ -340,7 +340,9 @@ export function Insights() {
     }));
     return { nodes, links: flows.map(({ name, value, color }) => ({ source: 0, target: nodes.findIndex(node => node.name === name), value, color })), income, flows };
   }, [transactions, categories, accounts, isDateInCurrentCycle, chartColors]);
-  const sankeyHeight = Math.max(300, sankeyData.nodes.length * 40);
+  // Each destination needs room for its name and value; a larger floor keeps
+  // the source label and the final destination labels inside the card.
+  const sankeyHeight = Math.max(460, sankeyData.nodes.length * 72 + 80);
 
   return (
     <div className="space-y-8 pb-24 md:pb-0 animate-fade-in">
@@ -370,7 +372,7 @@ export function Insights() {
 
       <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
         <div className="flex items-center justify-between"><div><h3 className="font-bold text-on-surface">Current Cycle Cash Flow</h3><p className="text-xs text-on-surface-variant">Income flowing to spending, savings transfers, and debt payments.</p></div><span className="text-sm font-bold text-emerald-500">{formatCurrency(sankeyData.income)} income</span></div>
-        {sankeyData.links.length ? <div className="relative mt-4 overflow-x-auto"><div className="min-w-[700px]" style={{ minHeight: sankeyHeight, height: sankeyHeight }}><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={60} nodeWidth={20} margin={{ top: 40, right: 160, bottom: 40, left: 160 }} link={(props: any) => {
+        {sankeyData.links.length ? <div className="relative mt-4 overflow-x-auto"><div className="min-w-[760px]" style={{ minHeight: sankeyHeight, height: sankeyHeight }}><ResponsiveContainer width="100%" height="100%"><Sankey data={sankeyData} nodePadding={48} nodeWidth={20} margin={{ top: 56, right: 200, bottom: 64, left: 200 }} link={(props: any) => {
           const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, index } = props;
           const color = sankeyData.links[index]?.color || 'rgba(99, 102, 241, 0.35)';
           return <path d={`M${sourceX},${sourceY}C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`} fill="none" stroke={color} strokeOpacity={0.4} strokeWidth={linkWidth} />;
@@ -380,13 +382,14 @@ export function Insights() {
           const isIncome = node.index === 0;
           const categoryIndex = isIncome ? 0 : node.index - 1;
           const nodeColor = isIncome ? '#6366f1' : getCategoryColor(categoryIndex);
+          const labelY = isIncome ? sankeyHeight / 2 : Math.max(36, Math.min(sankeyHeight - 42, node.y + node.height / 2));
           
           return (
             <g>
               <rect x={node.x} y={node.y} width={node.width} height={node.height} fill={nodeColor} rx={6} opacity={0.9} />
               {/* Label positioned to the side of the node */}
-              <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={node.y + node.height / 2 - 2} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="12" fontWeight="600" fill="white">{name}</text>
-              {flow && <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={node.y + node.height / 2 + 14} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#d0d0d0">{flow.percentage.toFixed(1)}% · {formatCurrency(flow.value)}</text>}
+              <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={labelY - 2} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="12" fontWeight="600" fill="white">{name}</text>
+              {flow && <text x={isIncome ? node.x - 8 : node.x + node.width + 8} y={labelY + 14} textAnchor={isIncome ? 'end' : 'start'} dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#d0d0d0">{flow.percentage.toFixed(1)}% · {formatCurrency(flow.value)}</text>}
             </g>
           );
         }}><Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563', borderRadius: '8px', color: '#fff', padding: '8px 12px' }} formatter={(value: number) => [formatCurrency(value), '']} /></Sankey></ResponsiveContainer></div></div> : <p className="py-12 text-center text-sm text-on-surface-variant">No verified cash-flow activity in this cycle yet.</p>}

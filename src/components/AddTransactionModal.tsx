@@ -2,6 +2,7 @@ import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { icons } from '../icons';
+import type { Transaction } from '../types';
 
 
 export function AddTransactionModal() {
@@ -173,11 +174,9 @@ export function AddTransactionModal() {
       finalTitle.toLowerCase().includes('interest payment');
 
     // Compare just the YYYY-MM-DD parts to see if it's strictly in the future
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isFuture = date > todayStr;
-
-    const selectedAccount = accounts.find(a => a.id === account);
-    const isLiabilityAcc = selectedAccount && selectedAccount.type === 'liability';
 
     const eventName = groupId.trim();
     const eventId = eventName
@@ -187,17 +186,18 @@ export function AddTransactionModal() {
       title: finalTitle,
       subtitle: `${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
       amount: type === 'expense' || type === 'transfer' ? -Math.abs(Number(amount) || 0) : Math.abs(Number(amount) || 0),
-      date: new Date(date).toISOString(),
+      date: new Date(`${date}T12:00:00`).toISOString(),
       category: type === 'transfer' ? '#transfer' : `#${categoryName.toLowerCase().replace(/\s+/g, '')}`,
       icon: type === 'transfer' ? 'ArrowRightLeft' : iconName,
       type,
       account: type === 'transfer' ? undefined : account,
       fromAccountId: type === 'transfer'
         ? fromAccountId
-        : (type === 'expense' && isLiabilityAcc ? account : undefined),
+        : (type === 'expense' ? account : undefined),
       toAccountId: type === 'transfer'
         ? toAccountId
-        : (type === 'expense' && isLiabilityAcc ? undefined : undefined),
+        : (type === 'income' ? account : undefined),
+      transaction_type: type.toUpperCase() as Transaction['transaction_type'],
       isRecurring,
       isInterestOnly,
       eventId,

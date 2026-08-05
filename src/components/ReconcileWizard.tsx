@@ -10,14 +10,13 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
   const [actualValue, setActualValue] = useState(String(account.balance));
   const [error, setError] = useState<string | null>(null);
   const actual = Number(actualValue);
-  const difference = Number.isFinite(actual) ? actual - account.balance : 0;
-  const isIncrease = difference > 0;
-  const targetIsTo = account.type === 'asset' ? isIncrease : !isIncrease;
-  // A larger liability balance is new debt. Keep the adjustment out of income
-  // metrics while representing it as an expense-side charge in the activity ledger.
-  const isDebtIncrease = account.type === 'liability' && isIncrease;
+  const cachedBalance = account.balance;
+  const difference = Number.isFinite(actual) ? actual - cachedBalance : 0;
+  const reconciliationDelta = Math.abs(actual - cachedBalance);
+  const targetIsTo = account.type === 'asset'
+    ? actual > cachedBalance
+    : actual < cachedBalance;
   const isCreditCard = account.type === 'liability' && account.group?.toUpperCase() === 'CREDIT CARD';
-  const reconciliationDelta = Math.abs(difference);
   const reconciliationTooLarge = isCreditCard && Number.isFinite(actual) && actual >= 0 && (account.limit ?? 0) > 0 && reconciliationDelta > (account.limit ?? 0) * 0.2;
   const reconciliationWarning = 'Reconciliation difference is too large. Please log missing transactions manually.';
   const label = kind === 'MARKET_ADJUSTMENT' ? 'Update Market Value' : 'Reconcile Balance';
@@ -30,15 +29,15 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
     const result = addTransaction({
       title: kind === 'MARKET_ADJUSTMENT' ? `Market value update: ${account.name}` : `Balance reconciliation: ${account.name}`,
       subtitle: `Actual value ${formatCurrency(actual)}`,
-      amount: Math.abs(difference),
+      amount: reconciliationDelta,
       date: new Date().toISOString(),
       category: kind === 'MARKET_ADJUSTMENT' ? '#market-adjustment' : '#balance-adjustment',
       icon: 'Landmark',
-      type: isDebtIncrease ? 'expense' : 'transfer',
+      type: 'transfer',
       account: account.id,
       fromAccountId: targetIsTo ? undefined : account.id,
       toAccountId: targetIsTo ? account.id : undefined,
-      transaction_type: kind,
+      transaction_type: 'BALANCE_ADJUSTMENT',
       is_verified: 1,
     });
     if (!result.success) return setError(result.error ?? 'Unable to save adjustment.');

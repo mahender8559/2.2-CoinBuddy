@@ -691,6 +691,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if (existingTx?.isOpeningBalance) {
       throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
     }
+    if (existingTx?.transaction_type === 'BALANCE_ADJUSTMENT') {
+      throw new Error('Balance adjustments are immutable. Delete the adjustment and reconcile again if a correction is needed.');
+    }
     if (existingTx && existingTx.type !== newTx.type) {
       throw new Error('Transaction type cannot be changed after creation. Please delete and recreate the transaction if needed.');
     }
