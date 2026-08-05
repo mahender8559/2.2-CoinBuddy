@@ -174,17 +174,16 @@ export async function encryptBackup(
 export async function decryptBackup(
   payloadString: string,
   password?: string
-): Promise<DecryptResult> {
+): Promise<string> {
   let parsed: any;
   try {
     parsed = JSON.parse(payloadString);
   } catch (e) {
     throw new Error('Corrupted file format: Unable to parse backup JSON.');
   }
-
   // If it's a legacy unencrypted backup JSON directly containing state
   if (!parsed.encrypted && (parsed.accounts || parsed.transactions || parsed.categories)) {
-    return { payload: payloadString, legacy: true };
+    return payloadString;
   }
 
   // Handle encrypted payload
@@ -214,10 +213,36 @@ export async function decryptBackup(
     );
 
     const dec = new TextDecoder();
-    return { payload: dec.decode(decryptedBuffer), legacy: false };
+    return dec.decode(decryptedBuffer);
   } catch (err: any) {
     throw new Error('Invalid Password: Could not decrypt backup file. Please check your password.');
   }
+}
+
+// Backwards-compatible helper that returns payload + legacy flag
+export async function decryptBackupWithFlag(payloadString: string, password?: string): Promise<DecryptResult> {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(payloadString);
+  } catch (e) {
+    throw new Error('Corrupted file format: Unable to parse backup JSON.');
+  }
+
+  if (!parsed.encrypted && (parsed.accounts || parsed.transactions || parsed.categories)) {
+    return { payload: payloadString, legacy: true };
+  }
+
+  if (!parsed.ciphertext || !parsed.salt || !parsed.iv) {
+    if (parsed.data && typeof parsed.data === 'string') {
+      return decryptBackupWithFlag(parsed.data, password);
+    }
+    throw new Error('Invalid backup file structure.');
+  }
+
+  if (!password) throw new Error('A backup password is required to decrypt this backup.');
+
+  const decrypted = await decryptBackup(payloadString, password);
+  return { payload: decrypted, legacy: false };
 }
 
 // ============================================================================

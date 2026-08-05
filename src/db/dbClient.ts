@@ -593,19 +593,37 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
   const rules = await driver.query(`SELECT * FROM recurring_rules WHERE is_active = 1 AND next_due_date <= ?`, [todayDate]);
   let generated = 0;
   for (const rule of rules) {
+    // Collect all due dates up to today for this rule
+    const dueDates: string[] = [];
     let dueDate = rule.next_due_date;
     while (dueDate <= todayDate) {
-      const exists = await driver.query(`SELECT id FROM transactions WHERE recurring_rule_id = ? AND due_date = ?`, [rule.id, dueDate]);
-      if (!exists.length) {
-        // Support rules saved before directional account ids were normalized.
-        const sourceAccountId = rule.from_account_id ?? (rule.transaction_type === 'EXPENSE' ? rule.account : null);
-        const destinationAccountId = rule.to_account_id ?? (rule.transaction_type === 'INCOME' ? rule.account : null);
-        if ((rule.transaction_type === 'EXPENSE' || rule.transaction_type === 'TRANSFER') && !sourceAccountId) {
-          throw new Error(`Recurring rule "${rule.title}" has no source account.`);
-        }
-        if ((rule.transaction_type === 'INCOME' || rule.transaction_type === 'TRANSFER') && !destinationAccountId) {
-          throw new Error(`Recurring rule "${rule.title}" has no destination account.`);
-        }
+      dueDates.push(dueDate);
+      dueDate = advanceRecurringDate(dueDate, rule.frequency);
+    }
+
+    if (dueDates.length > 0) {
+      // Single query to find existing due dates
+      const placeholders = dueDates.map(() => '?').join(',');
+      const params = [rule.id, ...dueDates];
+      const existingRows = await driver.query(
+        `SELECT due_date FROM transactions WHERE recurring_rule_id = ? AND due_date IN (${placeholders})`,
+        params
+      );
+      const existingSet = new Set(existingRows.map((r: any) => r.due_date));
+
+      // Prepare context-dependent values once per rule
+      const sourceAccountId = rule.from_account_id ?? (rule.transaction_type === 'EXPENSE' ? rule.account : null);
+      const destinationAccountId = rule.to_account_id ?? (rule.transaction_type === 'INCOME' ? rule.account : null);
+      if ((rule.transaction_type === 'EXPENSE' || rule.transaction_type === 'TRANSFER') && !sourceAccountId) {
+        throw new Error(`Recurring rule "${rule.title}" has no source account.`);
+      }
+      if ((rule.transaction_type === 'INCOME' || rule.transaction_type === 'TRANSFER') && !destinationAccountId) {
+        throw new Error(`Recurring rule "${rule.title}" has no destination account.`);
+      }
+
+      for (const d of dueDates) {
+        if (existingSet.has(d)) continue;
+
         const liabilityRows = rule.transaction_type === 'TRANSFER' && rule.to_account_id
           ? await driver.query(`SELECT * FROM account_balances_view WHERE id = ? AND type = 'LIABILITY'`, [rule.to_account_id])
           : [];
@@ -617,23 +635,24 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
         const principalAmount = split ? split.principalAmount : Number(rule.amount);
         if (principalAmount > 0) await insertTransactionRow(driver, {
           id: crypto.randomUUID(), title: rule.title, subtitle: rule.subtitle ?? '', amount: principalAmount,
-          date: localNoonIso(dueDate), category: rule.category ?? '#uncategorized', icon: rule.icon ?? 'RefreshCw',
+          date: localNoonIso(d), category: rule.category ?? '#uncategorized', icon: rule.icon ?? 'RefreshCw',
           type: rule.transaction_type.toLowerCase(), account: rule.account ?? undefined, fromAccountId: sourceAccountId ?? undefined,
           toAccountId: destinationAccountId ?? undefined, notes: rule.notes ?? undefined, isInterestOnly: Boolean(rule.is_interest_only),
-          transaction_type: rule.transaction_type, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate,
+          transaction_type: rule.transaction_type, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate: d,
         } as Transaction);
         if (split && split.interestAmount > 0) {
           await insertTransactionRow(driver, {
             id: crypto.randomUUID(), title: `Interest Payment: ${liability.name}`, subtitle: rule.subtitle ?? '', amount: split.interestAmount,
-            date: localNoonIso(dueDate), category: '#interest', icon: 'Flame', type: 'expense',
+            date: localNoonIso(d), category: '#interest', icon: 'Flame', type: 'expense',
             fromAccountId: sourceAccountId ?? undefined, account: destinationAccountId, toAccountId: destinationAccountId,
-            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate,
+            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate: d,
           } as Transaction);
         }
         generated++;
       }
-      dueDate = advanceRecurringDate(dueDate, rule.frequency);
     }
+
+    // Advance next_due_date to the next occurrence after today
     await driver.execute(`UPDATE recurring_rules SET next_due_date = ? WHERE id = ?`, [dueDate, rule.id]);
   }
   return generated;

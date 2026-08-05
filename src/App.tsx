@@ -351,7 +351,7 @@ export default function App() {
       <AddAccountModal />
       <WalletSummaryModal />
       <PayCardModal />
-      {toast && <div role="status" className="fixed bottom-5 left-1/2 z-[200] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-surface-container-high px-4 py-3 text-sm text-on-surface shadow-2xl border border-outline-variant/30"><span>{toast.message}</span>{toast.actionLabel && <button className="font-bold text-primary" onClick={toast.onAction}>{toast.actionLabel}</button>}</div>}
+      {toast && <div role="status" className="fixed bottom-5 left-1/2 z-[200] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-surface-container-high px-4 py-3 text-sm text-on-surface shadow-2xl border border-outline-variant/30"><span>{toast.message}</span>{toast.actionLabel && <button aria-label={`${toast.actionLabel} (${toast.message})`} className="font-bold text-primary" onClick={toast.onAction}>{toast.actionLabel}</button>}</div>}
     </div>
   );
 }

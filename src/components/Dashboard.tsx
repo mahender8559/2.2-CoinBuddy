@@ -1,7 +1,7 @@
 import { TrendingUp, TrendingDown, Sparkles, ShieldCheck, ArrowDownRight, ArrowUpRight, Plus, PiggyBank, Bell, PlusSquare, Utensils, Car, Briefcase, Zap, CreditCard, ShoppingBag, Banknote, Home, Trash2, Wallet, Target, MoreHorizontal, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { motion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { WidgetModal } from './WidgetModal';
 import { WidgetCard } from './WidgetCard';
 import { AnimatedNumber } from './AnimatedNumber';
@@ -19,8 +19,8 @@ export function Dashboard() {
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
-  const totalAssets = accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0);
-  const totalLiabilities = accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0);
+  const totalAssets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
+  const totalLiabilities = useMemo(() => accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
   
   // Calculate historical Net Worth points for past 6 months/cycles based on actual transactions
   const getCycleBounds = (cycleOffset: number, cycleDay: number) => {

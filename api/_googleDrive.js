@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { validateEnvironment } from '../src/utils/envValidation.js';
 
 const COOKIE = 'coinbuddy_drive_session';
 const STATE_COOKIE = 'coinbuddy_drive_state';
@@ -14,6 +15,11 @@ export function validateGoogleDriveEnvironment() {
   required('GOOGLE_CLIENT_ID');
   required('GOOGLE_CLIENT_SECRET');
   key();
+}
+
+// Enforce environment validation at module load in production so server fails securely.
+if (process.env.NODE_ENV === 'production') {
+  validateEnvironment();
 }
 
 export function appUrl(req) {

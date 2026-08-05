@@ -4,6 +4,7 @@ import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Ca
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { useDebounce } from '../hooks/useDebounce';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 
 
@@ -11,6 +12,7 @@ export function Activity() {
   const { transactions, formatCurrency, setAddModalOpen, categories, events, createEvent, groupTransactionsToEvent, deleteTransaction, setEditingTransaction, getCycleDetails, accounts, approveTransaction, rejectTransaction } = useAppContext();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedQuery = useDebounce(searchQuery, 300);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'All' | 'Income' | 'Expense' | 'Transfer'>('All');
   const typeFilters = ['All', 'Income', 'Expense', 'Transfer'] as const;
@@ -99,8 +101,8 @@ export function Activity() {
 
   const filteredTransactions = useMemo(() => {
     let filtered = transactions.filter(tx => {
-      const matchesSearch = tx.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            tx.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const q = debouncedQuery.toLowerCase();
+      const matchesSearch = tx.title.toLowerCase().includes(q) || tx.category.toLowerCase().includes(q);
       
       const matchesCategory = selectedCategoryFilter 
         ? tx.category === `#${categories.find(c => c.id === selectedCategoryFilter)?.name.toLowerCase().replace(/\s+/g, '')}` ||
@@ -134,7 +136,7 @@ export function Activity() {
       }
       return 0;
     });
-  }, [transactions, searchQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedSort]);
+  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedSort]);
 
   const outflow = filteredTransactions.filter(t => !t.isOpeningBalance && isCashFlowTransaction(t) && t.type === 'expense').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
   
@@ -352,6 +354,7 @@ export function Activity() {
             <button 
               onClick={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}
               className="text-on-surface-variant hover:text-on-surface text-sm font-medium"
+              aria-label="Cancel selection"
             >
               Cancel
             </button>
@@ -360,6 +363,7 @@ export function Activity() {
               disabled={selectedIds.size === 0}
               className="px-3 h-12 bg-primary/10 text-primary rounded-xl flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-xs font-bold"
               title="Group selected transactions to an event"
+              aria-label="Group selected transactions to event"
             >
               <Layers className="w-4 h-4" />
               Event
@@ -368,6 +372,7 @@ export function Activity() {
               onClick={deleteSelected}
               disabled={selectedIds.size === 0}
               className="w-12 h-12 bg-error/10 text-error rounded-xl flex items-center justify-center hover:bg-error hover:text-on-error transition-colors disabled:opacity-50"
+              aria-label="Delete selected transactions"
             >
               <Trash2 className="w-5 h-5" />
             </button>
