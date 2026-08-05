@@ -161,6 +161,46 @@ export default function App() {
 
   const [pinEntry, setPinEntry] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [biometricError, setBiometricError] = useState<string | null>(null);
+
+  const handleBiometricUnlock = async () => {
+    setBiometricError(null);
+    setUnlocked(false);
+
+    if (!window.PublicKeyCredential || !navigator.credentials?.get) {
+      setBiometricError(passcode
+        ? 'Biometric authentication is not available on this device. Use your passcode.'
+        : 'Biometric authentication is not available on this device. Configure a passcode to unlock safely.');
+      return;
+    }
+
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          timeout: 60000,
+          userVerification: 'required',
+        },
+      });
+
+      if (!assertion) throw new Error('No biometric assertion was returned.');
+      setUnlocked(true);
+    } catch (error) {
+      setUnlocked(false);
+      const name = error instanceof DOMException ? error.name : '';
+      if (name === 'NotAllowedError') {
+        setBiometricError('Biometric authentication was cancelled or failed.');
+      } else if (name === 'NotSupportedError' || name === 'SecurityError' || name === 'AbortError') {
+        setBiometricError(passcode
+          ? 'Biometric authentication is unavailable. Use your passcode.'
+          : 'Biometric authentication is unavailable. Configure a passcode to unlock safely.');
+      } else {
+        setBiometricError('Biometric authentication could not be completed. Your vault remains locked.');
+      }
+    }
+  };
 
   useEffect(() => {
     if (pinEntry.length === 4) {
@@ -239,45 +279,7 @@ export default function App() {
           
           {biometric && !passcode && (
             <button 
-              onClick={async () => {
-                if (window.PublicKeyCredential) {
-                  try {
-                    const challenge = new Uint8Array(32);
-                    window.crypto.getRandomValues(challenge);
-                    const userId = new Uint8Array(16);
-                    window.crypto.getRandomValues(userId);
-
-                    await navigator.credentials.create({
-                      publicKey: {
-                        challenge,
-                        rp: { name: "Coin Buddy Vault" },
-                        user: {
-                          id: userId,
-                          name: "vault_user",
-                          displayName: "Vault User"
-                        },
-                        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-                        authenticatorSelection: {
-                          authenticatorAttachment: "platform", // forces TouchID / FaceID / Windows Hello
-                          userVerification: "required"
-                        },
-                        timeout: 60000,
-                        attestation: "none"
-                      }
-                    });
-                    setUnlocked(true);
-                  } catch (err) {
-                    console.error('Biometric auth failed or cancelled:', err);
-                    if ((err as Error).name === 'NotAllowedError') {
-                      alert('Authentication failed.');
-                      return;
-                    }
-                    setUnlocked(true);
-                  }
-                } else {
-                  setUnlocked(true);
-                }
-              }}
+              onClick={() => void handleBiometricUnlock()}
               className="flex flex-col items-center gap-4 group mt-8"
             >
               <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_-10px_var(--primary)] relative overflow-hidden">
@@ -290,51 +292,14 @@ export default function App() {
 
           {biometric && passcode && (
             <button 
-              onClick={async () => {
-                if (window.PublicKeyCredential) {
-                  try {
-                    const challenge = new Uint8Array(32);
-                    window.crypto.getRandomValues(challenge);
-                    const userId = new Uint8Array(16);
-                    window.crypto.getRandomValues(userId);
-
-                    await navigator.credentials.create({
-                      publicKey: {
-                        challenge,
-                        rp: { name: "Coin Buddy Vault" },
-                        user: {
-                          id: userId,
-                          name: "vault_user",
-                          displayName: "Vault User"
-                        },
-                        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-                        authenticatorSelection: {
-                          authenticatorAttachment: "platform",
-                          userVerification: "required"
-                        },
-                        timeout: 60000,
-                        attestation: "none"
-                      }
-                    });
-                    setUnlocked(true);
-                  } catch (err) {
-                    console.error('Biometric auth failed or cancelled:', err);
-                    if ((err as Error).name === 'NotAllowedError') {
-                      alert('Authentication failed.');
-                      return;
-                    }
-                    setUnlocked(true);
-                  }
-                } else {
-                  setUnlocked(true);
-                }
-              }}
+              onClick={() => void handleBiometricUnlock()}
               className="mt-6 flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
             >
               <Fingerprint className="w-5 h-5" />
               <span className="text-sm font-semibold tracking-wider uppercase">Use Biometrics</span>
             </button>
           )}
+          {biometricError && <p role="alert" className="max-w-sm text-center text-sm text-error">{biometricError}</p>}
         </div>
       </div>
     );

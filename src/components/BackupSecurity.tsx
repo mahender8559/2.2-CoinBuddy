@@ -43,8 +43,8 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             filename: parsed.lastBackupFilename || 'backup_2026_08_01.enc',
             size: parsed.lastBackupSize || '1.2 MB',
             syncStatus: parsed.syncStatus || 'UP_TO_DATE',
-            accountCount: accounts.length || 4,
-            transactionCount: transactions.length || 38,
+            accountCount: accounts.length,
+            transactionCount: transactions.length,
             storageProvider: 'LOCAL',
           }
         };
@@ -121,7 +121,10 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     accountsCount: number;
     transactionsCount: number;
     date: string;
+    metadataAvailable: boolean;
   } | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [legacyBackupWarning, setLegacyBackupWarning] = useState(false);
 
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreSuccessCelebration, setRestoreSuccessCelebration] = useState(false);
@@ -379,13 +382,13 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       reader.onload = (event) => {
         const content = event.target?.result as string;
         try {
-          let accountsCount = accounts.length || 4;
-          let transactionsCount = transactions.length || 38;
+          let accountsCount = 0;
+          let transactionsCount = 0;
           try {
             const parsed = JSON.parse(content);
             if (parsed.metadata) {
-              accountsCount = parsed.metadata.accountCount || accountsCount;
-              transactionsCount = parsed.metadata.transactionCount || transactionsCount;
+              accountsCount = parsed.metadata.accountCount ?? 0;
+              transactionsCount = parsed.metadata.transactionCount ?? 0;
             }
           } catch (e) {}
 
@@ -402,7 +405,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
           setAvailableBackups(prev => [fileBackupObj, ...prev.filter(b => b.name !== file.name)]);
           setRestoreStep(2);
         } catch (err) {
-          alert('Invalid backup file format.');
+          setRestoreError('Invalid backup file format.');
         }
       };
       reader.readAsText(file);
@@ -413,6 +416,8 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
   const handleUnlockBackup = async (e: React.FormEvent) => {
     e.preventDefault();
     setRestorePwdError(null);
+    setRestoreError(null);
+    setLegacyBackupWarning(false);
 
     if (!selectedBackupFile) {
       setRestorePwdError('Please select a backup file.');
@@ -431,23 +436,29 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
     try {
       // Decrypt AES-256-GCM payload using password
-      const rawJson = await decryptBackup(payloadToDecrypt, restorePassword);
+      const { payload: rawJson, legacy } = await decryptBackup(payloadToDecrypt, restorePassword);
       
       // Parse to inspect metadata
       let accountCount = 0;
       let transactionCount = 0;
+      let metadataAvailable = false;
       try {
         const parsed = JSON.parse(rawJson);
-        accountCount = parsed.accounts?.length || accounts.length || 4;
-        transactionCount = parsed.transactions?.length || transactions.length || 38;
+        if (Array.isArray(parsed.accounts) && Array.isArray(parsed.transactions)) {
+          accountCount = parsed.accounts.length;
+          transactionCount = parsed.transactions.length;
+          metadataAvailable = true;
+        }
       } catch (e) {}
 
       setDecryptedRawJSON(rawJson);
       setDecryptedPreviewMeta({
         accountsCount: accountCount,
         transactionsCount: transactionCount,
-        date: selectedBackupFile.date
+        date: selectedBackupFile.date,
+        metadataAvailable,
       });
+      setLegacyBackupWarning(legacy);
 
       setIsDecrypting(false);
       setRestoreStep(4);
@@ -465,7 +476,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
       try {
         // 1. Upgrade schema
-        const upgradedData = upgradeBackupData(decryptedRawJSON);
+        const upgradedData = upgradeBackupData(decryptedRawJSON, { recomputeBalances: false });
         
         // 2. Hydrate database
         // importLedgerData persists and refreshes the SQLite projection before it resolves.
@@ -484,7 +495,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
         }, 2200);
       } catch (e: any) {
         setIsRestoring(false);
-        alert(`Restore Error: ${e?.message || 'Failed to hydrate database.'}`);
+        setRestoreError(`Restore failed: ${e?.message || 'Failed to hydrate database.'}`);
       }
   };
 
@@ -508,6 +519,11 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       </div>
 
       {/* Success Banner */}
+      {restoreError && (
+        <div role="alert" className="rounded-xl border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">
+          {restoreError}
+        </div>
+      )}
       {backupSuccessMessage && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-2xl flex items-center justify-between animate-fade-in">
           <div className="flex items-center gap-2.5">
@@ -1210,6 +1226,17 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
                         </div>
                       </div>
                     </div>
+
+                    {legacyBackupWarning && (
+                      <div data-testid="legacy-backup-warning" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-200">
+                        This is an older unencrypted backup. Restore it only if you trust its source, then create a new encrypted backup.
+                      </div>
+                    )}
+                    {decryptedPreviewMeta && !decryptedPreviewMeta.metadataAvailable && (
+                      <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-200">
+                        Backup metadata could not be read. The restore will validate the ledger before replacing local data.
+                      </div>
+                    )}
 
                     {/* Critical Warning Box */}
                     <div className="bg-error/10 border border-error/30 rounded-2xl p-4 flex items-start gap-3 text-error">

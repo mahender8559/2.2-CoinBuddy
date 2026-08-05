@@ -1,4 +1,4 @@
-import { ShieldCheck, Wallet, Undo2, Redo2, LogOut } from 'lucide-react';
+import { ShieldCheck, Wallet, Undo2, Redo2, LogOut, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 interface HeaderProps {
@@ -7,7 +7,7 @@ interface HeaderProps {
 }
 
 export function Header({ onLogout, showLogout = true }: HeaderProps) {
-  const { setWalletModalOpen, canUndo, canRedo, handleUndo, handleRedo } = useAppContext();
+  const { setWalletModalOpen, canUndo, canRedo, handleUndo, handleRedo, balancesVisible, toggleBalancesVisible } = useAppContext();
 
   return (
     <header className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-outline-variant/30 h-16 flex items-center justify-between px-4 md:px-10">
@@ -36,6 +36,15 @@ export function Header({ onLogout, showLogout = true }: HeaderProps) {
           title="Redo"
         >
           <Redo2 className="w-5 h-5" />
+        </button>
+        <button
+          onClick={toggleBalancesVisible}
+          className="p-2 rounded-full text-primary transition-colors hover:bg-surface-container"
+          title={balancesVisible ? 'Hide balances' : 'Show balances'}
+          aria-label={balancesVisible ? 'Hide balances' : 'Show balances'}
+          data-testid="privacy-toggle"
+        >
+          {balancesVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
         </button>
         <button 
           onClick={() => setWalletModalOpen(true)}

@@ -74,6 +74,8 @@ interface AppContextType {
   setTheme: (theme: 'light' | 'dark') => void;
   currency: string;
   setCurrency: (curr: string) => void;
+  balancesVisible: boolean;
+  toggleBalancesVisible: () => void;
   formatCurrency: (amount: number | string) => string;
   getCurrencySymbol: () => string;
   getAccountBalance: (accountId: string) => number;
@@ -195,6 +197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [colorPalette, setColorPalette] = useState('blue');
   const [currency, setCurrency] = useState('INR');
+  const [balancesVisible, setBalancesVisible] = useState(() => localStorage.getItem('coinbuddy_balances_visible') !== 'false');
   const [autoRecur, setAutoRecur] = useState(true);
   const [biometric, setBiometric] = useState(false);
   const [passcode, setPasscodeHash] = useState<string | null>(null);
@@ -533,6 +536,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
 
   useEffect(() => {
+    localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
+  }, [balancesVisible]);
+
+  useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -861,6 +868,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
+
+    if (card.limit < targetAccount.balance) {
+      throw new Error('Credit limit cannot be lower than the current outstanding balance.');
+    }
 
     const existingTxIndex = transactions.findIndex(t => 
       (t.isOpeningBalance || t.category === '#opening') &&
@@ -1246,6 +1257,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   };
 
   const formatCurrency = (amount: number | string) => {
+    if (!balancesVisible) return '••••••';
     if (isSafeMathError(amount)) {
       return `⚠️ [${amount}]`;
     }
@@ -1332,7 +1344,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if (validationError) throw new Error(validationError);
     if (dbDriver) {
       const imported = await persistDbAction(async () => {
-        await importLedgerToDatabase(dbDriver, data);
+        await importLedgerToDatabase(dbDriver, data, { skipValidation: true });
       });
       if (!imported) {
         throw new Error('Import failed. Your existing ledger was left unchanged.');
@@ -1392,7 +1404,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       canRedo: redoStack.length > 0,
       handleUndo,
       handleRedo,
-      theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, formatCurrency, getCurrencySymbol, 
+      theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, 

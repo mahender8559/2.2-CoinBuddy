@@ -4,6 +4,8 @@ import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
 import { Account, Category, CreditCardInfo, Event, LoanRevision, Transaction, Widget } from '../types';
 import { calculateEmiSplit } from '../utils/emi';
+import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
+import { validateLedgerSchema } from '../utils/ledgerSchema';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -56,35 +58,7 @@ export interface SqlJsDatabaseDriver {
 
 /** Reject malformed backups before clearing the existing ledger. */
 export function validateLedgerImport(data: unknown): string | null {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Backup must be a JSON object.';
-  const ledger = data as Record<string, unknown>;
-  if (ledger.schemaVersion !== 'coinbuddy-ledger-v3') return 'This backup is not a supported CoinBuddy ledger export.';
-  for (const key of ['accounts', 'transactions', 'categories', 'creditCards', 'widgets', 'loanRevisions']) {
-    if (!Array.isArray(ledger[key])) return `Backup field "${key}" must be an array.`;
-  }
-  if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
-  if (!(ledger.transactions as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown; amount?: unknown }).id === 'string' && Number.isFinite(Number((value as { amount?: unknown }).amount)) && Number((value as { amount?: unknown }).amount) > 0)) return 'Every imported transaction must have an id and positive amount.';
-  return null;
-}
-
-function bufferToBase64(buffer: Uint8Array): string {
-  let binary = '';
-  const bytes = buffer;
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const len = binary.length;
-  const buffer = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    buffer[i] = binary.charCodeAt(i);
-  }
-  return buffer;
+  return validateLedgerSchema(data);
 }
 
 function openSnapshotStore(): Promise<IDBDatabase> {
@@ -665,9 +639,21 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
   return generated;
 }
 
-export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any): Promise<void> {
-  const validationError = validateLedgerImport(data);
-  if (validationError) throw new Error(validationError);
+function executePreparedRows(driver: SqlJsDatabaseDriver, sql: string, rows: Array<(string | number | null | undefined)[]>): void {
+  if (!rows.length) return;
+  const statement = driver.rawDb.prepare(sql);
+  try {
+    for (const params of rows) statement.run(params);
+  } finally {
+    statement.free();
+  }
+}
+
+export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: any, options: { skipValidation?: boolean } = {}): Promise<void> {
+  if (!options.skipValidation) {
+    const validationError = validateLedgerImport(data);
+    if (validationError) throw new Error(validationError);
+  }
   await driver.execute('BEGIN TRANSACTION');
   try {
     await clearDatabase(driver);
@@ -681,22 +667,19 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
     const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
-    for (const category of categories) {
-      await driver.execute(
-        `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-        [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
-      );
-    }
-
-    for (const account of accounts) {
-      await insertAccountRow(driver, account, 0, crypto.randomUUID(), false);
-    }
-
-    for (const event of events) await insertEventRow(driver, event);
-    for (const tx of transactions) await insertTransactionRow(driver, tx);
-    for (const card of creditCards) await insertCreditCardRow(driver, card);
-    for (const widget of widgets) await insertWidgetRow(driver, widget);
-    for (const rev of loanRevisions) await insertLoanRevisionRow(driver, rev);
+    executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]));
+    executePreparedRows(driver, `INSERT INTO accounts (id, name, type, subtype, credit_limit, overdraft_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, accounts.map(account => [account.id, account.name, account.type === 'liability' ? 'LIABILITY' : 'ASSET', account.group ?? null, account.limit ?? null, Math.max(0, account.overdraftLimit ?? 0), account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]));
+    executePreparedRows(driver, `INSERT INTO events (event_id, name, created_at) VALUES (?, ?, ?);`, events.map(event => [event.id, event.name, event.createdAt]));
+    executePreparedRows(driver, `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only, recurring_rule_id, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, transactions.map(tx => {
+      const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
+      const parsedType = ['EXPENSE', 'TRANSFER', 'OPENING_BALANCE', 'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT'].includes(transactionType) ? transactionType : 'INCOME';
+      const amount = Math.abs(Number(tx.amount));
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be a finite positive number.');
+      return [tx.id, parsedType, tx.title, tx.subtitle ?? null, amount, new Date(tx.date).getTime(), tx.category ?? null, tx.icon ?? null, tx.account ?? null, tx.fromAccountId ?? null, tx.toAccountId ?? null, tx.notes ?? null, tx.is_verified ?? 1, tx.isRecurring ? 1 : 0, tx.isOpeningBalance ? 1 : 0, tx.isInterestOnly ? 1 : 0, tx.recurringRuleId ?? null, tx.dueDate ?? null, tx.eventId ?? null];
+    }));
+    executePreparedRows(driver, `INSERT INTO credit_cards (id, account_id, due_amount, due_date, billing_cycle_day) VALUES (?, ?, ?, ?, ?);`, creditCards.map(card => [card.id, card.id, card.dueAmount ?? 0, card.dueDate ?? '', card.billingCycleDay ?? 1]));
+    executePreparedRows(driver, `INSERT INTO widgets (id, type, target_id) VALUES (?, ?, ?);`, widgets.map(widget => [widget.id, widget.type, widget.targetId]));
+    executePreparedRows(driver, `INSERT INTO loan_revisions (id, account_id, effective_date, new_interest_rate, new_emi, new_tenure_months, payment_frequency) VALUES (?, ?, ?, ?, ?, ?, ?);`, loanRevisions.map(revision => [revision.id, revision.accountId, revision.effectiveDate, revision.newInterestRate, revision.newEmi, revision.newTenureMonths, revision.paymentFrequency ?? null]));
     if (userConfig) {
       await upsertUserConfig(driver, {
         currency: userConfig.currency_code ?? data.currency ?? 'INR',

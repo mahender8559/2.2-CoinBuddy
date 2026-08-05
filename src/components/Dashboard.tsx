@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Sparkles, ShieldCheck, ArrowDownRight, ArrowUpRight, Plus, PiggyBank, Bell, PlusSquare, Utensils, Car, Briefcase, Zap, CreditCard, ShoppingBag, Banknote, Home, Trash2, Wallet, Target, MoreHorizontal, CheckCircle2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, Sparkles, ShieldCheck, ArrowDownRight, ArrowUpRight, Plus, PiggyBank, Bell, PlusSquare, Utensils, Car, Briefcase, Zap, CreditCard, ShoppingBag, Banknote, Home, Trash2, Wallet, Target, MoreHorizontal, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
@@ -19,12 +19,6 @@ export function Dashboard() {
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
-  const [balancesVisible, setBalancesVisible] = useState(() => localStorage.getItem('coinbuddy_balances_visible') === 'true');
-
-  useEffect(() => {
-    localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
-  }, [balancesVisible]);
-
   const totalAssets = accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0);
   const totalLiabilities = accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0);
   
@@ -186,17 +180,9 @@ export function Dashboard() {
       <div className="flex flex-col items-center justify-center pt-8 pb-4">
         <div className="mb-1 flex items-center gap-2">
           <p className="text-sm text-on-surface-variant font-medium tracking-wide">Net Worth</p>
-          <button
-            onClick={() => setBalancesVisible(current => !current)}
-            className="rounded-full p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-            title={balancesVisible ? 'Hide balances' : 'Show balances'}
-            aria-label={balancesVisible ? 'Hide balances' : 'Show balances'}
-          >
-            {balancesVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
         </div>
         <h1 className="text-3xl sm:text-5xl font-bold text-on-surface font-numeric tracking-tight text-center numeric-wrap">
-          {balancesVisible ? <AnimatedNumber value={netWorth} format={formatCurrency} /> : <span aria-label="Balance hidden" className="tracking-[0.18em] text-on-surface-variant">••••••</span>}
+          <AnimatedNumber value={netWorth} format={formatCurrency} />
         </h1>
       </div>
 
@@ -208,7 +194,7 @@ export function Dashboard() {
              <p className="text-sm text-on-surface-variant font-medium">Total Assets</p>
              <TrendingUp className="w-4 h-4 text-emerald-500/50 ml-auto" />
            </div>
-           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap">{balancesVisible ? <AnimatedNumber value={totalAssets} format={formatCurrency} /> : <span aria-label="Balance hidden" className="tracking-[0.18em] text-on-surface-variant">••••••</span>}</p>
+           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap"><AnimatedNumber value={totalAssets} format={formatCurrency} /></p>
         </div>
         <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm flex flex-col justify-center">
            <div className="flex items-center gap-2 mb-2">
@@ -216,7 +202,7 @@ export function Dashboard() {
              <p className="text-sm text-on-surface-variant font-medium">Total Liabilities</p>
              <TrendingUp className="w-4 h-4 text-rose-500/50 transform rotate-180 ml-auto" />
            </div>
-           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap">{balancesVisible ? <AnimatedNumber value={totalLiabilities} format={formatCurrency} /> : <span aria-label="Balance hidden" className="tracking-[0.18em] text-on-surface-variant">••••••</span>}</p>
+           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap"><AnimatedNumber value={totalLiabilities} format={formatCurrency} /></p>
         </div>
       </div>
 

@@ -4,7 +4,8 @@
  * and background auto-backup synchronization for CoinBuddy.
  */
 
-import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './balanceManager';
+import { base64ToUint8Array, bufferToBase64 } from './encoding';
+import { migrateBackupDataToLatest } from './ledgerSchema';
 
 export interface BackupMetadata {
   date: string;
@@ -44,6 +45,11 @@ export interface EncryptedPayload {
     accountCount: number;
     transactionCount: number;
   };
+}
+
+export interface DecryptResult {
+  payload: string;
+  legacy: boolean;
 }
 
 // Default Settings
@@ -168,7 +174,7 @@ export async function encryptBackup(
 export async function decryptBackup(
   payloadString: string,
   password?: string
-): Promise<string> {
+): Promise<DecryptResult> {
   let parsed: any;
   try {
     parsed = JSON.parse(payloadString);
@@ -178,7 +184,7 @@ export async function decryptBackup(
 
   // If it's a legacy unencrypted backup JSON directly containing state
   if (!parsed.encrypted && (parsed.accounts || parsed.transactions || parsed.categories)) {
-    return payloadString;
+    return { payload: payloadString, legacy: true };
   }
 
   // Handle encrypted payload
@@ -196,9 +202,9 @@ export async function decryptBackup(
   const effectivePassword = password;
 
   try {
-    const salt = base64ToBuffer(parsed.salt);
-    const iv = base64ToBuffer(parsed.iv);
-    const ciphertext = base64ToBuffer(parsed.ciphertext);
+    const salt = base64ToUint8Array(parsed.salt);
+    const iv = base64ToUint8Array(parsed.iv);
+    const ciphertext = base64ToUint8Array(parsed.ciphertext);
 
     const key = await deriveKey(effectivePassword, salt);
     const decryptedBuffer = await crypto.subtle.decrypt(
@@ -208,30 +214,10 @@ export async function decryptBackup(
     );
 
     const dec = new TextDecoder();
-    return dec.decode(decryptedBuffer);
+    return { payload: dec.decode(decryptedBuffer), legacy: false };
   } catch (err: any) {
     throw new Error('Invalid Password: Could not decrypt backup file. Please check your password.');
   }
-}
-
-// Helper functions for ArrayBuffer <-> Base64 conversion
-function bufferToBase64(buffer: Uint8Array): string {
-  let binary = '';
-  const len = buffer.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(buffer[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToBuffer(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
 }
 
 // ============================================================================
@@ -241,94 +227,8 @@ function base64ToBuffer(base64: string): Uint8Array {
 /**
  * Validates and migrates raw JSON data to current app schema specifications
  */
-export function upgradeBackupData(rawJsonString: string): any {
-  let data: any;
-  try {
-    data = JSON.parse(rawJsonString);
-  } catch (e) {
-    throw new Error('Invalid JSON structure inside backup.');
-  }
-
-  // If wrapped inside a state property
-  if (data.data && typeof data.data === 'object') {
-    data = data.data;
-  }
-
-  if (data.schemaVersion === 'coinbuddy-ledger-v3') {
-    return {
-      ...data,
-      accounts: Array.isArray(data.accounts) ? data.accounts : [],
-      transactions: Array.isArray(data.transactions) ? data.transactions : [],
-      categories: Array.isArray(data.categories) ? data.categories : [],
-      creditCards: Array.isArray(data.creditCards) ? data.creditCards : [],
-      widgets: Array.isArray(data.widgets) ? data.widgets : [],
-      loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [],
-      currency: data.currency || 'INR',
-    };
-  }
-
-  // Ensure accounts array exists and has proper types
-  const accounts = Array.isArray(data.accounts) ? data.accounts.map((acc: any) => ({
-    id: acc.id || crypto.randomUUID(),
-    name: acc.name || 'Account',
-    type: acc.type || 'asset',
-    balance: Number(acc.balance) || 0,
-    initialBalance: acc.initialBalance ?? acc.openingBalance ?? (acc.balance !== undefined ? Number(acc.balance) : 0),
-    // Legacy backup aliases are normalized once at this import boundary.
-    originalPrincipal: acc.originalPrincipal ?? acc.original_principal ?? acc.balance ?? 0,
-    monthlyEMI: acc.monthlyEMI ?? acc.monthly_emi ?? 0,
-    interestRate: acc.interestRate ?? acc.interest_rate ?? 0,
-    tenureMonths: acc.tenureMonths ?? acc.tenure_months ?? 0,
-    interestCalculationType: acc.interestCalculationType || acc.interest_calculation_type || 'REDUCING',
-    paymentFrequency: acc.paymentFrequency || acc.payment_frequency || 'MONTHLY',
-    loanStartDate: acc.loanStartDate || acc.loan_start_date || new Date().toISOString().slice(0, 10),
-    revisions: Array.isArray(acc.revisions) ? acc.revisions : [],
-  })) : [];
-
-  // Ensure transactions array exists
-  const transactions = Array.isArray(data.transactions) ? data.transactions.map((t: any) => ({
-    id: t.id || crypto.randomUUID(),
-    amount: Number(t.amount) || 0,
-    type: t.type || 'expense',
-    category: t.category || 'General',
-    accountId: t.accountId || t.account_id || accounts[0]?.id || '',
-    date: t.date || new Date().toISOString().slice(0, 10),
-    note: t.note || '',
-  })) : [];
-
-  // Ensure categories
-  const categories = Array.isArray(data.categories) && data.categories.length > 0 
-    ? data.categories 
-    : ['Food & Dining', 'Housing & Rent', 'Utilities', 'Shopping', 'Salary', 'Investment', 'Debt Payment'];
-
-  // Ensure credit cards
-  const creditCards = Array.isArray(data.creditCards) ? data.creditCards : [];
-
-  // Dynamically recompute account balances from the transaction ledger
-  const rebalancedAccounts = recomputeAllAccountBalances(accounts, transactions).map(account => {
-    // Very old exports stored an account balance but not a usable opening
-    // transaction. Preserve that value during migration; importLedgerToDatabase
-    // converts it into the canonical opening-balance row.
-    const hasLedgerEntry = transactions.some((tx: any) =>
-      tx.accountId === account.id || tx.account === account.id || tx.fromAccountId === account.id || tx.toAccountId === account.id
-    );
-    return hasLedgerEntry ? account : { ...account, balance: Number((account as any).initialBalance ?? 0) };
-  });
-  const syncedCards = syncCreditCardsWithAccounts(rebalancedAccounts, creditCards);
-
-  return {
-    schemaVersion: 'coinbuddy-ledger-v3',
-    exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(),
-    accounts: rebalancedAccounts,
-    transactions,
-    categories,
-    creditCards: syncedCards,
-    events: Array.isArray(data.events) ? data.events : [],
-    widgets: Array.isArray(data.widgets) ? data.widgets : [],
-    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [],
-    currency: data.currency || '$',
-    lastUpdated: new Date().toISOString(),
-  };
+export function upgradeBackupData(rawJsonString: string, options?: { recomputeBalances?: boolean }): any {
+  return migrateBackupDataToLatest(rawJsonString, options);
 }
 
 /**
@@ -424,6 +324,7 @@ export class BackupStorageAdapter {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `Google Drive backup failed (HTTP ${response.status}).`);
       }
+      await this.pruneOldBackups(5, provider);
       return;
     }
 
@@ -440,8 +341,8 @@ export class BackupStorageAdapter {
       name: encryptedFilename,
       date: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       size: `${(encryptedContent.length / 1024).toFixed(1)} KB`,
-      accountsCount: parsedMeta.accountCount || 4,
-      transactionsCount: parsedMeta.transactionCount || 38,
+      accountsCount: parsedMeta.accountCount ?? 0,
+      transactionsCount: parsedMeta.transactionCount ?? 0,
       provider,
       content: encryptedContent,
     };
@@ -480,6 +381,24 @@ export class BackupStorageAdapter {
     maxFiles: number = 5,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM' = 'LOCAL'
   ): Promise<void> {
+    if (provider === 'GOOGLE_DRIVE') {
+      const response = await fetch('/api/google-drive/backups');
+      if (!response.ok) throw new Error('Unable to list Google Drive backups for retention.');
+      const { files = [] } = await response.json();
+      const backups = [...files].sort((a: any, b: any) =>
+        new Date(b.modifiedTime || 0).getTime() - new Date(a.modifiedTime || 0).getTime()
+      );
+      const expired = backups.slice(maxFiles);
+      await Promise.all(expired.map(async (backup: { id: string }) => {
+        const deleteResponse = await fetch(`/api/google-drive/delete?id=${encodeURIComponent(backup.id)}`, { method: 'DELETE' });
+        if (!deleteResponse.ok) {
+          const error = await deleteResponse.json().catch(() => ({}));
+          throw new Error(error.error || 'Unable to delete an expired Google Drive backup.');
+        }
+      }));
+      return;
+    }
+
     let savedBackups = await this.readHistory();
 
     // Sort files by modified date descending (newest first)

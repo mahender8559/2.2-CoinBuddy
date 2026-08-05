@@ -10,6 +10,12 @@ export function required(name) {
   return value;
 }
 
+export function validateGoogleDriveEnvironment() {
+  required('GOOGLE_CLIENT_ID');
+  required('GOOGLE_CLIENT_SECRET');
+  key();
+}
+
 export function appUrl(req) {
   return process.env.APP_URL || `https://${req.headers.host}`;
 }
@@ -51,6 +57,7 @@ export function setCookie(res, name, value, maxAge = 600, path = '/') {
 }
 
 export function startAuthorization(req, res) {
+  validateGoogleDriveEnvironment();
   const state = crypto.randomBytes(32).toString('base64url');
   setCookie(res, STATE_COOKIE, state);
   const params = new URLSearchParams({ client_id: required('GOOGLE_CLIENT_ID'), redirect_uri: callbackUrl(req), response_type: 'code', scope, access_type: 'offline', prompt: 'consent', state });
@@ -58,6 +65,7 @@ export function startAuthorization(req, res) {
 }
 
 export async function finishAuthorization(req, res) {
+  validateGoogleDriveEnvironment();
   if (!req.query.state || req.query.state !== parseCookies(req)[STATE_COOKIE]) throw new Error('Google Drive connection could not be verified. Please try again.');
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: required('GOOGLE_CLIENT_ID'), client_secret: required('GOOGLE_CLIENT_SECRET'), redirect_uri: callbackUrl(req), grant_type: 'authorization_code' }) });
   const tokens = await tokenResponse.json();
@@ -74,6 +82,7 @@ export async function finishAuthorization(req, res) {
 }
 
 export async function driveToken(req, res) {
+  validateGoogleDriveEnvironment();
   const session = parseCookies(req)[COOKIE];
   if (!session) throw new Error('Google Drive is not connected.');
   const { refreshToken } = unsealSession(session);
