@@ -23,7 +23,7 @@ interface BackupSecurityProps {
 }
 
 export function BackupSecurity({ onBack }: BackupSecurityProps) {
-  const { accounts, transactions, categories, creditCards, currency, importLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
+  const { accounts, transactions, categories, creditCards, currency, exportLedgerData, importLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
 
   // 1. State Management (Settings Store)
   const [config, setConfig] = useState<BackupSettings>(() => {
@@ -224,7 +224,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       }
 
       try {
-        const newMeta = await BackupManager.executeSilentBackup(config);
+        const newMeta = await BackupManager.executeSilentBackup(config, exportLedgerData());
         if (newMeta) {
           setConfig(prev => ({
             ...prev,
@@ -259,7 +259,8 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       // 2. Perform fresh backup to verify connectivity
       const metadata = await BackupManager.executeManualBackup(
         config.backupPassword,
-        config.storageProvider
+        config.storageProvider,
+        exportLedgerData()
       );
 
       // 3. Clear authExpired flag and update status to UP_TO_DATE
@@ -316,7 +317,8 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
     try {
       const metadata = await BackupManager.executeManualBackup(
         config.backupPassword,
-        config.storageProvider
+        config.storageProvider,
+        exportLedgerData()
       );
 
       setConfig(prev => ({

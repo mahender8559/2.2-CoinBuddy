@@ -11,7 +11,7 @@ import type { ComponentType, SVGProps } from 'react';
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, autoRecur, setAutoRecur, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, importLedgerData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting, exportLedgerData } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
@@ -156,7 +156,7 @@ export function Settings() {
                       showAlert('Set Backup Password', 'Set a backup password in Backup & Security before downloading an encrypted backup.');
                       return;
                     }
-                    await BackupManager.executeManualBackup(parsed.backupPassword, 'LOCAL');
+                    await BackupManager.executeManualBackup(parsed.backupPassword, 'LOCAL', exportLedgerData());
                     showAlert('Success', 'Encrypted backup generated and downloaded successfully.');
                   } catch (err: unknown) {
                     showAlert('Backup Error', getErrorMessage(err, 'Failed to generate encrypted backup.'));

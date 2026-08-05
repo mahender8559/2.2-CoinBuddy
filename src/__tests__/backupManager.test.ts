@@ -10,6 +10,7 @@ import {
   DEFAULT_BACKUP_SETTINGS,
   BackupSettings,
 } from '../utils/backupManager';
+import { validateLedgerImport } from '../db/dbClient';
 
 // Mock localStorage for Vitest / Node environment
 const localStorageMock = (() => {
@@ -134,6 +135,8 @@ describe('Backup & Encryption Engine Suite', () => {
       const upgraded = upgradeBackupData(mockV1Backup);
 
       expect(upgraded).toBeDefined();
+      expect(upgraded.schemaVersion).toBe('coinbuddy-ledger-v3');
+      expect(validateLedgerImport(upgraded)).toBeNull();
       expect(upgraded.lastUpdated).toBeDefined();
       expect(upgraded.currency).toBe('$');
 

@@ -317,10 +317,15 @@ export function upgradeBackupData(rawJsonString: string): any {
   const syncedCards = syncCreditCardsWithAccounts(rebalancedAccounts, creditCards);
 
   return {
+    schemaVersion: 'coinbuddy-ledger-v3',
+    exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(),
     accounts: rebalancedAccounts,
     transactions,
     categories,
     creditCards: syncedCards,
+    events: Array.isArray(data.events) ? data.events : [],
+    widgets: Array.isArray(data.widgets) ? data.widgets : [],
+    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [],
     currency: data.currency || '$',
     lastUpdated: new Date().toISOString(),
   };
