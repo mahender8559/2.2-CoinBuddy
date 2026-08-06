@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
-import type { ComponentType, SVGProps } from 'react';
+import { useState, useMemo, useRef } from 'react';
+import type { ComponentType, SVGProps, PointerEvent as ReactPointerEvent } from 'react';
 import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown, Layers } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useDebounce } from '../hooks/useDebounce';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
+import { isEventAssignableTransaction } from '../domain/eventRules';
 
 
 export function Activity() {
@@ -28,6 +29,8 @@ export function Activity() {
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isEventPickerOpen, setEventPickerOpen] = useState(false);
+  const [eventName, setEventName] = useState('');
   const [approvalDates, setApprovalDates] = useState<Record<string, string>>({});
   const pendingTransactions = useMemo(() => transactions.filter(tx => tx.is_verified === 0), [transactions]);
 
@@ -40,12 +43,19 @@ export function Activity() {
     });
   };
 
-  const selectedSum = useMemo(() => {
-    return transactions.filter(t => selectedIds.has(t.id)).reduce((acc, t) => {
-      if (t.type === 'income' || t.type === 'transfer') return acc + Math.abs(t.amount);
-      return acc - Math.abs(t.amount);
-    }, 0);
-  }, [selectedIds, transactions]);
+const selectedTransactions = useMemo(
+  () => transactions.filter(transaction => selectedIds.has(transaction.id)),
+  [selectedIds, transactions]
+);
+const selectedSum = useMemo(() => {
+  return selectedTransactions.reduce((acc, t) => {
+    if (t.type === 'income' || t.type === 'transfer') return acc + Math.abs(t.amount);
+    return acc - Math.abs(t.amount);
+  }, 0);
+}, [selectedTransactions]);
+const hasEventRestrictedSelection = selectedTransactions.some(transaction => !isEventAssignableTransaction(transaction));
+const hasAssignedEventSelection = selectedTransactions.some(transaction => Boolean(transaction.eventId));
+
 
   const deleteSelected = () => {
     selectedIds.forEach(id => {
@@ -59,20 +69,36 @@ export function Activity() {
     setIsSelectionMode(false);
   };
 
-  const groupSelectedToEvent = () => {
-    if (!selectedIds.size) return;
-    const options = events.map(event => event.name).join(', ');
-    const response = window.prompt(`Enter an existing event name or a new event name.${options ? ` Existing events: ${options}` : ''}`);
-    const name = response?.trim();
-    if (!name) return;
-    const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
-    groupTransactionsToEvent([...selectedIds], event.id);
-    setSelectedIds(new Set());
-    setIsSelectionMode(false);
-  };
+const resetEventSelection = () => {
+  setSelectedIds(new Set());
+  setIsSelectionMode(false);
+  setEventPickerOpen(false);
+  setEventName('');
+};
+
+const openEventPicker = () => {
+  if (!selectedIds.size || hasEventRestrictedSelection) return;
+  setEventName('');
+  setEventPickerOpen(true);
+};
+
+const groupSelectedToEvent = () => {
+  const name = eventName.trim();
+  if (!selectedIds.size || !name || hasEventRestrictedSelection) return;
+  const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
+  groupTransactionsToEvent([...selectedIds], event.id);
+  resetEventSelection();
+};
+
+const unassignSelectedEvents = () => {
+  if (!selectedIds.size) return;
+  groupTransactionsToEvent([...selectedIds], null);
+  resetEventSelection();
+};
 
 
-  const availableCycles = useMemo(() => {
+  const availableCycles
+ = useMemo(() => {
     const cyclesMap = new Map<string, { label: string, key: string }>();
     transactions.forEach(t => {
       const details = getCycleDetails(t.date);
@@ -309,6 +335,7 @@ export function Activity() {
                   key={tx.id}
                   icon={isTransfer ? ArrowRightLeft : Icon} 
                   title={tx.title} 
+                  eventName={events.find(event => event.id === tx.eventId)?.name}
                   subtitle={accountContext ? `${tx.subtitle} • ${accountContext}` : tx.subtitle} 
                   amount={formatCurrency(tx.amount)} 
                   tag={tx.isOpeningBalance ? 'Opening Balance' : tx.category} 
@@ -324,7 +351,11 @@ export function Activity() {
                   }}
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedIds.has(tx.id)}
-                  onToggleSelect={() => toggleSelection(tx.id)}
+onToggleSelect={() => toggleSelection(tx.id)}
+onLongPress={() => {
+  setSelectedIds(previous => new Set(previous).add(tx.id));
+  setIsSelectionMode(true);
+}}
                   tourId={idx === 0 ? "tour-transaction-actions" : undefined}
                 />
               );
@@ -339,6 +370,52 @@ export function Activity() {
         </div>
       </div>
 
+{isEventPickerOpen && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={() => setEventPickerOpen(false)}>
+    <div role="dialog" aria-modal="true" aria-labelledby="event-picker-title" className="w-full max-w-md rounded-3xl border border-outline-variant/30 bg-surface-container-highest p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 id="event-picker-title" className="text-lg font-bold text-on-surface">Assign an event</h3>
+          <p className="mt-1 text-xs text-on-surface-variant">Choose an existing event or type a new event name.</p>
+        </div>
+        <button type="button" aria-label="Close event picker" onClick={() => setEventPickerOpen(false)} className="rounded-full p-2 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <label className="mt-5 block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Existing events</label>
+      <select
+        aria-label="Choose existing event"
+        value={events.find(item => item.name.localeCompare(eventName.trim(), undefined, { sensitivity: 'accent' }) === 0)?.id ?? ''}
+        onChange={event => setEventName(events.find(item => item.id === event.target.value)?.name ?? '')}
+        className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
+      >
+        <option value="">{events.length ? 'Choose an event' : 'No existing events yet'}</option>
+        {events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
+      </select>
+      <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Event name</label>
+      <input
+        autoFocus
+        value={eventName}
+        onChange={event => setEventName(event.target.value)}
+        onKeyDown={event => { if (event.key === 'Enter') groupSelectedToEvent(); }}
+        placeholder="e.g. Goa trip, Birthday dinner"
+        className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
+      />
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          {hasAssignedEventSelection && (
+            <button type="button" onClick={unassignSelectedEvents} className="rounded-xl border border-error/30 px-4 py-2 text-sm font-semibold text-error hover:bg-error/10">Remove event</button>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => setEventPickerOpen(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-variant">Cancel</button>
+          <button type="button" disabled={!eventName.trim()} onClick={groupSelectedToEvent} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">Assign event</button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
       {isSelectionMode && (
         <div className="fixed top-20 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[400px] bg-surface-container-highest rounded-2xl p-4 shadow-2xl z-50 flex items-center justify-between border border-outline-variant/30">
           <div>
@@ -349,6 +426,9 @@ export function Activity() {
             <p className={`text-2xl font-bold font-numeric ${selectedSum >= 0 ? 'text-primary' : 'text-error'}`}>
               {selectedSum < 0 ? '-' : '+'}{formatCurrency(Math.abs(selectedSum))}
             </p>
+            {hasEventRestrictedSelection && (
+              <p className="mt-1 max-w-[190px] text-[10px] leading-tight text-amber-600 dark:text-amber-300">Opening balances and reconciliation adjustments cannot be assigned to an event.</p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -359,10 +439,10 @@ export function Activity() {
               Cancel
             </button>
             <button 
-              onClick={groupSelectedToEvent}
-              disabled={selectedIds.size === 0}
+              onClick={openEventPicker}
+              disabled={selectedIds.size === 0 || hasEventRestrictedSelection}
               className="px-3 h-12 bg-primary/10 text-primary rounded-xl flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-xs font-bold"
-              title="Group selected transactions to an event"
+              title={hasEventRestrictedSelection ? 'Opening balances and reconciliation adjustments cannot be assigned to events' : 'Group selected transactions to an event'}
               aria-label="Group selected transactions to event"
             >
               <Layers className="w-4 h-4" />
@@ -386,6 +466,7 @@ export function Activity() {
 type TransactionRowProps = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   title: string;
+  eventName?: string;
   subtitle: string;
   amount: string;
   tag?: string;
@@ -399,10 +480,11 @@ type TransactionRowProps = {
   isSelectionMode: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
+  onLongPress: () => void;
   tourId?: string;
 };
 
-function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, tourId }: TransactionRowProps) {
+function TransactionRow({ icon: Icon, title, eventName, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, onLongPress, tourId }: TransactionRowProps) {
   const colorMap: Record<string, { bg: string, text: string }> = {
     primary: { bg: 'bg-primary-container/20', text: 'text-primary' },
     secondary: { bg: 'bg-secondary-container/20', text: 'text-secondary' },
@@ -411,15 +493,59 @@ function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isInc
     error: { bg: 'bg-error-container/20', text: 'text-error' },
   };
   
-  const c = colorMap[color] || colorMap.primary;
+const c = colorMap[color] || colorMap.primary;
+const longPressTimer = useRef<number | null>(null);
+const pointerStart = useRef<{ x: number; y: number } | null>(null);
+const suppressNextClick = useRef(false);
 
-  return (
-    <div 
-      data-tour-id={tourId}
-      onClick={() => {
-        if (isSelectionMode) onToggleSelect();
-        else if (onEdit) onEdit();
-      }}
+const clearLongPress = () => {
+  if (longPressTimer.current !== null) {
+    window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  }
+};
+
+const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  if (isSelectionMode || event.button !== 0 || (event.target as HTMLElement).closest('button, input, select, a')) return;
+  pointerStart.current = { x: event.clientX, y: event.clientY };
+  clearLongPress();
+  longPressTimer.current = window.setTimeout(() => {
+    suppressNextClick.current = true;
+    onLongPress();
+    longPressTimer.current = null;
+  }, 550);
+};
+
+const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+  if (!pointerStart.current || longPressTimer.current === null) return;
+  const distance = Math.hypot(event.clientX - pointerStart.current.x, event.clientY - pointerStart.current.y);
+  if (distance > 10) clearLongPress();
+};
+
+const handlePointerEnd = () => {
+  clearLongPress();
+  pointerStart.current = null;
+};
+
+return (
+  <div 
+    data-tour-id={tourId}
+    aria-pressed={isSelectionMode ? isSelected : undefined}
+    onPointerDown={handlePointerDown}
+    onPointerMove={handlePointerMove}
+    onPointerUp={handlePointerEnd}
+    onPointerCancel={handlePointerEnd}
+    onPointerLeave={handlePointerEnd}
+    onContextMenu={event => { if (!isSelectionMode) event.preventDefault(); }}
+    onClick={(event) => {
+      if (suppressNextClick.current) {
+        suppressNextClick.current = false;
+        event.preventDefault();
+        return;
+      }
+      if (isSelectionMode) onToggleSelect();
+      else if (onEdit) onEdit();
+    }}
       className={`bg-surface-container-low hover:bg-surface-container transition-colors p-4 rounded-2xl flex items-start gap-4 cursor-pointer border ${isSelected ? 'border-primary' : 'border-transparent'} hover:border-outline-variant/30 group`}
     >
       {isSelectionMode && (
@@ -435,6 +561,12 @@ function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isInc
           <h3 className="font-semibold text-on-surface break-words whitespace-pre-wrap leading-tight">{title}</h3>
           {isPending && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending</span>}
         </div>
+        {eventName && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary break-words">
+            <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>{eventName}</span>
+          </p>
+        )}
         <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-1">
           {subtitle} {type && <span className="capitalize opacity-80">• {type}</span>}
         </p>

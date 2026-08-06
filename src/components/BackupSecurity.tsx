@@ -9,7 +9,7 @@ import { useAppContext } from '../context/AppContext';
 import { 
   BackupManager, 
   BackupStorageAdapter, 
-  decryptBackup, 
+  decryptBackupWithFlag,
   upgradeBackupData, 
   BackupSettings, 
   BackupMetadata,
@@ -436,7 +436,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
     try {
       // Decrypt AES-256-GCM payload using password
-      const { payload: rawJson, legacy } = await decryptBackup(payloadToDecrypt, restorePassword);
+      const { payload: rawJson, legacy } = await decryptBackupWithFlag(payloadToDecrypt, restorePassword);
       
       // Parse to inspect metadata
       let accountCount = 0;

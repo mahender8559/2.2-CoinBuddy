@@ -253,17 +253,35 @@ export function AddTransactionModal() {
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Event / outing (optional)</label>
-            <input
-              value={groupId}
-              onChange={event => setGroupId(event.target.value)}
-              placeholder="e.g. Goa trip, Birthday dinner"
-              className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
-            />
-          </div>
-          
-          {editingTransaction ? null : (
+<div>
+  <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Event / outing (optional)</label>
+  <div className="grid gap-2 sm:grid-cols-2">
+    <select
+      aria-label="Choose existing event"
+      value={events.find(event => event.name.localeCompare(groupId.trim(), undefined, { sensitivity: 'accent' }) === 0)?.id ?? ''}
+      onChange={event => setGroupId(events.find(item => item.id === event.target.value)?.name ?? '')}
+      className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
+    >
+      <option value="">No event (unassign)</option>
+      {events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
+    </select>
+    <input
+      value={groupId}
+      onChange={event => setGroupId(event.target.value)}
+      placeholder="Or type a new event name"
+      className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
+    />
+  </div>
+  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <p className="text-[11px] text-on-surface-variant">Selecting an existing event fills the name field; typing a different name creates a new event.</p>
+    {editingTransaction?.eventId && groupId && (
+      <button type="button" onClick={() => setGroupId('')} className="rounded-lg border border-error/30 px-3 py-1.5 text-xs font-semibold text-error hover:bg-error/10">Unassign event</button>
+    )}
+  </div>
+</div>
+
+{editingTransaction ? null : (
+
             <div className="flex gap-2 p-1 bg-surface-container-low rounded-2xl border border-outline-variant/30">
               <button
                 type="button"

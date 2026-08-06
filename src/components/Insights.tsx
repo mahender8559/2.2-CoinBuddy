@@ -14,6 +14,8 @@ import type { ComponentType, SVGProps } from 'react';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { calculateFinancialRunway, projectDebtPayoff } from '../utils/metrics';
 import { buildSankeySplitLabel } from '../utils/sankeyLabels';
+import { recomputeAllAccountBalances } from '../utils/balanceManager';
+import { getCycleRange, shiftCycle } from '../utils/cycles';
 
 export function Insights() {
   const { 
@@ -26,7 +28,7 @@ export function Insights() {
     isDateInCurrentCycle, 
     accounts, 
     creditCards,
-    netWorth,
+    monthCycleDay,
     setPayCardModalState
   } = useAppContext();
 
@@ -171,62 +173,70 @@ export function Insights() {
     };
   }, [transactions, selectedCategory, getCycleDetails]);
 
-  // Net Worth monthly trends
-  const monthlyTrends = useMemo(() => {
-    const now = new Date();
-    const monthlyNetFlow: Record<string, number> = {};
-    transactions.forEach(t => {
-      const cycle = getCycleDetails(t.date);
-      if (isCashFlowTransaction(t) && t.type === 'income') {
-        monthlyNetFlow[cycle.key] = (monthlyNetFlow[cycle.key] || 0) + Math.abs(t.amount);
-      } else if (isCashFlowTransaction(t) && t.type === 'expense') {
-        monthlyNetFlow[cycle.key] = (monthlyNetFlow[cycle.key] || 0) - Math.abs(t.amount);
-      }
+// Net Worth at each configured cycle cutoff. Replaying the ledger
+// keeps opening balances and adjustments out of cycles where they did not exist.
+const monthlyTrends = useMemo(() => {
+  const now = new Date();
+  const currentCycle = getCycleDetails(now.toISOString());
+  const verifiedTransactions = transactions.filter(transaction => transaction.is_verified !== 0);
+  const historicalNetWorth: Array<{
+    key: string;
+    m: string;
+    cycleLabel: string;
+    netWorth: number;
+    netFlow: number;
+    isCurrent: boolean;
+  }> = [];
+
+  for (let offset = 5; offset >= 0; offset--) {
+    const cycle = shiftCycle(currentCycle.year, currentCycle.month, -offset);
+    const key = `${cycle.year}-${cycle.month}`;
+    const { start, end } = getCycleRange(cycle.year, cycle.month, monthCycleDay);
+    const isCurrent = key === currentCycle.key;
+    const cutoff = isCurrent ? now : end;
+    const cutoffTime = cutoff.getTime();
+    const startTime = start.getTime();
+
+    const transactionsAtCutoff = verifiedTransactions.filter(transaction => {
+      const transactionTime = new Date(transaction.date).getTime();
+      return Number.isFinite(transactionTime) && transactionTime <= cutoffTime;
     });
+    const projectedAccounts = recomputeAllAccountBalances(accounts, transactionsAtCutoff);
+    const cycleNetWorth = projectedAccounts
+      .filter(account => !account.is_archived)
+      .reduce((total, account) => total + (account.type === 'asset' ? account.balance : -account.balance), 0);
+    const cycleNetFlow = verifiedTransactions.reduce((total, transaction) => {
+      const transactionTime = new Date(transaction.date).getTime();
+      if (!Number.isFinite(transactionTime) || transactionTime < startTime || transactionTime > cutoffTime || !isCashFlowTransaction(transaction)) return total;
+      if (transaction.type === 'income') return total + Math.abs(transaction.amount);
+      if (transaction.type === 'expense') return total - Math.abs(transaction.amount);
+      return total;
+    }, 0);
 
-    const currentCycle = getCycleDetails(now.toISOString());
-    let currentNetWorth = netWorth;
-    const historicalNetWorth = [];
+    historicalNetWorth.push({
+      key,
+      m: new Date(cycle.year, cycle.month, 1).toLocaleString('default', { month: 'short' }),
+      cycleLabel: `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${cutoff.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+      netWorth: cycleNetWorth,
+      netFlow: cycleNetFlow,
+      isCurrent,
+    });
+  }
 
-    const earliestTxDate = transactions.length > 0
-      ? new Date(Math.min(...transactions.map(t => new Date(t.date).getTime())))
-      : null;
+  const minNw = Math.min(...historicalNetWorth.map(item => item.netWorth), 0);
+  const maxNw = Math.max(...historicalNetWorth.map(item => item.netWorth), 1);
+  const range = maxNw - minNw || 1;
 
-    for (let i = 0; i <= 5; i++) {
-      let m = currentCycle.month - i;
-      let y = currentCycle.year;
-      while (m < 0) {
-        m += 12;
-        y -= 1;
-      }
-      
-      const key = `${y}-${m}`;
-      const cycleEnd = new Date(y, m + 1, 0, 23, 59, 59, 999);
-      const hasTxsOnOrBefore = earliestTxDate ? earliestTxDate <= cycleEnd : false;
-
-      historicalNetWorth.unshift({
-        key,
-        m: new Date(y, m, 1).toLocaleString('default', { month: 'short' }),
-        netWorth: hasTxsOnOrBefore ? currentNetWorth : 0,
-        netFlow: monthlyNetFlow[key] || 0,
-        isCurrent: i === 0,
-      });
-      currentNetWorth -= (monthlyNetFlow[key] || 0);
-    }
-
-    const minNw = Math.min(...historicalNetWorth.map(h => h.netWorth), 0);
-    const maxNw = Math.max(...historicalNetWorth.map(h => h.netWorth), 1);
-    const range = maxNw - minNw || 1;
-
-    return historicalNetWorth.map(t => ({
-      m: t.m,
-      h: `${Math.max(5, Math.round(((t.netWorth - minNw) / range) * 100))}%`,
-      v: formatCurrency(t.netWorth),
-      rawTotal: t.netWorth,
-      a: t.isCurrent,
-      netFlow: t.netFlow
-    }));
-  }, [transactions, formatCurrency, getCycleDetails, netWorth]);
+  return historicalNetWorth.map(item => ({
+    m: item.m,
+    cycleLabel: item.cycleLabel,
+    h: `${Math.max(5, Math.round(((item.netWorth - minNw) / range) * 100))}%`,
+    v: formatCurrency(item.netWorth),
+    rawTotal: item.netWorth,
+    a: item.isCurrent,
+    netFlow: item.netFlow,
+  }));
+}, [transactions, accounts, formatCurrency, getCycleDetails, monthCycleDay]);
 
   // Smart Tips
   const smartTips = useMemo(() => {
@@ -762,6 +772,7 @@ export function Insights() {
                   </div>
                   <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-on-surface text-background px-3 py-2 rounded-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 flex flex-col items-center shadow-lg pointer-events-none">
                     <span className="font-bold text-primary-container text-sm">{d.v}</span>
+                    <span className="text-[9px] opacity-70 mt-0.5">{d.cycleLabel}</span>
                     <span className={`text-[10px] font-bold mt-0.5 flex items-center ${d.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {d.netFlow >= 0 ? <ArrowUp className="w-3 h-3 mr-0.5" /> : <ArrowDown className="w-3 h-3 mr-0.5" />}
                       {formatCurrency(Math.abs(d.netFlow))} net flow

@@ -42,6 +42,8 @@ import {
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
+import { getCycleDetailsForDay } from '../utils/cycles';
+import { isEventAssignableTransaction } from '../domain/eventRules';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -134,7 +136,7 @@ interface AppContextType {
   events: Event[];
   createEvent: (name: string) => Event;
   fetchEvents: () => Event[];
-  groupTransactionsToEvent: (transactionIds: string[], eventId: string) => void;
+  groupTransactionsToEvent: (transactionIds: string[], eventId: string | null) => void;
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, category: Omit<Category, 'id'>) => void;
   deleteCategory: (id: string) => void;
@@ -396,22 +398,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
 
-  const getCycleDetails = (dateString: string) => {
-    const txDate = new Date(dateString);
-    let year = txDate.getFullYear();
-    let month = txDate.getMonth();
-    const day = txDate.getDate();
-    const clampedCycleDay = Math.min(Math.max(monthCycleDay, 1), new Date(year, month + 1, 0).getDate());
-    
-    if (day >= clampedCycleDay && monthCycleDay > 1) {
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year++;
-      }
-    }
-    return { month, year, key: `${year}-${month}` };
-  };
+  const getCycleDetails = (dateString: string) => getCycleDetailsForDay(dateString, monthCycleDay);
 
   const isDateInCurrentCycle = (dateString: string) => {
     const current = getCycleDetails(new Date().toISOString());
@@ -1235,13 +1222,18 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const fetchEvents = () => events;
 
-  const groupTransactionsToEvent = (transactionIds: string[], eventId: string) => {
-    if (!events.some(event => event.id === eventId)) throw new Error('Selected event does not exist.');
-    const ids = transactionIds.filter(id => transactions.some(transaction => transaction.id === id));
-    if (!ids.length) return;
-    setTransactions(previous => previous.map(transaction => ids.includes(transaction.id) ? { ...transaction, eventId } : transaction));
-    if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
-  };
+const groupTransactionsToEvent = (transactionIds: string[], eventId: string | null) => {
+  const ids = transactionIds.filter(id => {
+    const transaction = transactions.find(item => item.id === id);
+    return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
+  });
+  if (!ids.length) return;
+  setTransactions(previous => previous.map(transaction =>
+    ids.includes(transaction.id) ? { ...transaction, eventId: eventId ?? undefined } : transaction
+  ));
+  if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
+};
+
 
   const deleteCategory = (id: string) => {
     const category = categories.find(item => item.id === id);
