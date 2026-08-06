@@ -691,31 +691,57 @@ export function Insights() {
           <LoanAmortizationExplorer />
         </div>
 
-        {eventSummaries.length > 0 && (
-          <section data-testid="grouped-spending-summary" className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
-            <div className="mb-4">
-              <h3 className="text-xl font-bold text-on-surface">Event Insights</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">Events and outings, across all recorded transactions.</p>
+        <section data-testid="grouped-spending-summary" className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-bold text-on-surface">Event Cash Flow</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Inflow, outflow, and net movement for each event.</p>
             </div>
+            <div className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">
+              {eventSummaries.length} events
+            </div>
+          </div>
+          {eventSummaries.length > 0 ? (
             <div className="space-y-3">
-              {eventSummaries.map(event => (
-                <article key={event.name} className="rounded-2xl bg-surface-container p-3 border border-outline-variant/20">
-                  <div className="flex items-start justify-between gap-3">
-                    <h4 className="min-w-0 truncate font-semibold text-on-surface" title={event.name}>{event.name}</h4>
-                    <span className={`shrink-0 text-sm font-bold font-numeric ${event.netSpent > 0 ? 'text-on-surface' : event.netSpent < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-on-surface-variant'}`}>
-                      {formatCurrency(event.netSpent)}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-semibold uppercase tracking-wide">
-                    <div><p className="text-on-surface-variant">Total expenses</p><p className="mt-0.5 text-rose-600 dark:text-rose-400 font-numeric normal-case tracking-normal">{formatCurrency(event.expenses)}</p></div>
-                    <div><p className="text-on-surface-variant">Total income</p><p className="mt-0.5 text-emerald-600 dark:text-emerald-400 font-numeric normal-case tracking-normal">{formatCurrency(event.income)}</p></div>
-                    <div><p className="text-on-surface-variant">Net spent</p><p className="mt-0.5 text-on-surface font-numeric normal-case tracking-normal">{formatCurrency(event.netSpent)}</p></div>
-                  </div>
-                </article>
-              ))}
+              {eventSummaries.map(event => {
+                const netFlow = event.income - event.expenses;
+                const netTone = netFlow > 0 ? 'text-emerald-600 dark:text-emerald-400' : netFlow < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-on-surface-variant';
+
+                return (
+                  <article key={event.name} className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="truncate font-semibold text-on-surface" title={event.name}>{event.name}</h4>
+                        <p className="mt-1 text-[11px] uppercase tracking-wide text-on-surface-variant">Event summary</p>
+                      </div>
+                      <div className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${netTone}`}>
+                        {netFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netFlow))}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-semibold uppercase tracking-wide">
+                      <div className="rounded-xl bg-emerald-500/10 px-2 py-2">
+                        <p className="text-on-surface-variant">Inflow</p>
+                        <p className="mt-0.5 text-emerald-600 dark:text-emerald-400 font-numeric normal-case tracking-normal">{formatCurrency(event.income)}</p>
+                      </div>
+                      <div className="rounded-xl bg-rose-500/10 px-2 py-2">
+                        <p className="text-on-surface-variant">Outflow</p>
+                        <p className="mt-0.5 text-rose-600 dark:text-rose-400 font-numeric normal-case tracking-normal">{formatCurrency(event.expenses)}</p>
+                      </div>
+                      <div className="rounded-xl bg-surface-container-highest px-2 py-2">
+                        <p className="text-on-surface-variant">Net flow</p>
+                        <p className={`mt-0.5 font-numeric normal-case tracking-normal ${netTone}`}>{formatCurrency(netFlow)}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="rounded-2xl border border-dashed border-outline-variant/40 bg-surface-container/70 p-4 text-center text-sm text-on-surface-variant">
+              No event-linked cash flow has been recorded yet.
+            </div>
+          )}
+        </section>
 
         {/* Net Worth Trend */}
         <div className="lg:col-span-8 bg-surface-container-low border border-outline-variant/30 rounded-3xl p-6">
