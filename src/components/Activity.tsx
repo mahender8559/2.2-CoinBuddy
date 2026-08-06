@@ -316,6 +316,7 @@ const groupSelectedToEvent = () => {
                   key={tx.id}
                   icon={isTransfer ? ArrowRightLeft : Icon} 
                   title={tx.title} 
+                  eventName={events.find(event => event.id === tx.eventId)?.name}
                   subtitle={accountContext ? `${tx.subtitle} • ${accountContext}` : tx.subtitle} 
                   amount={formatCurrency(tx.amount)} 
                   tag={tx.isOpeningBalance ? 'Opening Balance' : tx.category} 
@@ -436,6 +437,7 @@ onLongPress={() => {
 type TransactionRowProps = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   title: string;
+  eventName?: string;
   subtitle: string;
   amount: string;
   tag?: string;
@@ -453,7 +455,7 @@ type TransactionRowProps = {
   tourId?: string;
 };
 
-function TransactionRow({ icon: Icon, title, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, onLongPress, tourId }: TransactionRowProps) {
+function TransactionRow({ icon: Icon, title, eventName, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, onLongPress, tourId }: TransactionRowProps) {
   const colorMap: Record<string, { bg: string, text: string }> = {
     primary: { bg: 'bg-primary-container/20', text: 'text-primary' },
     secondary: { bg: 'bg-secondary-container/20', text: 'text-secondary' },
@@ -530,6 +532,12 @@ return (
           <h3 className="font-semibold text-on-surface break-words whitespace-pre-wrap leading-tight">{title}</h3>
           {isPending && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending</span>}
         </div>
+        {eventName && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary break-words">
+            <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>{eventName}</span>
+          </p>
+        )}
         <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-1">
           {subtitle} {type && <span className="capitalize opacity-80">• {type}</span>}
         </p>
