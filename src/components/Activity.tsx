@@ -6,6 +6,7 @@ import { icons } from '../icons';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useDebounce } from '../hooks/useDebounce';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
+import { isEventAssignableTransaction } from '../domain/eventRules';
 
 
 export function Activity() {
@@ -42,12 +43,19 @@ export function Activity() {
     });
   };
 
-  const selectedSum = useMemo(() => {
-    return transactions.filter(t => selectedIds.has(t.id)).reduce((acc, t) => {
-      if (t.type === 'income' || t.type === 'transfer') return acc + Math.abs(t.amount);
-      return acc - Math.abs(t.amount);
-    }, 0);
-  }, [selectedIds, transactions]);
+const selectedTransactions = useMemo(
+  () => transactions.filter(transaction => selectedIds.has(transaction.id)),
+  [selectedIds, transactions]
+);
+const selectedSum = useMemo(() => {
+  return selectedTransactions.reduce((acc, t) => {
+    if (t.type === 'income' || t.type === 'transfer') return acc + Math.abs(t.amount);
+    return acc - Math.abs(t.amount);
+  }, 0);
+}, [selectedTransactions]);
+const hasEventRestrictedSelection = selectedTransactions.some(transaction => !isEventAssignableTransaction(transaction));
+const hasAssignedEventSelection = selectedTransactions.some(transaction => Boolean(transaction.eventId));
+
 
   const deleteSelected = () => {
     selectedIds.forEach(id => {
@@ -61,25 +69,36 @@ export function Activity() {
     setIsSelectionMode(false);
   };
 
-const openEventPicker = () => {
-  if (!selectedIds.size) return;
-  setEventName('');
-  setEventPickerOpen(true);
-};
-
-const groupSelectedToEvent = () => {
-  const name = eventName.trim();
-  if (!selectedIds.size || !name) return;
-  const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
-  groupTransactionsToEvent([...selectedIds], event.id);
+const resetEventSelection = () => {
   setSelectedIds(new Set());
   setIsSelectionMode(false);
   setEventPickerOpen(false);
   setEventName('');
 };
 
+const openEventPicker = () => {
+  if (!selectedIds.size || hasEventRestrictedSelection) return;
+  setEventName('');
+  setEventPickerOpen(true);
+};
 
-  const availableCycles = useMemo(() => {
+const groupSelectedToEvent = () => {
+  const name = eventName.trim();
+  if (!selectedIds.size || !name || hasEventRestrictedSelection) return;
+  const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
+  groupTransactionsToEvent([...selectedIds], event.id);
+  resetEventSelection();
+};
+
+const unassignSelectedEvents = () => {
+  if (!selectedIds.size) return;
+  groupTransactionsToEvent([...selectedIds], null);
+  resetEventSelection();
+};
+
+
+  const availableCycles
+ = useMemo(() => {
     const cyclesMap = new Map<string, { label: string, key: string }>();
     transactions.forEach(t => {
       const details = getCycleDetails(t.date);
@@ -382,9 +401,16 @@ onLongPress={() => {
         placeholder="e.g. Goa trip, Birthday dinner"
         className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
       />
-      <div className="mt-5 flex justify-end gap-3">
-        <button type="button" onClick={() => setEventPickerOpen(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-variant">Cancel</button>
-        <button type="button" disabled={!eventName.trim()} onClick={groupSelectedToEvent} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">Assign event</button>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          {hasAssignedEventSelection && (
+            <button type="button" onClick={unassignSelectedEvents} className="rounded-xl border border-error/30 px-4 py-2 text-sm font-semibold text-error hover:bg-error/10">Remove event</button>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => setEventPickerOpen(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-variant">Cancel</button>
+          <button type="button" disabled={!eventName.trim()} onClick={groupSelectedToEvent} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">Assign event</button>
+        </div>
       </div>
     </div>
   </div>
@@ -400,6 +426,9 @@ onLongPress={() => {
             <p className={`text-2xl font-bold font-numeric ${selectedSum >= 0 ? 'text-primary' : 'text-error'}`}>
               {selectedSum < 0 ? '-' : '+'}{formatCurrency(Math.abs(selectedSum))}
             </p>
+            {hasEventRestrictedSelection && (
+              <p className="mt-1 max-w-[190px] text-[10px] leading-tight text-amber-600 dark:text-amber-300">Opening balances and reconciliation adjustments cannot be assigned to an event.</p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -411,9 +440,9 @@ onLongPress={() => {
             </button>
             <button 
               onClick={openEventPicker}
-              disabled={selectedIds.size === 0}
+              disabled={selectedIds.size === 0 || hasEventRestrictedSelection}
               className="px-3 h-12 bg-primary/10 text-primary rounded-xl flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-xs font-bold"
-              title="Group selected transactions to an event"
+              title={hasEventRestrictedSelection ? 'Opening balances and reconciliation adjustments cannot be assigned to events' : 'Group selected transactions to an event'}
               aria-label="Group selected transactions to event"
             >
               <Layers className="w-4 h-4" />

@@ -262,7 +262,7 @@ export function AddTransactionModal() {
       onChange={event => setGroupId(events.find(item => item.id === event.target.value)?.name ?? '')}
       className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
     >
-      <option value="">{events.length ? 'Choose existing event' : 'No existing events yet'}</option>
+      <option value="">No event (unassign)</option>
       {events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
     </select>
     <input
@@ -272,7 +272,12 @@ export function AddTransactionModal() {
       className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
     />
   </div>
-  <p className="mt-1.5 text-[11px] text-on-surface-variant">Selecting an existing event fills the name field; typing a different name creates a new event.</p>
+  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <p className="text-[11px] text-on-surface-variant">Selecting an existing event fills the name field; typing a different name creates a new event.</p>
+    {editingTransaction?.eventId && groupId && (
+      <button type="button" onClick={() => setGroupId('')} className="rounded-lg border border-error/30 px-3 py-1.5 text-xs font-semibold text-error hover:bg-error/10">Unassign event</button>
+    )}
+  </div>
 </div>
 
 {editingTransaction ? null : (

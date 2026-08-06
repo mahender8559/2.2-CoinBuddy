@@ -43,6 +43,7 @@ import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from 
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
+import { isEventAssignableTransaction } from '../domain/eventRules';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -135,7 +136,7 @@ interface AppContextType {
   events: Event[];
   createEvent: (name: string) => Event;
   fetchEvents: () => Event[];
-  groupTransactionsToEvent: (transactionIds: string[], eventId: string) => void;
+  groupTransactionsToEvent: (transactionIds: string[], eventId: string | null) => void;
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, category: Omit<Category, 'id'>) => void;
   deleteCategory: (id: string) => void;
@@ -1221,12 +1222,18 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const fetchEvents = () => events;
 
-  const groupTransactionsToEvent = (transactionIds: string[], eventId: string) => {
-    const ids = transactionIds.filter(id => transactions.some(transaction => transaction.id === id));
-    if (!ids.length) return;
-    setTransactions(previous => previous.map(transaction => ids.includes(transaction.id) ? { ...transaction, eventId } : transaction));
-    if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
-  };
+const groupTransactionsToEvent = (transactionIds: string[], eventId: string | null) => {
+  const ids = transactionIds.filter(id => {
+    const transaction = transactions.find(item => item.id === id);
+    return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
+  });
+  if (!ids.length) return;
+  setTransactions(previous => previous.map(transaction =>
+    ids.includes(transaction.id) ? { ...transaction, eventId: eventId ?? undefined } : transaction
+  ));
+  if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
+};
+
 
   const deleteCategory = (id: string) => {
     const category = categories.find(item => item.id === id);

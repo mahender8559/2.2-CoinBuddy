@@ -489,7 +489,7 @@ export async function insertEventRow(driver: SqlJsDatabaseDriver, event: Event):
   );
 }
 
-export async function updateTransactionEvents(driver: SqlJsDatabaseDriver, transactionIds: string[], eventId: string): Promise<void> {
+export async function updateTransactionEvents(driver: SqlJsDatabaseDriver, transactionIds: string[], eventId: string | null): Promise<void> {
   if (!transactionIds.length) return;
   const placeholders = transactionIds.map(() => '?').join(', ');
   await driver.execute(`UPDATE transactions SET event_id = ? WHERE id IN (${placeholders});`, [eventId, ...transactionIds]);
