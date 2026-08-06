@@ -32,7 +32,7 @@ jobs:
           content = path.read_text()
 
           replacements = [
-              ('  decryptBackup, \n', '  decryptBackupWithFlag, \n'),
+              ('  decryptBackup, \n', '  decryptBackupWithFlag,\n'),
               ('const { payload: rawJson, legacy } = await decryptBackup(payloadToDecrypt, restorePassword);',
                'const { payload: rawJson, legacy } = await decryptBackupWithFlag(payloadToDecrypt, restorePassword);'),
           ]
