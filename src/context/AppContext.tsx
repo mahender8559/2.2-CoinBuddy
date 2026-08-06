@@ -1236,7 +1236,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const fetchEvents = () => events;
 
   const groupTransactionsToEvent = (transactionIds: string[], eventId: string) => {
-    if (!events.some(event => event.id === eventId)) throw new Error('Selected event does not exist.');
     const ids = transactionIds.filter(id => transactions.some(transaction => transaction.id === id));
     if (!ids.length) return;
     setTransactions(previous => previous.map(transaction => ids.includes(transaction.id) ? { ...transaction, eventId } : transaction));
