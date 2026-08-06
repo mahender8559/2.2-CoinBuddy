@@ -42,6 +42,7 @@ import {
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
+import { getCycleDetailsForDay } from '../utils/cycles';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -396,22 +397,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
 
-  const getCycleDetails = (dateString: string) => {
-    const txDate = new Date(dateString);
-    let year = txDate.getFullYear();
-    let month = txDate.getMonth();
-    const day = txDate.getDate();
-    const clampedCycleDay = Math.min(Math.max(monthCycleDay, 1), new Date(year, month + 1, 0).getDate());
-    
-    if (day >= clampedCycleDay && monthCycleDay > 1) {
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year++;
-      }
-    }
-    return { month, year, key: `${year}-${month}` };
-  };
+  const getCycleDetails = (dateString: string) => getCycleDetailsForDay(dateString, monthCycleDay);
 
   const isDateInCurrentCycle = (dateString: string) => {
     const current = getCycleDetails(new Date().toISOString());
