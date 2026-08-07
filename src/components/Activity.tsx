@@ -27,6 +27,7 @@ export function Activity() {
     });
   }, true);
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
+  const [selectedEventFilter, setSelectedEventFilter] = useState<string>('All');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isEventPickerOpen, setEventPickerOpen] = useState(false);
@@ -143,7 +144,13 @@ const unassignSelectedEvents = () => {
         ? true 
         : tx.account === selectedAccountFilter || tx.fromAccountId === selectedAccountFilter || tx.toAccountId === selectedAccountFilter;
 
-      return matchesSearch && matchesCategory && matchesCycle && matchesType && matchesAccount;
+      const matchesEvent = selectedEventFilter === 'All'
+        ? true
+        : selectedEventFilter === '__none__'
+          ? !tx.eventId
+          : tx.eventId === selectedEventFilter;
+
+      return matchesSearch && matchesCategory && matchesCycle && matchesType && matchesAccount && matchesEvent;
     });
 
     return filtered.sort((a, b) => {
@@ -162,7 +169,7 @@ const unassignSelectedEvents = () => {
       }
       return 0;
     });
-  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedSort]);
+  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedEventFilter, selectedSort]);
 
   const outflow = filteredTransactions.filter(t => !t.isOpeningBalance && isCashFlowTransaction(t) && t.type === 'expense').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
   
@@ -275,6 +282,21 @@ const unassignSelectedEvents = () => {
               <option value="amount-asc">Amount (Lowest)</option>
               <option value="notes-asc">Notes (A to Z)</option>
               <option value="notes-desc">Notes (Z to A)</option>
+            </select>
+          </div>
+          <div className="relative flex-1 md:flex-none min-w-[150px]">
+            <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+            <select
+              aria-label="Filter transactions by event"
+              value={selectedEventFilter}
+              onChange={(e) => setSelectedEventFilter(e.target.value)}
+              className="w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none"
+            >
+              <option value="All">All Events</option>
+              <option value="__none__">No Event</option>
+              {events.map(event => (
+                <option key={event.id} value={event.id}>{event.name}</option>
+              ))}
             </select>
           </div>
           <div className="relative flex-1 md:flex-none min-w-[140px]">
