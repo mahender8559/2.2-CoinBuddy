@@ -1,0 +1,92 @@
+name: Add Activity event filter
+
+on:
+  push:
+    branches:
+      - fix/event-insights-multi-select
+    paths:
+      - .github/workflows/add-activity-event-filter.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/event-insights-multi-select
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Add event filter to Activity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/Activity.tsx')
+          content = path.read_text()
+
+          replacements = [
+              (
+                  "  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');\n",
+                  "  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');\n  const [selectedEventFilter, setSelectedEventFilter] = useState<string>('All');\n",
+              ),
+              (
+                  "      const matchesAccount = selectedAccountFilter === 'All' \n        ? true \n        : tx.account === selectedAccountFilter || tx.fromAccountId === selectedAccountFilter || tx.toAccountId === selectedAccountFilter;\n\n      return matchesSearch && matchesCategory && matchesCycle && matchesType && matchesAccount;\n",
+                  "      const matchesAccount = selectedAccountFilter === 'All' \n        ? true \n        : tx.account === selectedAccountFilter || tx.fromAccountId === selectedAccountFilter || tx.toAccountId === selectedAccountFilter;\n\n      const matchesEvent = selectedEventFilter === 'All'\n        ? true\n        : selectedEventFilter === '__none__'\n          ? !tx.eventId\n          : tx.eventId === selectedEventFilter;\n\n      return matchesSearch && matchesCategory && matchesCycle && matchesType && matchesAccount && matchesEvent;\n",
+              ),
+              (
+                  "  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedSort]);\n",
+                  "  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedEventFilter, selectedSort]);\n",
+              ),
+              (
+                  "          <div className=\"relative flex-1 md:flex-none min-w-[140px]\">\n            <Filter className=\"absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none\" />\n",
+                  "          <div className=\"relative flex-1 md:flex-none min-w-[150px]\">\n            <Layers className=\"absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none\" />\n            <select\n              aria-label=\"Filter transactions by event\"\n              value={selectedEventFilter}\n              onChange={(e) => setSelectedEventFilter(e.target.value)}\n              className=\"w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none\"\n            >\n              <option value=\"All\">All Events</option>\n              <option value=\"__none__\">No Event</option>\n              {events.map(event => (\n                <option key={event.id} value={event.id}>{event.name}</option>\n              ))}\n            </select>\n          </div>\n          <div className=\"relative flex-1 md:flex-none min-w-[140px]\">\n            <Filter className=\"absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none\" />\n",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, found {count}: {old[:120]!r}')
+              content = content.replace(old, new, 1)
+
+          required = [
+              "selectedEventFilter",
+              "Filter transactions by event",
+              "All Events",
+              "No Event",
+              "tx.eventId === selectedEventFilter",
+          ]
+          for needle in required:
+              if needle not in content:
+                  raise SystemExit(f'Missing expected event filter code: {needle}')
+
+          path.write_text(content)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --run
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Commit and push source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/components/Activity.tsx
+          git diff --cached --check
+          git commit -m "feat: filter activity transactions by event"
+          git push origin HEAD:fix/event-insights-multi-select
