@@ -3,6 +3,7 @@ import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Download, Upload, Tra
 import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
+import { RecurringPayments } from './RecurringPayments';
 import { exportToExcel } from '../utils/exportExcel';
 import { COINBUDDY_TEST_DATA } from '../constants/coinbuddyTestData';
 import { BackupManager } from '../utils/backupManager';
@@ -331,7 +332,7 @@ export function Settings() {
           <SettingToggle 
             icon={RefreshCw} 
             title="Auto-recurring payments" 
-            desc="Process scheduled transfers automatically" 
+            desc="Automatically approve due scheduled entries; turn off to require confirmation" 
             checked={autoRecur} 
             onChange={() => setAutoRecur(!autoRecur)} 
           />
@@ -358,6 +359,8 @@ export function Settings() {
           />
         </div>
       </section>
+
+      <RecurringPayments />
 
       {/* Data Management */}
       <section>

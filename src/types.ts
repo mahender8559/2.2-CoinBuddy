@@ -60,6 +60,28 @@ export type TransactionType =
   | 'MARKET_ADJUSTMENT'
   | 'BALANCE_ADJUSTMENT';
 
+export type RecurrenceFrequency = 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
+
+export interface RecurringRule {
+  id: string;
+  title: string;
+  subtitle?: string;
+  amount: number;
+  transactionType: 'INCOME' | 'EXPENSE' | 'TRANSFER';
+  account?: string;
+  fromAccountId?: string;
+  toAccountId?: string;
+  category?: string;
+  icon?: IconName;
+  notes?: string;
+  isInterestOnly?: boolean;
+  frequency: RecurrenceFrequency;
+  nextDueDate: string;
+  isActive: boolean;
+  eventId?: string;
+  anchorDay?: number;
+}
+
 export type Transaction = {
   id: string;
   title: string;
@@ -71,6 +93,7 @@ export type Transaction = {
   type: 'income' | 'expense' | 'transfer';
   account?: string;
   isRecurring?: boolean;
+  recurrenceFrequency?: RecurrenceFrequency;
   fromAccountId?: string;
   toAccountId?: string;
   isInterestOnly?: boolean;

@@ -7,6 +7,7 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useDebounce } from '../hooks/useDebounce';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { isEventAssignableTransaction } from '../domain/eventRules';
+import { transactionMatchesSearch } from '../utils/transactionSearch';
 
 
 export function Activity() {
@@ -128,8 +129,12 @@ const unassignSelectedEvents = () => {
 
   const filteredTransactions = useMemo(() => {
     let filtered = transactions.filter(tx => {
-      const q = debouncedQuery.toLowerCase();
-      const matchesSearch = tx.title.toLowerCase().includes(q) || tx.category.toLowerCase().includes(q);
+      const categoryName = categories.find(c => c.id === tx.category || `#${c.name.toLowerCase().replace(/\s+/g, '')}` === tx.category)?.name;
+      const matchesSearch = transactionMatchesSearch(tx, debouncedQuery, {
+        accountNames: accounts.filter(account => tx.account === account.id || tx.fromAccountId === account.id || tx.toAccountId === account.id).map(account => account.name),
+        eventName: events.find(event => event.id === tx.eventId)?.name,
+        categoryName,
+      });
       
       const matchesCategory = selectedCategoryFilter 
         ? tx.category === `#${categories.find(c => c.id === selectedCategoryFilter)?.name.toLowerCase().replace(/\s+/g, '')}` ||
@@ -169,7 +174,7 @@ const unassignSelectedEvents = () => {
       }
       return 0;
     });
-  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedEventFilter, selectedSort]);
+  }, [transactions, debouncedQuery, selectedCategoryFilter, categories, selectedCycle, getCycleDetails, selectedTypeFilter, selectedAccountFilter, selectedEventFilter, selectedSort, accounts, events]);
 
   const outflow = filteredTransactions.filter(t => !t.isOpeningBalance && isCashFlowTransaction(t) && t.type === 'expense').reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
   
@@ -252,7 +257,7 @@ const unassignSelectedEvents = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-on-surface-variant" />
           <input 
             type="text" 
-            placeholder="Search transactions..." 
+            placeholder="Search title, category, account or amount..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-surface-container border border-outline-variant/30 rounded-2xl py-3.5 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"

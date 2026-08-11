@@ -6,7 +6,7 @@ import type { Transaction } from '../types';
 
 
 export function AddTransactionModal() {
-  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, createEvent, setManageCategoriesOpen } = useAppContext();
+  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, createEvent, setManageCategoriesOpen } = useAppContext();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -18,6 +18,7 @@ export function AddTransactionModal() {
   
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'>('MONTHLY');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [groupId, setGroupId] = useState('');
 
@@ -74,6 +75,7 @@ export function AddTransactionModal() {
       setFromAccountId(editingTransaction.fromAccountId || '');
       setToAccountId(editingTransaction.toAccountId || '');
       setIsRecurring(editingTransaction.isRecurring || false);
+      setRecurrenceFrequency(recurringRules.find(rule => rule.id === editingTransaction.recurringRuleId)?.frequency ?? 'MONTHLY');
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
       setGroupId(events.find(event => event.id === editingTransaction.eventId)?.name || '');
       
@@ -84,6 +86,7 @@ export function AddTransactionModal() {
       setAmount('');
       setType('expense');
       setIsRecurring(false);
+      setRecurrenceFrequency('MONTHLY');
       setDate(new Date().toISOString().split('T')[0]);
       setGroupId('');
       setCategoryId(categories[0]?.id || '');
@@ -93,7 +96,7 @@ export function AddTransactionModal() {
       if (liabilities.length > 0) setToAccountId(liabilities[0].id);
       else if (accounts.length > 0) setToAccountId(accounts[0].id);
     }
-  }, [editingTransaction, isAddModalOpen, categories, assets, liabilities, accounts]);
+  }, [editingTransaction, isAddModalOpen, categories, assets, liabilities, accounts, events, recurringRules]);
 
   // Prevent background scrolling when modal is open
   useEffect(() => {
@@ -107,7 +110,7 @@ export function AddTransactionModal() {
 
   if (!isAddModalOpen) return null;
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount);
     if (!amount || isNaN(numAmount) || numAmount <= 0) {
@@ -199,6 +202,7 @@ export function AddTransactionModal() {
         : (type === 'income' ? account : undefined),
       transaction_type: type.toUpperCase() as Transaction['transaction_type'],
       isRecurring,
+      recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
       is_verified: isFuture ? 0 : 1
@@ -208,7 +212,7 @@ export function AddTransactionModal() {
     if (editingTransaction) {
       res = updateTransaction(editingTransaction.id, newTx);
     } else {
-      res = addTransaction(newTx);
+      res = await addTransaction(newTx);
     }
 
     if (!res.success) {
@@ -490,23 +494,50 @@ export function AddTransactionModal() {
              </div>
           )}
 
-          <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary">
-                <Layers className="w-5 h-5" />
+          <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-on-surface">Recurring</h3>
+                  <p className="text-xs text-on-surface-variant">
+                    {editingTransaction?.recurringRuleId ? 'This occurrence belongs to a recurring schedule' : 'Create future scheduled occurrences'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-on-surface">Recurring</h3>
-                <p className="text-xs text-on-surface-variant">Set monthly schedule</p>
-              </div>
+              <button
+                type="button"
+                disabled={Boolean(editingTransaction)}
+                onClick={() => setIsRecurring(!isRecurring)}
+                className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ backgroundColor: isRecurring ? 'var(--primary)' : 'var(--surface-container-highest)' }}
+                aria-label="Toggle recurring transaction"
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${isRecurring ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
             </div>
-            <button 
-              type="button"
-              onClick={() => setIsRecurring(!isRecurring)}
-              className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none" style={{ backgroundColor: isRecurring ? 'var(--primary)' : 'var(--surface-container-highest)' }}
-            >
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${isRecurring ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+            {isRecurring && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Frequency</label>
+                <select
+                  value={recurrenceFrequency}
+                  disabled={Boolean(editingTransaction)}
+                  onChange={e => setRecurrenceFrequency(e.target.value as typeof recurrenceFrequency)}
+                  className="rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:border-primary/60 disabled:opacity-60"
+                >
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="ANNUALLY">Annually</option>
+                </select>
+              </div>
+            )}
+            {editingTransaction?.recurringRuleId && (
+              <p className="text-[11px] leading-relaxed text-on-surface-variant">
+                Editing this transaction changes only this occurrence. Manage the future series from Settings → Recurring Payments.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

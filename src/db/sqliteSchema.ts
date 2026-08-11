@@ -145,7 +145,10 @@ CREATE TABLE IF NOT EXISTS recurring_rules (
   is_interest_only INTEGER NOT NULL DEFAULT 0,
   frequency TEXT NOT NULL DEFAULT 'MONTHLY' CHECK(frequency IN ('MONTHLY', 'QUARTERLY', 'ANNUALLY')),
   next_due_date TEXT NOT NULL,
-  is_active INTEGER NOT NULL DEFAULT 1
+  is_active INTEGER NOT NULL DEFAULT 1,
+  event_id TEXT,
+  anchor_day INTEGER CHECK(anchor_day BETWEEN 1 AND 31),
+  FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL
 );
 
 -- 5. Centralized Computed Account Balances View
@@ -306,6 +309,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE transactions ADD COLUMN due_date TEXT;`,
   `ALTER TABLE transactions ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
   `ALTER TABLE categories ADD COLUMN rollover_account_id TEXT;`,
+  `ALTER TABLE recurring_rules ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
+  `ALTER TABLE recurring_rules ADD COLUMN anchor_day INTEGER;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `

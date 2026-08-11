@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -36,6 +36,9 @@ import {
   loadUserConfig,
   upsertUserConfig,
   createRecurringRule,
+  updateRecurringRuleRow,
+  deleteRecurringRuleRow,
+  skipRecurringRuleOccurrence,
   generateDueRecurringTransactions,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
@@ -44,6 +47,7 @@ import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } f
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
+import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -61,6 +65,7 @@ type LedgerImportData = {
   creditCards?: CreditCardInfo[];
   widgets?: Widget[];
   loanRevisions?: LoanRevision[];
+  recurringRules?: RecurringRule[];
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -93,7 +98,7 @@ interface AppContextType {
   transferFunds: (amount: number, fromId: string, toId: string) => void;
   netWorth: number;
   transactions: Transaction[];
-  addTransaction: (tx: Omit<Transaction, 'id'>) => { success: boolean; error?: string };
+  addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<{ success: boolean; error?: string }>;
   updateTransaction: (id: string, tx: Omit<Transaction, 'id'>) => { success: boolean; error?: string };
   deleteTransaction: (id: string) => void;
   approveTransaction: (id: string, date?: string) => void;
@@ -102,6 +107,10 @@ interface AppContextType {
   setEditingTransaction: (tx: Transaction | null) => void;
   autoRecur: boolean;
   setAutoRecur: (val: boolean) => void;
+  recurringRules: RecurringRule[];
+  updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
+  deleteRecurringRule: (id: string) => Promise<boolean>;
+  skipRecurringRule: (id: string) => Promise<boolean>;
   biometric: boolean;
   setBiometric: (val: boolean) => void;
   isAddModalOpen: boolean;
@@ -394,6 +403,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const removeWidget = (id: string) => { setWidgets(widgets.filter(w => w.id !== id)); if (dbDriver) { deleteWidgetRow(dbDriver, id).then(() => persistDatabase(dbDriver)).catch(console.error); } };
 
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
+  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
@@ -414,6 +424,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     creditCards: CreditCardInfo[];
     widgets: Widget[];
     loanRevisions: LoanRevision[];
+    recurringRules: RecurringRule[];
   }) => {
     setAccountRecords(stripAccountBalances(state.accounts));
     setTransactions(state.transactions);
@@ -422,6 +433,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setCreditCardRecords(stripCardBalances(state.creditCards));
     setWidgets(state.widgets);
     setLoanRevisions(state.loanRevisions);
+    setRecurringRules(state.recurringRules);
   };
 
   const refreshStateFromDatabase = async (driver: SqlJsDatabaseDriver) => {
@@ -652,32 +664,93 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     return { valid: true };
   };
 
-  const addTransaction = (tx: Omit<Transaction, 'id'>): { success: boolean; error?: string } => {
+  const addTransaction = async (tx: Omit<Transaction, 'id'>): Promise<{ success: boolean; error?: string }> => {
     const validation = validateTransaction(tx, accounts);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
+    if (!dbDriver) {
+      return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    }
 
-    const finalTx = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
+    const finalTx: Transaction = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
+
     if (tx.isRecurring) {
-      if (dbDriver) void persistDbAction(() => createRecurringRule(dbDriver, finalTx));
+      const frequency = tx.recurrenceFrequency ?? 'MONTHLY';
+      const startDateKey = toLocalDateKey(finalTx.date);
+      const anchorDay = Number(startDateKey.slice(8, 10));
+      const ruleId = crypto.randomUUID();
+      const createInitial = shouldCreateInitialOccurrence(startDateKey);
+      const nextDueDate = createInitial
+        ? advanceRecurringDate(startDateKey, frequency, anchorDay)
+        : startDateKey;
+      const initialTx: Transaction | null = createInitial
+        ? {
+            ...finalTx,
+            recurringRuleId: ruleId,
+            dueDate: startDateKey,
+            recurrenceFrequency: frequency,
+            isRecurring: true,
+            is_verified: 1,
+          }
+        : null;
+
+      const saved = await persistDbAction(async () => {
+        await dbDriver.execute('BEGIN TRANSACTION');
+        try {
+          await createRecurringRule(
+            dbDriver,
+            { ...finalTx, recurringRuleId: ruleId, recurrenceFrequency: frequency },
+            { id: ruleId, nextDueDate },
+          );
+          if (initialTx) await insertTransactionRow(dbDriver, initialTx);
+          // A past start date may have more than one missed occurrence. Generate
+          // them now and rely on (rule id, due date) de-duplication.
+          await generateDueRecurringTransactions(dbDriver, autoRecur);
+          await dbDriver.execute('COMMIT');
+        } catch (error) {
+          await dbDriver.execute('ROLLBACK');
+          throw error;
+        }
+      });
+
+      if (!saved) return { success: false, error: 'The recurring payment could not be saved.' };
+      if (initialTx) {
+        pushCommand({
+          entityType: 'transaction',
+          actionType: 'add',
+          previousState: null,
+          newState: initialTx,
+        });
+      }
       return { success: true };
     }
-    const nextTxs = [finalTx, ...transactions];
+
+    const saved = await persistDbAction(() => insertTransactionRow(dbDriver, finalTx));
+    if (!saved) return { success: false, error: 'The transaction could not be saved.' };
 
     pushCommand({
       entityType: 'transaction',
       actionType: 'add',
       previousState: null,
-      newState: finalTx
+      newState: finalTx,
     });
-    setTransactions(nextTxs);
-
-    if (dbDriver) {
-      persistDbAction(() => insertTransactionRow(dbDriver, finalTx));
-    }
-
     return { success: true };
+  };
+
+  const updateRecurringRule = async (rule: RecurringRule): Promise<boolean> => {
+    if (!dbDriver) return false;
+    return persistDbAction(() => updateRecurringRuleRow(dbDriver, rule));
+  };
+
+  const deleteRecurringRule = async (id: string): Promise<boolean> => {
+    if (!dbDriver) return false;
+    return persistDbAction(() => deleteRecurringRuleRow(dbDriver, id));
+  };
+
+  const skipRecurringRule = async (id: string): Promise<boolean> => {
+    if (!dbDriver) return false;
+    return persistDbAction(() => skipRecurringRuleOccurrence(dbDriver, id));
   };
 
   const updateTransaction = (id: string, newTx: Omit<Transaction, 'id'>): { success: boolean; error?: string } => {
@@ -1121,7 +1194,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const fromAccount = accounts.find(a => a.id === fromId);
     const toAccount = accounts.find(a => a.id === toId);
 
-    addTransaction({
+    void addTransaction({
       title: `Transfer: ${fromAccount?.name || 'Unknown'} to ${toAccount?.name || 'Unknown'}`,
       subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       amount: Math.abs(amount),
@@ -1171,7 +1244,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       transferFunds(pAmount, defaultAsset, id);
     }
     if (iAmount > 0) {
-      addTransaction({
+      void addTransaction({
         title: `Interest Payment: ${liabilityAcc?.name || 'Loan'}`,
         subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         amount: iAmount,
@@ -1326,6 +1399,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     setCategories([]);
     setEvents([]);
     setLoanRevisions([]);
+    setRecurringRules([]);
     setIntegrityWarning(null);
     clearStacks();
     setLastUpdated(new Date().toISOString());
@@ -1349,6 +1423,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setCreditCardRecords(stripCardBalances(refreshed.creditCards));
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
+      setRecurringRules(refreshed.recurringRules);
       const integrity = await auditDatabaseIntegrity(dbDriver);
       if (integrity.mismatches.length > 0) {
         setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
@@ -1363,6 +1438,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       if (data.creditCards && Array.isArray(data.creditCards)) setCreditCardRecords(stripCardBalances(data.creditCards));
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
       if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
+      if (data.recurringRules && Array.isArray(data.recurringRules)) setRecurringRules(data.recurringRules);
     }
 
     if (data.currency) setCurrency(data.currency);
@@ -1383,6 +1459,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     creditCards,
     widgets,
     loanRevisions,
+    recurringRules,
     currency,
   });
 
@@ -1399,7 +1476,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
-      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, 
+      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, recurringRules, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,

@@ -301,13 +301,8 @@ describe('Backup & Encryption Engine Suite', () => {
         isWifiOnly: true,
       };
 
-      // Mock navigator.onLine = false if defined
-      if (typeof navigator !== 'undefined') {
-        Object.defineProperty(navigator, 'onLine', {
-          value: false,
-          configurable: true,
-        });
-      }
+      // Vitest runs in Node where navigator may not exist at all.
+      vi.stubGlobal('navigator', { onLine: false });
 
       const result = await BackupManager.executeSilentBackup(mockSettings);
       expect(result?.syncStatus).toBe('PENDING_NETWORK');
