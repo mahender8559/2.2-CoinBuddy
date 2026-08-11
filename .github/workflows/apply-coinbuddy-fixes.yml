@@ -60,20 +60,10 @@ jobs:
           from pathlib import Path
           path = Path('src/__tests__/backupManager.test.ts')
           text = path.read_text(encoding='utf-8')
-          old = """      // Mock navigator.onLine = false if defined
-      if (typeof navigator !== 'undefined') {
-        Object.defineProperty(navigator, 'onLine', {
-          value: false,
-          configurable: true,
-        });
-      }
-"""
-          new = """      // Vitest runs in Node where navigator may not exist at all.
-      vi.stubGlobal('navigator', { onLine: false });
-"""
-          if old not in text:
-              raise RuntimeError('Expected offline navigator test block was not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          start = text.index('      // Mock navigator.onLine = false if defined')
+          end = text.index('      const result = await BackupManager.executeSilentBackup(mockSettings);', start)
+          replacement = "      // Vitest runs in Node where navigator may not exist at all.\n      vi.stubGlobal('navigator', { onLine: false });\n\n"
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
           PY
 
       - name: Install dependencies
