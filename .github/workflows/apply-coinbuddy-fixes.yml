@@ -1,0 +1,67 @@
+name: Apply CoinBuddy recurring fixes
+
+on:
+  push:
+    branches:
+      - fix/event-insights-multi-select
+    paths:
+      - scripts/apply_coinbuddy_fixes.py
+      - .github/workflows/apply-coinbuddy-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/event-insights-multi-select
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Correct staging-script expression
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_coinbuddy_fixes.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('    ...context.accountNames ?? [],', '    ...(context.accountNames ?? []),')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Apply recurring and Activity fixes
+        run: python3 scripts/apply_coinbuddy_fixes.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit verified source changes
+        shell: bash
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add src
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "Fix recurring transactions and Activity amount search"
+          git push origin HEAD:fix/event-insights-multi-select
