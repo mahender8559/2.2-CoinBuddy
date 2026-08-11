@@ -44,6 +44,17 @@ jobs:
       - name: Apply needs-confirmation fix
         run: python3 scripts/apply_needs_confirmation_fix.py
 
+      - name: Complete recurring test fixtures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/__tests__/recurringConfirmation.test.ts')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("title: 'Rent', amount: 20000, date:", "title: 'Rent', subtitle: '', amount: 20000, date:")
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Install dependencies
         run: npm ci
 
