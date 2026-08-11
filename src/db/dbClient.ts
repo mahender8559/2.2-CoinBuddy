@@ -635,8 +635,44 @@ function localNoonIso(date: string): string {
   return new Date(`${date}T12:00:00`).toISOString();
 }
 
+/**
+ * One-time compatibility repair for recurring rules created by the previous
+ * implementation, which marked their first generated occurrence as verified
+ * before the user had confirmed it. Restrict the repair to active rules with
+ * exactly one generated occurrence so established recurring history is not
+ * reopened for confirmation.
+ */
+export async function repairLegacyRecurringConfirmationState(
+  driver: SqlJsDatabaseDriver,
+  today = new Date(),
+): Promise<number> {
+  const todayKey = toLocalDateKey(today);
+  const rows = await driver.query(
+    `SELECT t.id
+       FROM transactions t
+       JOIN recurring_rules r ON r.id = t.recurring_rule_id AND r.is_active = 1
+       JOIN (
+         SELECT recurring_rule_id
+           FROM transactions
+          WHERE recurring_rule_id IS NOT NULL
+          GROUP BY recurring_rule_id
+         HAVING COUNT(*) = 1
+       ) single_rule ON single_rule.recurring_rule_id = t.recurring_rule_id
+      WHERE t.is_recurring = 1
+        AND t.is_verified = 1
+        AND t.due_date IS NOT NULL
+        AND t.due_date <= ?`,
+    [todayKey],
+  );
+  if (!rows.length) return 0;
+  const ids = rows.map(row => String(row.id));
+  const placeholders = ids.map(() => '?').join(',');
+  await driver.execute(`UPDATE transactions SET is_verified = 0 WHERE id IN (${placeholders})`, ids);
+  return ids.length;
+}
+
 /** Backfill every missed scheduled occurrence, with identity-based de-duplication. */
-export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriver, autoApprove: boolean, today = new Date()): Promise<number> {
+export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriver, _legacyAutoApprove: boolean, today = new Date()): Promise<number> {
   const todayDate = toLocalDateKey(today);
   const rules = await driver.query(`SELECT * FROM recurring_rules WHERE is_active = 1 AND next_due_date <= ?`, [todayDate]);
   let generated = 0;
@@ -686,14 +722,14 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
           date: localNoonIso(d), category: rule.category ?? '#uncategorized', icon: rule.icon ?? 'RefreshCw',
           type: rule.transaction_type.toLowerCase(), account: rule.account ?? undefined, fromAccountId: sourceAccountId ?? undefined,
           toAccountId: destinationAccountId ?? undefined, notes: rule.notes ?? undefined, isInterestOnly: Boolean(rule.is_interest_only),
-          transaction_type: rule.transaction_type, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
+          transaction_type: rule.transaction_type, is_verified: 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
         } as Transaction);
         if (split && split.interestAmount > 0) {
           await insertTransactionRow(driver, {
             id: crypto.randomUUID(), title: `Interest Payment: ${liability.name}`, subtitle: rule.subtitle ?? '', amount: split.interestAmount,
             date: localNoonIso(d), category: '#interest', icon: 'Flame', type: 'expense',
             fromAccountId: sourceAccountId ?? undefined, account: destinationAccountId, toAccountId: destinationAccountId,
-            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
+            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
           } as Transaction);
         }
         generated++;

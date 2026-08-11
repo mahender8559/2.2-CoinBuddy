@@ -331,8 +331,8 @@ export function Settings() {
           </div>
           <SettingToggle 
             icon={RefreshCw} 
-            title="Auto-recurring payments" 
-            desc="Automatically approve due scheduled entries; turn off to require confirmation" 
+            title="Auto-create recurring entries" 
+            desc="Create due scheduled entries automatically; they still need confirmation before balances change" 
             checked={autoRecur} 
             onChange={() => setAutoRecur(!autoRecur)} 
           />

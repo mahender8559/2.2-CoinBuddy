@@ -40,6 +40,7 @@ import {
   deleteRecurringRuleRow,
   skipRecurringRuleOccurrence,
   generateDueRecurringTransactions,
+  repairLegacyRecurringConfirmationState,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
@@ -554,7 +555,16 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   useEffect(() => {
     if (!dbDriver || !dbReady) return;
-    void persistDbAction(() => generateDueRecurringTransactions(dbDriver, autoRecur));
+    void persistDbAction(async () => {
+      const migrationKey = 'coinbuddy_recurring_confirmation_v1';
+      if (localStorage.getItem(migrationKey) !== 'true') {
+        await repairLegacyRecurringConfirmationState(dbDriver);
+        localStorage.setItem(migrationKey, 'true');
+      }
+      if (autoRecur) {
+        await generateDueRecurringTransactions(dbDriver, false);
+      }
+    });
   }, [dbDriver, dbReady, autoRecur]);
 
   const validateTransaction = (
@@ -691,7 +701,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
             dueDate: startDateKey,
             recurrenceFrequency: frequency,
             isRecurring: true,
-            is_verified: 1,
+            is_verified: 0,
           }
         : null;
 
@@ -706,7 +716,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           if (initialTx) await insertTransactionRow(dbDriver, initialTx);
           // A past start date may have more than one missed occurrence. Generate
           // them now and rely on (rule id, due date) de-duplication.
-          await generateDueRecurringTransactions(dbDriver, autoRecur);
+          await generateDueRecurringTransactions(dbDriver, false);
           await dbDriver.execute('COMMIT');
         } catch (error) {
           await dbDriver.execute('ROLLBACK');

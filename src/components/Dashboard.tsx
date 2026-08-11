@@ -316,7 +316,7 @@ export function Dashboard() {
       {/* Pending Verifications */}
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden">
         <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
-          <h2 className="text-lg font-bold text-on-surface">Pending Verifications</h2>
+          <h2 className="text-lg font-bold text-on-surface">Needs confirmation</h2>
           <button className="text-on-surface-variant hover:text-on-surface"><MoreHorizontal className="w-5 h-5" /></button>
         </div>
         <div className="divide-y divide-outline-variant/10">
@@ -325,7 +325,7 @@ export function Dashboard() {
               <div className="flex items-start gap-4 flex-grow min-w-0">
                 <button
                   onClick={() => { setPendingConfirmTx(tx); setPendingConfirmDate(tx.date); }}
-                  title="Click to verify / complete payment"
+                  title="Review this recurring transaction"
                   className="w-10 h-10 rounded-full bg-surface-container-high hover:bg-primary/20 flex items-center justify-center shrink-0 transition-colors text-on-surface-variant hover:text-primary cursor-pointer group mt-0.5"
                 >
                    <CheckCircle2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
@@ -341,13 +341,13 @@ export function Dashboard() {
                   onClick={() => { setPendingConfirmTx(tx); setPendingConfirmDate(tx.date); }}
                   className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Tick & Process
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Review
                 </button>
               </div>
             </div>
           ))}
           {pendingTxs.length === 0 && (
-            <div className="p-5 text-center text-sm text-on-surface-variant">No pending items.</div>
+            <div className="p-5 text-center text-sm text-on-surface-variant">Nothing needs confirmation.</div>
           )}
         </div>
       </div>
@@ -361,8 +361,8 @@ export function Dashboard() {
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-on-surface">Is this payment done?</h3>
-                <p className="text-xs text-on-surface-variant">Please confirm if this transaction has been completed.</p>
+                <h3 className="text-lg font-bold text-on-surface">{pendingConfirmTx.type === 'income' ? 'Did you receive this income?' : pendingConfirmTx.type === 'expense' ? 'Did you make this payment?' : 'Did this transfer happen?'}</h3>
+                <p className="text-xs text-on-surface-variant">Confirm only after it actually happened. Until then, it does not affect your balances.</p>
               </div>
             </div>
 
@@ -401,7 +401,7 @@ export function Dashboard() {
                 onClick={() => setPendingConfirmTx(null)}
                 className="bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold py-3 px-4 rounded-2xl text-sm transition-colors cursor-pointer"
               >
-                Cancel
+                Not yet
               </button>
               <button
                 type="button"
@@ -411,7 +411,7 @@ export function Dashboard() {
                 }}
                 className="flex-1 bg-error/10 hover:bg-error/20 text-error font-semibold py-3 px-4 rounded-2xl text-sm transition-colors cursor-pointer"
               >
-                Reject
+                Skip this occurrence
               </button>
               <button
                 type="button"
@@ -421,7 +421,7 @@ export function Dashboard() {
                 }}
                 className="flex-1 bg-primary hover:bg-primary/90 text-primary-contrast font-semibold py-3 px-4 rounded-2xl text-sm transition-colors shadow-md cursor-pointer"
               >
-                Approve
+                {pendingConfirmTx.type === 'income' ? 'Received ✓' : pendingConfirmTx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}
               </button>
             </div>
           </div>
