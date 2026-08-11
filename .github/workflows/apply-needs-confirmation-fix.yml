@@ -51,6 +51,8 @@ jobs:
           from pathlib import Path
           path = Path('src/__tests__/recurringConfirmation.test.ts')
           text = path.read_text(encoding='utf-8')
+          text = text.replace("import { CREATE_TABLES_SQL, SQLITE_PRAGMA_SETUP } from '../db/sqliteSchema';", "import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from '../db/sqliteSchema';")
+          text = text.replace("  db.exec(CREATE_TABLES_SQL);\n  return {", "  db.exec(CREATE_TABLES_SQL);\n  for (const migration of SQLITE_MIGRATIONS) {\n    try { db.run(migration); } catch (error) {\n      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;\n    }\n  }\n  return {")
           text = text.replace("title: 'Rent', amount: 20000, date:", "title: 'Rent', subtitle: '', amount: 20000, date:")
           path.write_text(text, encoding='utf-8')
           PY
