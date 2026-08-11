@@ -53,6 +53,29 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
+      - name: Make offline backup test deterministic in Node
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/__tests__/backupManager.test.ts')
+          text = path.read_text(encoding='utf-8')
+          old = """      // Mock navigator.onLine = false if defined
+      if (typeof navigator !== 'undefined') {
+        Object.defineProperty(navigator, 'onLine', {
+          value: false,
+          configurable: true,
+        });
+      }
+"""
+          new = """      // Vitest runs in Node where navigator may not exist at all.
+      vi.stubGlobal('navigator', { onLine: false });
+"""
+          if old not in text:
+              raise RuntimeError('Expected offline navigator test block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Install dependencies
         run: npm ci
 
