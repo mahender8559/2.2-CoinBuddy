@@ -27,6 +27,20 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Narrow dashboard title replacement
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_needs_confirmation_fix.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "text = replace_once(text, 'Pending Verifications', 'Needs confirmation', 'Dashboard section title')",
+              "text = replace_once(text, '<h2 className=\"text-lg font-bold text-on-surface\">Pending Verifications</h2>', '<h2 className=\"text-lg font-bold text-on-surface\">Needs confirmation</h2>', 'Dashboard section title')",
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Apply needs-confirmation fix
         run: python3 scripts/apply_needs_confirmation_fix.py
 
