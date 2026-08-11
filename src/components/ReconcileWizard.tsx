@@ -22,11 +22,11 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
   const label = kind === 'MARKET_ADJUSTMENT' ? 'Update Market Value' : 'Reconcile Balance';
 
   const summary = useMemo(() => difference === 0 ? 'Already in sync' : `${difference > 0 ? 'Increase' : 'Decrease'} ledger by ${formatCurrency(Math.abs(difference))}`, [difference, formatCurrency]);
-  const submit = () => {
+  const submit = async () => {
     if (!Number.isFinite(actual) || actual < 0) return setError('Enter a valid non-negative balance.');
     if (reconciliationTooLarge) return setError(reconciliationWarning);
     if (Math.abs(difference) < 0.005) return onClose();
-    const result = addTransaction({
+    const result = await addTransaction({
       title: kind === 'MARKET_ADJUSTMENT' ? `Market value update: ${account.name}` : `Balance reconciliation: ${account.name}`,
       subtitle: `Actual value ${formatCurrency(actual)}`,
       amount: reconciliationDelta,

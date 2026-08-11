@@ -2,10 +2,11 @@ import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
-import { Account, Category, CreditCardInfo, Event, LoanRevision, Transaction, Widget } from '../types';
+import { Account, Category, CreditCardInfo, Event, LoanRevision, RecurrenceFrequency, RecurringRule, Transaction, Widget } from '../types';
 import { calculateEmiSplit } from '../utils/emi';
 import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
+import { advanceRecurringDate, toLocalDateKey } from '../domain/recurring';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -313,8 +314,32 @@ export function normalizeTransactionRow(row: any): Transaction {
   } as Transaction;
 }
 
+export function normalizeRecurringRuleRow(row: any): RecurringRule {
+  const nextDueDate = row.next_due_date ?? row.nextDueDate ?? toLocalDateKey(new Date());
+  const fallbackAnchor = Number(String(nextDueDate).slice(8, 10));
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    subtitle: row.subtitle ?? undefined,
+    amount: Number(row.amount ?? 0),
+    transactionType: (row.transaction_type ?? 'EXPENSE').toUpperCase(),
+    account: row.account ?? undefined,
+    fromAccountId: row.from_account_id ?? undefined,
+    toAccountId: row.to_account_id ?? undefined,
+    category: row.category ?? undefined,
+    icon: row.icon ?? undefined,
+    notes: row.notes ?? undefined,
+    isInterestOnly: Boolean(Number(row.is_interest_only ?? 0)),
+    frequency: (row.frequency ?? 'MONTHLY') as RecurrenceFrequency,
+    nextDueDate,
+    isActive: Number(row.is_active ?? 1) === 1,
+    eventId: row.event_id ?? undefined,
+    anchorDay: Number(row.anchor_day ?? fallbackAnchor) || undefined,
+  } as RecurringRule;
+}
+
 export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
-  const [accountRows, txRows, categoryRows, creditCardRows, widgetRows, loanRows, eventRows] = await Promise.all([
+  const [accountRows, txRows, categoryRows, creditCardRows, widgetRows, loanRows, eventRows, recurringRuleRows] = await Promise.all([
     driver.query(`SELECT * FROM account_balances_view WHERE is_archived = 0 ORDER BY name ASC;`),
     driver.query(`SELECT * FROM transactions ORDER BY date DESC;`),
     driver.query(`SELECT * FROM categories ORDER BY name ASC;`),
@@ -322,6 +347,7 @@ export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
     driver.query(`SELECT * FROM widgets ORDER BY id ASC;`),
     driver.query(`SELECT * FROM loan_revisions ORDER BY effective_date DESC;`),
     driver.query(`SELECT * FROM events ORDER BY created_at DESC, name ASC;`),
+    driver.query(`SELECT * FROM recurring_rules ORDER BY is_active DESC, next_due_date ASC, title ASC;`),
   ]);
 
   return {
@@ -332,6 +358,7 @@ export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
     widgets: widgetRows.map(normalizeWidgetRow),
     loanRevisions: loanRows.map(normalizeLoanRevisionRow),
     events: eventRows.map(normalizeEventRow),
+    recurringRules: recurringRuleRows.map(normalizeRecurringRuleRow),
   };
 }
 
@@ -555,36 +582,57 @@ export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> 
   await driver.execute(`DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
 }
 
-export async function createRecurringRule(driver: SqlJsDatabaseDriver, template: Omit<Transaction, 'id'> & { id?: string }): Promise<string> {
+export async function createRecurringRule(
+  driver: SqlJsDatabaseDriver,
+  template: Omit<Transaction, 'id'> & { id?: string },
+  options: { id?: string; nextDueDate?: string } = {},
+): Promise<string> {
   const amount = Math.abs(Number(template.amount));
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Recurring rule amount must be a finite positive number.');
-  const id = template.id ?? crypto.randomUUID();
+  const id = options.id ?? template.recurringRuleId ?? template.id ?? crypto.randomUUID();
   const type = (template.transaction_type ?? template.type).toUpperCase();
   if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(type)) throw new Error(`Unsupported recurring transaction type: ${type}.`);
   const fromAccountId = template.fromAccountId ?? (type === 'EXPENSE' ? template.account : undefined);
   const toAccountId = template.toAccountId ?? (type === 'INCOME' ? template.account : undefined);
   if ((type === 'EXPENSE' || type === 'TRANSFER') && !fromAccountId) throw new Error('A recurring expense or transfer requires a source account.');
   if ((type === 'INCOME' || type === 'TRANSFER') && !toAccountId) throw new Error('A recurring income or transfer requires a destination account.');
-  const nextDueDate = toLocalDateKey(new Date(template.date));
+  const startDate = toLocalDateKey(template.date);
+  const anchorDay = Number(startDate.slice(8, 10));
+  const frequency = (template.recurrenceFrequency ?? 'MONTHLY') as RecurrenceFrequency;
+  const nextDueDate = options.nextDueDate ?? startDate;
   await driver.execute(
-    `INSERT INTO recurring_rules (id, title, subtitle, amount, transaction_type, account, from_account_id, to_account_id, category, icon, notes, is_interest_only, next_due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    [id, template.title, template.subtitle ?? null, amount, type, template.account ?? null, fromAccountId ?? null, toAccountId ?? null, template.category ?? null, template.icon ?? null, template.notes ?? null, template.isInterestOnly ? 1 : 0, nextDueDate]
+    `INSERT INTO recurring_rules (id, title, subtitle, amount, transaction_type, account, from_account_id, to_account_id, category, icon, notes, is_interest_only, frequency, next_due_date, is_active, event_id, anchor_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [id, template.title, template.subtitle ?? null, amount, type, template.account ?? null, fromAccountId ?? null, toAccountId ?? null, template.category ?? null, template.icon ?? null, template.notes ?? null, template.isInterestOnly ? 1 : 0, frequency, nextDueDate, 1, template.eventId ?? null, anchorDay]
   );
   return id;
 }
 
-function toLocalDateKey(value: Date): string {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+export async function updateRecurringRuleRow(driver: SqlJsDatabaseDriver, rule: RecurringRule): Promise<void> {
+  const amount = Math.abs(Number(rule.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Recurring rule amount must be a finite positive number.');
+  if (!rule.nextDueDate) throw new Error('Recurring rule requires a next due date.');
+  await driver.execute(
+    `UPDATE recurring_rules SET title = ?, subtitle = ?, amount = ?, transaction_type = ?, account = ?, from_account_id = ?, to_account_id = ?, category = ?, icon = ?, notes = ?, is_interest_only = ?, frequency = ?, next_due_date = ?, is_active = ?, event_id = ?, anchor_day = ? WHERE id = ?;`,
+    [rule.title.trim() || 'Recurring payment', rule.subtitle ?? null, amount, rule.transactionType, rule.account ?? null, rule.fromAccountId ?? null, rule.toAccountId ?? null, rule.category ?? null, rule.icon ?? null, rule.notes ?? null, rule.isInterestOnly ? 1 : 0, rule.frequency, rule.nextDueDate, rule.isActive ? 1 : 0, rule.eventId ?? null, rule.anchorDay ?? Number(rule.nextDueDate.slice(8, 10)), rule.id]
+  );
+}
+
+export async function deleteRecurringRuleRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  await driver.execute(`DELETE FROM recurring_rules WHERE id = ?;`, [id]);
+}
+
+export async function skipRecurringRuleOccurrence(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
+  const rows = await driver.query(`SELECT next_due_date, frequency, anchor_day FROM recurring_rules WHERE id = ?`, [id]);
+  const row = rows[0];
+  if (!row) throw new Error('Recurring rule no longer exists.');
+  const frequency = (row.frequency ?? 'MONTHLY') as RecurrenceFrequency;
+  const anchorDay = Number(row.anchor_day ?? String(row.next_due_date).slice(8, 10));
+  const nextDueDate = advanceRecurringDate(row.next_due_date, frequency, anchorDay);
+  await driver.execute(`UPDATE recurring_rules SET next_due_date = ? WHERE id = ?`, [nextDueDate, id]);
 }
 
 function localNoonIso(date: string): string {
   return new Date(`${date}T12:00:00`).toISOString();
-}
-
-function advanceRecurringDate(date: string, frequency: string): string {
-  const value = new Date(`${date}T12:00:00`);
-  value.setMonth(value.getMonth() + (frequency === 'ANNUALLY' ? 12 : frequency === 'QUARTERLY' ? 3 : 1));
-  return toLocalDateKey(value);
 }
 
 /** Backfill every missed scheduled occurrence, with identity-based de-duplication. */
@@ -598,7 +646,7 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
     let dueDate = rule.next_due_date;
     while (dueDate <= todayDate) {
       dueDates.push(dueDate);
-      dueDate = advanceRecurringDate(dueDate, rule.frequency);
+      dueDate = advanceRecurringDate(dueDate, (rule.frequency ?? 'MONTHLY') as RecurrenceFrequency, Number(rule.anchor_day) || Number(String(rule.next_due_date).slice(8, 10)));
     }
 
     if (dueDates.length > 0) {
@@ -638,14 +686,14 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
           date: localNoonIso(d), category: rule.category ?? '#uncategorized', icon: rule.icon ?? 'RefreshCw',
           type: rule.transaction_type.toLowerCase(), account: rule.account ?? undefined, fromAccountId: sourceAccountId ?? undefined,
           toAccountId: destinationAccountId ?? undefined, notes: rule.notes ?? undefined, isInterestOnly: Boolean(rule.is_interest_only),
-          transaction_type: rule.transaction_type, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate: d,
+          transaction_type: rule.transaction_type, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
         } as Transaction);
         if (split && split.interestAmount > 0) {
           await insertTransactionRow(driver, {
             id: crypto.randomUUID(), title: `Interest Payment: ${liability.name}`, subtitle: rule.subtitle ?? '', amount: split.interestAmount,
             date: localNoonIso(d), category: '#interest', icon: 'Flame', type: 'expense',
             fromAccountId: sourceAccountId ?? undefined, account: destinationAccountId, toAccountId: destinationAccountId,
-            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurringRuleId: rule.id, dueDate: d,
+            transaction_type: 'EXPENSE', isInterestOnly: true, is_verified: autoApprove ? 1 : 0, isRecurring: true, recurrenceFrequency: rule.frequency, recurringRuleId: rule.id, dueDate: d, eventId: rule.event_id ?? undefined,
           } as Transaction);
         }
         generated++;
@@ -684,11 +732,13 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     const creditCards: CreditCardInfo[] = Array.isArray(data.creditCards) ? data.creditCards : [];
     const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
     const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+    const recurringRules: RecurringRule[] = Array.isArray(data.recurringRules) ? data.recurringRules : [];
     const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
     executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]));
     executePreparedRows(driver, `INSERT INTO accounts (id, name, type, subtype, credit_limit, overdraft_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, accounts.map(account => [account.id, account.name, account.type === 'liability' ? 'LIABILITY' : 'ASSET', account.group ?? null, account.limit ?? null, Math.max(0, account.overdraftLimit ?? 0), account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]));
     executePreparedRows(driver, `INSERT INTO events (event_id, name, created_at) VALUES (?, ?, ?);`, events.map(event => [event.id, event.name, event.createdAt]));
+    executePreparedRows(driver, `INSERT INTO recurring_rules (id, title, subtitle, amount, transaction_type, account, from_account_id, to_account_id, category, icon, notes, is_interest_only, frequency, next_due_date, is_active, event_id, anchor_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, recurringRules.map(rule => [rule.id, rule.title, rule.subtitle ?? null, Math.abs(Number(rule.amount)), rule.transactionType, rule.account ?? null, rule.fromAccountId ?? null, rule.toAccountId ?? null, rule.category ?? null, rule.icon ?? null, rule.notes ?? null, rule.isInterestOnly ? 1 : 0, rule.frequency ?? 'MONTHLY', rule.nextDueDate, rule.isActive === false ? 0 : 1, rule.eventId ?? null, rule.anchorDay ?? Number(String(rule.nextDueDate).slice(8, 10))]));
     executePreparedRows(driver, `INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only, recurring_rule_id, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, transactions.map(tx => {
       const transactionType = tx.transaction_type?.toUpperCase?.() || tx.type?.toUpperCase?.() || 'INCOME';
       const parsedType = ['EXPENSE', 'TRANSFER', 'OPENING_BALANCE', 'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT'].includes(transactionType) ? transactionType : 'INCOME';
