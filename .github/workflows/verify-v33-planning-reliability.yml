@@ -35,6 +35,16 @@ jobs:
           p.write_text(s)
           PY
           python3 scripts/apply_v33_planning_reliability.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('e2e/v33-planning-reliability.spec.ts')
+          s = p.read_text()
+          old = "  await expect(page.getByText('V33 Goal', { exact: true })).toBeVisible();\n\n  await page.getByRole('button', { name: /add transaction/i }).first().click();"
+          new = "  await expect(page.getByText('V33 Goal', { exact: true })).toBeVisible();\n\n  await openTab(page, 'Dashboard');\n  await page.getByRole('button', { name: /add transaction/i }).first().click();"
+          if old not in s:
+              raise SystemExit('v3.3 Goal E2E navigation anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Install Chromium
