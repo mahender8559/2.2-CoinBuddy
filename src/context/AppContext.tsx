@@ -44,7 +44,7 @@ import {
   syncInvestmentSipRecurringRule,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
-import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
+import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance, type DataIntegrityAuditResult } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
@@ -112,8 +112,6 @@ interface AppContextType {
   rejectTransaction: (id: string) => void;
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
-  autoRecur: boolean;
-  setAutoRecur: (val: boolean) => void;
   recurringRules: RecurringRule[];
   affordabilitySettings: AffordabilitySettings;
   setAffordabilitySettings: (settings: AffordabilitySettings) => void;
@@ -178,7 +176,7 @@ interface AppContextType {
   resetToDemoData: () => void;
   integrityWarning: string | null;
   dismissIntegrityWarning: () => void;
-  verifyDataIntegrity: () => Promise<boolean>;
+  verifyDataIntegrity: () => Promise<DataIntegrityAuditResult>;
   getStoredSetting: (key: string) => Promise<unknown>;
   setStoredSetting: (key: string, value: unknown) => Promise<void>;
   toast: { message: string; actionLabel?: string; onAction?: () => void } | null;
@@ -222,7 +220,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [colorPalette, setColorPalette] = useState('blue');
   const [currency, setCurrency] = useState('INR');
   const [balancesVisible, setBalancesVisible] = useState(() => localStorage.getItem('coinbuddy_balances_visible') !== 'false');
-  const [autoRecur, setAutoRecur] = useState(true);
   const [biometric, setBiometric] = useState(false);
   const [passcode, setPasscodeHash] = useState<string | null>(null);
   const setPasscode = (value: string | null) => {
@@ -459,14 +456,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setStateFromDbState(state);
   };
 
-  const verifyDataIntegrity = async (): Promise<boolean> => {
-    if (!dbDriver) return false;
+  const verifyDataIntegrity = async (): Promise<DataIntegrityAuditResult> => {
+    if (!dbDriver) throw new Error('Database is not ready yet.');
     const result = await auditDatabaseIntegrity(dbDriver);
-    const message = result.mismatches.length || !result.isNetWorthAccurate
-      ? 'Ledger integrity warning: one or more balances do not match the transaction ledger.'
-      : null;
-    setIntegrityWarning(message);
-    return !message;
+    const criticalCount = result.issues.filter(issue => issue.severity === 'error').length;
+    setIntegrityWarning(criticalCount > 0
+      ? `Data integrity warning: ${criticalCount} critical issue${criticalCount === 1 ? '' : 's'} detected. Open Settings → Verify Data Integrity for details.`
+      : null);
+    return result;
   };
 
   const persistAppSetting = async (key: string, value: unknown) => {
@@ -509,11 +506,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         }
         await refreshStateFromDatabase(driver);
         const integrity = await auditDatabaseIntegrity(driver);
-        if (integrity.mismatches.length || !integrity.isNetWorthAccurate) setIntegrityWarning('Ledger integrity warning: one or more balances do not match the transaction ledger.');
+        if (integrity.hasCriticalIssues) setIntegrityWarning(`Data integrity warning: ${integrity.issues.filter(issue => issue.severity === 'error').length} critical issue(s) detected. Open Settings → Verify Data Integrity for details.`);
         const settings = await loadAppSettings(driver);
         if (settings.theme === 'light' || settings.theme === 'dark') setTheme(settings.theme);
         if (typeof settings.colorPalette === 'string') setColorPalette(settings.colorPalette);
-        if (typeof settings.autoRecur === 'boolean') setAutoRecur(settings.autoRecur);
         if (typeof settings.biometric === 'boolean') setBiometric(settings.biometric);
         if (typeof settings.passcode === 'string' || settings.passcode === null) {
           const storedPasscode = settings.passcode as string | null;
@@ -545,7 +541,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       void Promise.all([
         persistAppSetting('theme', theme),
         persistAppSetting('colorPalette', colorPalette),
-        persistAppSetting('autoRecur', autoRecur),
         persistAppSetting('biometric', biometric),
         persistAppSetting('passcode', passcode),
         persistAppSetting('profile', profile),
@@ -554,7 +549,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       ]);
       void persistDbAction(() => upsertUserConfig(dbDriver!, { currency, monthCycleDay }));
     }
-  }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, affordabilitySettings, savingsGoals, dbReady, dbDriver]);
+  }, [theme, colorPalette, currency, biometric, passcode, monthCycleDay, profile, affordabilitySettings, savingsGoals, dbReady, dbDriver]);
 
   useEffect(() => {
     localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
@@ -582,11 +577,12 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         await repairLegacyRecurringConfirmationState(dbDriver);
         localStorage.setItem(migrationKey, 'true');
       }
-      if (autoRecur) {
-        await generateDueRecurringTransactions(dbDriver, false);
-      }
+      // Due schedules always become pending ledger entries. They never change
+      // balances until the user confirms them, so a separate auto-create toggle
+      // only made schedules silently disappear when disabled.
+      await generateDueRecurringTransactions(dbDriver, false);
     });
-  }, [dbDriver, dbReady, autoRecur]);
+  }, [dbDriver, dbReady]);
 
   const validateTransaction = (
     tx: Omit<Transaction, 'id'>, 
@@ -1544,7 +1540,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
-      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
+      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,

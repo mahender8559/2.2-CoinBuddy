@@ -62,7 +62,7 @@ export function RecurringPayments() {
               const isManagedSip = rule.id.startsWith('investment-sip:');
               return (
                 <div key={rule.id} className="p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="truncate font-semibold text-on-surface">{rule.title}</p>
@@ -79,12 +79,10 @@ export function RecurringPayments() {
                         {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
                         {eventName ? ` · ${eventName}` : ''}
                       </p>
-                      {isManagedSip && <p className="mt-1 text-[11px] text-on-surface-variant">Managed from its Investment account so the SIP amount, funding account and schedule stay in sync.</p>}
+                      {isManagedSip && <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>}
                     </div>
-                    {isManagedSip ? (
-                      <span className="rounded-lg border border-outline-variant/30 px-3 py-2 text-xs font-semibold text-on-surface-variant">Edit in Manage → Investment</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
+                    {!isManagedSip && (
+                      <div className="flex flex-wrap gap-2 sm:shrink-0">
                         <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Edit ${rule.title}`}>
                           <Pencil className="h-4 w-4" />
                         </button>

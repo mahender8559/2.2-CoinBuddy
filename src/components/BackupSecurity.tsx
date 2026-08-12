@@ -20,9 +20,10 @@ import {
 
 interface BackupSecurityProps {
   onBack: () => void;
+  initialAction?: 'restore';
 }
 
-export function BackupSecurity({ onBack }: BackupSecurityProps) {
+export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
   const { accounts, transactions, categories, creditCards, currency, exportLedgerData, importLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
 
   // 1. State Management (Settings Store)
@@ -38,15 +39,15 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
           isWifiOnly: parsed.isWifiOnly ?? parsed.wifiOnly ?? true,
           hasPassword: Boolean(parsed.hasPassword && parsed.backupPassword),
           backupPassword: parsed.hasPassword ? parsed.backupPassword : undefined,
-          lastBackupMetadata: parsed.lastBackupMetadata || {
-            date: parsed.lastBackupDate || 'Aug 1, 2026, 06:30 PM',
-            filename: parsed.lastBackupFilename || 'backup_2026_08_01.enc',
-            size: parsed.lastBackupSize || '1.2 MB',
+          lastBackupMetadata: parsed.lastBackupMetadata || (parsed.lastBackupDate ? {
+            date: parsed.lastBackupDate,
+            filename: parsed.lastBackupFilename || 'legacy_backup.enc',
+            size: parsed.lastBackupSize || '',
             syncStatus: parsed.syncStatus || 'UP_TO_DATE',
             accountCount: accounts.length,
             transactionCount: transactions.length,
             storageProvider: 'LOCAL',
-          }
+          } : undefined)
         };
       } catch (e) {}
     }
@@ -56,11 +57,17 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
   useEffect(() => {
     void getStoredSetting('backupConfig').then(saved => {
-      if (saved && typeof saved === 'object') setConfig(saved as BackupSettings);
-      else {
+      if (saved && typeof saved === 'object') {
+        const stored = saved as BackupSettings;
+        setConfig({
+          ...stored,
+          storageProvider: stored.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL',
+          isWifiOnly: false,
+        });
+      } else {
         const legacy = localStorage.getItem('coinbuddy_backup_config');
         if (legacy) {
-          try { setConfig(JSON.parse(legacy) as BackupSettings); localStorage.removeItem('coinbuddy_backup_config'); } catch { /* ignore malformed legacy settings */ }
+          try { const parsed = JSON.parse(legacy) as BackupSettings; setConfig({ ...parsed, storageProvider: parsed.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL', isWifiOnly: false }); localStorage.removeItem('coinbuddy_backup_config'); } catch { /* ignore malformed legacy settings */ }
         }
       }
       setSettingsLoaded(true);
@@ -131,6 +138,15 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
   const localFileRef = useRef<HTMLInputElement>(null);
   const autoBackupInFlight = useRef(false);
+
+  useEffect(() => {
+    if (initialAction !== 'restore') return;
+    setRestoreStep(1);
+    setRestorePassword('');
+    setRestorePwdError(null);
+    setRestoreError(null);
+    setIsRestoreModalOpen(true);
+  }, [initialAction]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('coinbuddy_drive_oauth_result');
@@ -213,7 +229,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
       const attemptedAt = new Date(now).toISOString();
       setConfig(prev => ({ ...prev, lastAutoBackupAttemptAt: attemptedAt }));
       const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-      if (config.isWifiOnly && !isOnline) {
+      if (!isOnline) {
         setConfig(prev => ({
           ...prev,
           lastBackupMetadata: {
@@ -242,7 +258,7 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
 
     scheduleNext(Math.max(0, getNextAutoBackupAt(config) - Date.now()));
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [config.isAutoBackupEnabled, config.backupFrequency, config.isWifiOnly, config.storageProvider, config.hasPassword, config.backupPassword, config.lastAutoBackupAttemptAt, config.lastBackupMetadata?.completedAt, config.lastBackupMetadata?.date]);
+  }, [config.isAutoBackupEnabled, config.backupFrequency, config.storageProvider, config.hasPassword, config.backupPassword, config.lastAutoBackupAttemptAt, config.lastBackupMetadata?.completedAt, config.lastBackupMetadata?.date]);
 
   // Reconnect Storage Provider Action Handler
   const handleReconnectStorageProvider = async () => {
@@ -682,6 +698,10 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
               </div>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-label="Enable automatic backup"
+              aria-checked={config.isAutoBackupEnabled}
               onClick={() => setConfig(prev => ({ ...prev, isAutoBackupEnabled: !prev.isAutoBackupEnabled }))}
               className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 config.isAutoBackupEnabled ? 'bg-primary' : 'bg-surface-container-highest'
@@ -735,33 +755,9 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             >
               <option value="LOCAL">Local Device Storage</option>
               <option value="GOOGLE_DRIVE">Google Drive</option>
-              <option value="CUSTOM">Custom Directory</option>
             </select>
           </div>
 
-          {/* Toggle: Wi-Fi Only */}
-          <div className="flex items-center justify-between p-4 sm:p-5 hover:bg-surface-container-high/50 transition-colors">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-2xl bg-surface-container-highest flex items-center justify-center text-primary shrink-0">
-                <Wifi className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-on-surface text-sm">Wi-Fi Only</p>
-                <p className="text-xs text-on-surface-variant">Restrict cloud sync to unmetered Wi-Fi connections</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setConfig(prev => ({ ...prev, isWifiOnly: !prev.isWifiOnly }))}
-              disabled={!config.isAutoBackupEnabled}
-              className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
-                config.isWifiOnly ? 'bg-primary' : 'bg-surface-container-highest'
-              }`}
-            >
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                config.isWifiOnly ? 'translate-x-6' : 'translate-x-1'
-              }`} />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -775,9 +771,9 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-on-surface text-sm">AES-256-GCM Encryption Active</p>
-                <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  Protected
+                <p className="font-semibold text-on-surface text-sm">{config.hasPassword ? 'AES-256-GCM Encryption Configured' : 'Encrypted Backups'}</p>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${config.hasPassword ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                  {config.hasPassword ? 'Protected' : 'Password required'}
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant mt-0.5">
@@ -796,24 +792,6 @@ export function BackupSecurity({ onBack }: BackupSecurityProps) {
         </div>
       </div>
 
-      {/* 4. Restore Section Button */}
-      <div className="pt-4 border-t border-outline-variant/20 flex flex-col items-center gap-3">
-        <button
-          onClick={() => {
-            setRestoreStep(1);
-            setRestorePassword('');
-            setRestorePwdError(null);
-            setIsRestoreModalOpen(true);
-          }}
-          className="w-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all shadow-xs group"
-        >
-          <RotateCcw className="w-5 h-5 text-primary group-hover:rotate-[-45deg] transition-transform duration-200" />
-          <span>Restore Data Wizard</span>
-        </button>
-        <p className="text-xs text-on-surface-variant text-center">
-          Import and recover ledger state from Google Drive or local encrypted <code className="bg-surface-container-high px-1.5 py-0.5 rounded font-mono text-[11px]">.enc</code> files
-        </p>
-      </div>
 
       {/* ========================================================================= */}
       {/* PASSWORD MODAL */}

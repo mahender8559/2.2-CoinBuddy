@@ -57,7 +57,7 @@ export const DEFAULT_BACKUP_SETTINGS: BackupSettings = {
   isAutoBackupEnabled: true,
   backupFrequency: 'DAILY',
   storageProvider: 'LOCAL',
-  isWifiOnly: true,
+  isWifiOnly: false,
   hasPassword: false,
 };
 
@@ -593,9 +593,10 @@ export class BackupManager {
    * and dispatches a local push notification: 'Backup Failed: Tap to resolve.'
    */
   static async executeSilentBackup(settings: BackupSettings, ledgerData?: Record<string, unknown>): Promise<BackupMetadata | null> {
-    // Check network condition if Wi-Fi only is requested
+    // Browser/PWA code can reliably detect offline state, not whether the
+    // connection is specifically Wi-Fi. Defer any cloud/local sync while offline.
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    if (!isOnline && settings.isWifiOnly) {
+    if (!isOnline) {
       return {
         ...(settings.lastBackupMetadata || DEFAULT_BACKUP_SETTINGS.lastBackupMetadata!),
         syncStatus: 'PENDING_NETWORK',
