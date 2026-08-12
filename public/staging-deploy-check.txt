@@ -1,0 +1,4 @@
+CoinBuddy staging deployment check
+Version: 3.2
+Branch: staging
+Marker: staging-check-2026-08-12
