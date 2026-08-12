@@ -61,6 +61,29 @@ export interface AffordabilitySettings {
   safetyLevel: AffordabilitySafetyLevel;
 }
 
+export type SavingsGoalType = 'EMERGENCY_FUND' | 'PURCHASE' | 'TRAVEL' | 'EDUCATION' | 'HOME' | 'OTHER';
+export type SavingsGoalPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** A real planning goal, separate from transaction/category semantics. */
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  type: SavingsGoalType;
+  targetAmount: number;
+  targetDate?: string;
+  /** Explicit amount the user intends to contribute in a normal financial cycle. */
+  monthlyContribution: number;
+  /** Optional asset account whose current balance represents goal progress. */
+  linkedAccountId?: string;
+  /** Used only when no account is linked. */
+  manualSavedAmount: number;
+  /** When linked to liquid cash, protect that account balance in affordability. */
+  protectLinkedBalance: boolean;
+  priority: SavingsGoalPriority;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export type Category = {
   id: string;
   name: string;
