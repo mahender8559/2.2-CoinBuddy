@@ -14,7 +14,6 @@ import {
   BackupSettings, 
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS,
-  getBackupIntervalMs,
   getNextAutoBackupAt,
 } from '../utils/backupManager';
 
@@ -24,7 +23,7 @@ interface BackupSecurityProps {
 }
 
 export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
-  const { accounts, transactions, categories, creditCards, currency, exportLedgerData, importLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
+  const { accounts, transactions, categories, creditCards, currency, exportLedgerData, importLedgerData, verifyDataIntegrity, getStoredSetting, setStoredSetting } = useAppContext();
 
   // 1. State Management (Settings Store)
   const [config, setConfig] = useState<BackupSettings>(() => {
@@ -74,17 +73,10 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
     });
   }, [getStoredSetting]);
 
-  useEffect(() => {
-    BackupStorageAdapter.configureHistoryStore({
-      get: () => getStoredSetting('backupHistory'),
-      set: records => setStoredSetting('backupHistory', records),
-    });
-    return () => BackupStorageAdapter.configureHistoryStore(null);
-  }, [getStoredSetting, setStoredSetting]);
-
   // SQLite is canonical; localStorage is read once above only for migration.
   useEffect(() => {
-    if (settingsLoaded) void setStoredSetting('backupConfig', config);
+    if (!settingsLoaded) return;
+    void setStoredSetting('backupConfig', config).then(() => window.dispatchEvent(new Event('coinbuddy_backup_config_changed')));
   }, [config, settingsLoaded, setStoredSetting]);
 
   // UI Feedback States
@@ -137,7 +129,6 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
   const [restoreSuccessCelebration, setRestoreSuccessCelebration] = useState(false);
 
   const localFileRef = useRef<HTMLInputElement>(null);
-  const autoBackupInFlight = useRef(false);
 
   useEffect(() => {
     if (initialAction !== 'restore') return;
@@ -187,78 +178,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
     return () => { mounted = false; };
   }, [restoreSource, isRestoreModalOpen]);
 
-  // 3. Background Sync Engine. Schedule one run per selected period rather
-  // than attempting an upload on every timer tick.
-  useEffect(() => {
-    if (!config.isAutoBackupEnabled) {
-      if (config.lastBackupMetadata?.syncStatus !== 'NOT_CONFIGURED') {
-        setConfig(prev => ({
-          ...prev,
-          lastBackupMetadata: {
-            ...prev.lastBackupMetadata!,
-            syncStatus: 'NOT_CONFIGURED'
-          }
-        }));
-      }
-      return;
-    }
-
-    // A password is required for encryption. Wait for the user to configure
-    // one instead of consuming an automatic-backup period with a no-op.
-    if (!config.hasPassword || !config.backupPassword) return;
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let cancelled = false;
-
-    const scheduleNext = (delay: number) => {
-      timer = setTimeout(() => { void checkAndTriggerAutoBackup(); }, Math.max(0, delay));
-    };
-
-    const checkAndTriggerAutoBackup = async () => {
-      if (cancelled || autoBackupInFlight.current) return;
-      const now = Date.now();
-      const nextAllowedAt = getNextAutoBackupAt(config, now);
-      if (now < nextAllowedAt) {
-        scheduleNext(nextAllowedAt - now);
-        return;
-      }
-
-      // Record the attempt before async work begins. This debounce survives
-      // re-renders/remounts and prevents a failed request from looping.
-      autoBackupInFlight.current = true;
-      const attemptedAt = new Date(now).toISOString();
-      setConfig(prev => ({ ...prev, lastAutoBackupAttemptAt: attemptedAt }));
-      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-      if (!isOnline) {
-        setConfig(prev => ({
-          ...prev,
-          lastBackupMetadata: {
-            ...prev.lastBackupMetadata!,
-            syncStatus: 'PENDING_NETWORK'
-          }
-        }));
-        autoBackupInFlight.current = false;
-        if (!cancelled) scheduleNext(getBackupIntervalMs(config.backupFrequency));
-        return;
-      }
-
-      try {
-        const newMeta = await BackupManager.executeSilentBackup(config, exportLedgerData());
-        if (newMeta) {
-          setConfig(prev => ({
-            ...prev,
-            lastBackupMetadata: newMeta
-          }));
-        }
-      } finally {
-        autoBackupInFlight.current = false;
-        if (!cancelled) scheduleNext(getBackupIntervalMs(config.backupFrequency));
-      }
-    };
-
-    scheduleNext(Math.max(0, getNextAutoBackupAt(config) - Date.now()));
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [config.isAutoBackupEnabled, config.backupFrequency, config.storageProvider, config.hasPassword, config.backupPassword, config.lastAutoBackupAttemptAt, config.lastBackupMetadata?.completedAt, config.lastBackupMetadata?.date]);
+  // Automatic scheduling is owned by BackupAutomationService at app level.
 
   // Reconnect Storage Provider Action Handler
   const handleReconnectStorageProvider = async () => {
@@ -497,6 +417,11 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
         // 2. Hydrate database
         // importLedgerData persists and refreshes the SQLite projection before it resolves.
         await importLedgerData(upgradedData);
+        const restoredIntegrity = await verifyDataIntegrity();
+        if (!restoredIntegrity.isHealthy) {
+          const critical = restoredIntegrity.issues.filter(issue => issue.severity === 'error').length;
+          setRestoreError(`Restore completed, but the integrity audit found ${critical} critical and ${restoredIntegrity.issues.length - critical} advisory issue(s). Review Settings → Verify Data Integrity.`);
+        }
 
         // 4. Show success celebration
         setIsRestoring(false);
@@ -614,6 +539,12 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                   </>
                 )}
               </p>
+              <div className="mt-3 grid gap-1.5 text-xs text-on-surface-variant sm:grid-cols-2">
+                <p><strong className="text-on-surface">Destination:</strong> {config.storageProvider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Local encrypted storage'}</p>
+                <p><strong className="text-on-surface">Next scheduled:</strong> {config.isAutoBackupEnabled && config.hasPassword ? new Date(getNextAutoBackupAt(config)).toLocaleString() : 'Not scheduled'}</p>
+                <p><strong className="text-on-surface">Verified:</strong> {meta?.verifiedAt ? new Date(meta.verifiedAt).toLocaleString() : 'No verified backup yet'}</p>
+                <p><strong className="text-on-surface">Automation:</strong> {config.isAutoBackupEnabled ? 'App-wide scheduler active' : 'Off'}</p>
+              </div>
             </div>
           </div>
 

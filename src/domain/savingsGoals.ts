@@ -1,4 +1,4 @@
-import type { Account, SavingsGoal, SavingsGoalPriority, SavingsGoalType } from '../types';
+import type { Account, SavingsGoal, SavingsGoalPriority, SavingsGoalType, Transaction } from '../types';
 import { isLiquidCashAccount } from './affordability';
 
 export const SAVINGS_GOALS_KEY = 'savings_goals_v1';
@@ -39,29 +39,35 @@ export function normalizeSavingsGoals(value: unknown): SavingsGoal[] {
     .filter(goal => goal.targetAmount > 0);
 }
 
-export function getGoalCurrentAmount(goal: SavingsGoal, accounts: Account[]): number {
+export function getGoalLedgerContributions(goalId: string, transactions: Transaction[] = []): number {
+  return transactions
+    .filter(transaction => transaction.goalId === goalId && transaction.is_verified !== 0 && transaction.type !== 'income' && !transaction.isOpeningBalance)
+    .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount) || 0), 0);
+}
+
+export function getGoalCurrentAmount(goal: SavingsGoal, accounts: Account[], transactions: Transaction[] = []): number {
   if (goal.linkedAccountId) {
     const account = accounts.find(item => item.id === goal.linkedAccountId && item.is_archived !== 1);
     if (account) return nonNegative(account.balance);
   }
-  return nonNegative(goal.manualSavedAmount);
+  return nonNegative(goal.manualSavedAmount) + getGoalLedgerContributions(goal.id, transactions);
 }
 
-export function getGoalProgressPercent(goal: SavingsGoal, accounts: Account[]): number {
+export function getGoalProgressPercent(goal: SavingsGoal, accounts: Account[], transactions: Transaction[] = []): number {
   if (goal.targetAmount <= 0) return 0;
-  return Math.min(100, (getGoalCurrentAmount(goal, accounts) / goal.targetAmount) * 100);
+  return Math.min(100, (getGoalCurrentAmount(goal, accounts, transactions) / goal.targetAmount) * 100);
 }
 
-export function getRequiredMonthlyContribution(goal: SavingsGoal, accounts: Account[], asOfDate = new Date()): number {
+export function getRequiredMonthlyContribution(goal: SavingsGoal, accounts: Account[], transactions: Transaction[] = [], asOfDate = new Date()): number {
   if (!goal.targetDate || goal.targetAmount <= 0) return 0;
   const target = new Date(`${goal.targetDate}T12:00:00`);
-  if (Number.isNaN(target.getTime()) || target <= asOfDate) return Math.max(0, goal.targetAmount - getGoalCurrentAmount(goal, accounts));
+  if (Number.isNaN(target.getTime()) || target <= asOfDate) return Math.max(0, goal.targetAmount - getGoalCurrentAmount(goal, accounts, transactions));
   const months = Math.max(1,
     (target.getFullYear() - asOfDate.getFullYear()) * 12 +
     (target.getMonth() - asOfDate.getMonth()) +
     (target.getDate() >= asOfDate.getDate() ? 1 : 0),
   );
-  return Math.max(0, goal.targetAmount - getGoalCurrentAmount(goal, accounts)) / months;
+  return Math.max(0, goal.targetAmount - getGoalCurrentAmount(goal, accounts, transactions)) / months;
 }
 
 export function getActiveGoalMonthlyContribution(goals: SavingsGoal[]): number {

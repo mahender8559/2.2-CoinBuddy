@@ -6,11 +6,12 @@ import { BackupSecurity } from './BackupSecurity';
 import { RecurringPayments } from './RecurringPayments';
 import { exportToExcel } from '../utils/exportExcel';
 import type { ComponentType, SVGProps } from 'react';
+import type { DataIntegrityAuditResult } from '../db/sqliteSchema';
 
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, verifyDataIntegrity, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, verifyDataIntegrity, repairDataIntegrityIssues, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
@@ -27,6 +28,8 @@ export function Settings() {
   });
 
   const [backupInitialAction, setBackupInitialAction] = useState<'restore' | undefined>(undefined);
+  const [integrityReport, setIntegrityReport] = useState<DataIntegrityAuditResult | null>(null);
+  const [repairingIntegrity, setRepairingIntegrity] = useState(false);
   const [backupInfo, setBackupInfo] = useState<{ lastBackupDate: string | null; syncStatus: string }>({
     lastBackupDate: null,
     syncStatus: 'NOT_CONFIGURED',
@@ -98,6 +101,7 @@ export function Settings() {
   const handleIntegrityCheck = async () => {
     try {
       const report = await verifyDataIntegrity();
+      setIntegrityReport(report);
       if (report.isHealthy) {
         showAlert('Integrity Verified', 'All checks passed: SQLite structure, foreign keys, ledger balances, net worth, recurring schedules, Investment SIP links, credit-card links, category classifications, Goals, and stored settings.');
         return;
@@ -113,6 +117,19 @@ export function Settings() {
     } catch (error) {
       showAlert('Integrity Check Failed', getErrorMessage(error, 'CoinBuddy could not complete the integrity audit.'));
     }
+  };
+
+  const handleRepairIntegrity = async () => {
+    if (!integrityReport || repairingIntegrity) return;
+    setRepairingIntegrity(true);
+    try {
+      const repaired = await repairDataIntegrityIssues(integrityReport.issues);
+      setIntegrityReport(repaired);
+      if (repaired.isHealthy) showAlert('Safe Repairs Complete', 'Repairable metadata issues were corrected and the full integrity audit now passes.');
+      else showAlert('Safe Repairs Applied', `${repaired.issues.length} issue(s) remain. CoinBuddy never auto-repairs ledger balance, SQLite structure, or ambiguous SIP funding because those require your decision.`);
+    } catch (error) {
+      showAlert('Repair Failed', getErrorMessage(error, 'CoinBuddy could not complete the safe repairs.'));
+    } finally { setRepairingIntegrity(false); }
   };
 
   const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined'
@@ -390,6 +407,10 @@ export function Settings() {
             desc="Audit database structure, balances, schedules, SIP links, cards, categories, Goals, and settings."
             onClick={() => { void handleIntegrityCheck(); }}
           />
+          {integrityReport && !integrityReport.isHealthy && <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-bold text-on-surface">Integrity actions</p><p className="mt-1 text-xs leading-relaxed text-on-surface-variant">Safe repair can normalize category metadata, pause broken recurring schedules, clear invalid card due metadata, unlink invalid Goal account references, and remove orphan Goal links. Ledger balances and ambiguous SIP funding are never guessed.</p></div><button type="button" disabled={repairingIntegrity} onClick={() => { void handleRepairIntegrity(); }} className="min-h-10 shrink-0 rounded-xl bg-primary px-4 text-xs font-bold text-on-primary disabled:opacity-50">{repairingIntegrity ? 'Repairing…' : 'Repair safe issues'}</button></div>
+            <div className="mt-3 space-y-1.5">{integrityReport.issues.slice(0, 5).map(issue => <p key={`${issue.code}:${issue.entityId ?? issue.message}`} className="text-xs text-on-surface-variant">• {issue.message}</p>)}</div>
+          </div>}
           <button
             type="button"
             className="w-full text-left bg-surface-container rounded-2xl p-5 border border-error/20 flex flex-col gap-3 hover:bg-error/10 transition-colors group"
@@ -471,13 +492,13 @@ export function Settings() {
           <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-background" />
           </div>
-          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.2</span>
+          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.3</span>
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
         </div>
 
         <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface-container/60 border border-outline-variant/20 text-xs font-medium text-on-surface-variant shadow-xs">
           <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.2</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
+          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.3</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
         </div>
 
         <p className="text-[10px] text-on-surface-variant text-center leading-relaxed opacity-60">

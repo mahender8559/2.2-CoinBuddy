@@ -17,6 +17,7 @@ import { buildSankeySplitLabel } from '../utils/sankeyLabels';
 import { recomputeAllAccountBalances } from '../utils/balanceManager';
 import { getCycleRange, shiftCycle } from '../utils/cycles';
 import { AffordabilityPlanner } from './AffordabilityPlanner';
+import { UpcomingMoney } from './UpcomingMoney';
 
 export function Insights() {
   const { 
@@ -350,6 +351,8 @@ const monthlyTrends = useMemo(() => {
           <h2 className="text-2xl font-bold text-on-surface">Analytics & Category Trends</h2>
         </div>
       </div>
+
+      <UpcomingMoney />
 
       <AffordabilityPlanner />
 

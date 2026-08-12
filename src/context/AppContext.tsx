@@ -44,7 +44,7 @@ import {
   syncInvestmentSipRecurringRule,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
-import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance, type DataIntegrityAuditResult } from '../db/sqliteSchema';
+import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance, type DataIntegrityAuditResult, type DataIntegrityIssue } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
@@ -171,12 +171,13 @@ interface AppContextType {
   removeWidget: (id: string) => void;
   lastUpdated: string;
   exportLedgerData: () => Record<string, unknown>;
-  importLedgerData: (data: LedgerImportData) => void;
+  importLedgerData: (data: LedgerImportData) => Promise<void>;
   clearAllData: () => Promise<void>;
   resetToDemoData: () => void;
   integrityWarning: string | null;
   dismissIntegrityWarning: () => void;
   verifyDataIntegrity: () => Promise<DataIntegrityAuditResult>;
+  repairDataIntegrityIssues: (issues: DataIntegrityIssue[]) => Promise<DataIntegrityAuditResult>;
   getStoredSetting: (key: string) => Promise<unknown>;
   setStoredSetting: (key: string, value: unknown) => Promise<void>;
   toast: { message: string; actionLabel?: string; onAction?: () => void } | null;
@@ -475,6 +476,40 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       ? `Data integrity warning: ${criticalCount} critical issue${criticalCount === 1 ? '' : 's'} detected. Open Settings → Verify Data Integrity for details.`
       : null);
     return result;
+  };
+
+  const repairDataIntegrityIssues = async (issues: DataIntegrityIssue[]): Promise<DataIntegrityAuditResult> => {
+    if (!dbDriver) throw new Error('Database is not ready yet.');
+    const repairable = new Set(['CATEGORY_AFFORDABILITY', 'RECURRING_ARCHIVED_ACCOUNT', 'RECURRING_SOURCE', 'RECURRING_DESTINATION', 'RECURRING_SELF_TRANSFER', 'RECURRING_DATE', 'CREDIT_CARD_DUE', 'GOAL_ACCOUNT', 'GOAL_PROTECTED_ACCOUNT', 'GOAL_TRANSACTION_LINK', 'GOAL_RECURRING_LINK']);
+    const selected = issues.filter(issue => repairable.has(issue.code));
+    if (!selected.length) return verifyDataIntegrity();
+
+    await dbDriver.execute('BEGIN TRANSACTION');
+    try {
+      for (const issue of selected) {
+        if (!issue.entityId) continue;
+        if (issue.code === 'CATEGORY_AFFORDABILITY') await dbDriver.execute(`UPDATE categories SET affordability_class = 'NORMAL' WHERE id = ?`, [issue.entityId]);
+        else if (issue.code.startsWith('RECURRING_') && issue.code !== 'GOAL_RECURRING_LINK') await dbDriver.execute(`UPDATE recurring_rules SET is_active = 0 WHERE id = ?`, [issue.entityId]);
+        else if (issue.code === 'CREDIT_CARD_DUE') await dbDriver.execute(`UPDATE credit_cards SET due_amount = 0 WHERE id = ? OR account_id = ?`, [issue.entityId, issue.entityId]);
+        else if (issue.code === 'GOAL_TRANSACTION_LINK') await dbDriver.execute(`UPDATE transactions SET goal_id = NULL WHERE id = ?`, [issue.entityId]);
+        else if (issue.code === 'GOAL_RECURRING_LINK') await dbDriver.execute(`UPDATE recurring_rules SET goal_id = NULL WHERE id = ?`, [issue.entityId]);
+      }
+      await dbDriver.execute('COMMIT');
+    } catch (error) {
+      await dbDriver.execute('ROLLBACK');
+      throw error;
+    }
+
+    const goalIssueIds = new Set(selected.filter(issue => issue.code === 'GOAL_ACCOUNT' || issue.code === 'GOAL_PROTECTED_ACCOUNT').map(issue => issue.entityId).filter(Boolean));
+    if (goalIssueIds.size) {
+      const nextGoals = savingsGoalsRef.current.map(goal => goalIssueIds.has(goal.id) ? { ...goal, linkedAccountId: undefined, protectLinkedBalance: false } : goal);
+      await setStoredSetting(SAVINGS_GOALS_KEY, nextGoals);
+      savingsGoalsRef.current = normalizeSavingsGoals(nextGoals);
+      setSavingsGoals(savingsGoalsRef.current);
+    }
+    await persistDatabase(dbDriver);
+    await refreshStateFromDatabase(dbDriver);
+    return verifyDataIntegrity();
   };
 
   const persistAppSetting = async (key: string, value: unknown) => {
@@ -1580,7 +1615,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,
-      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, getStoredSetting, setStoredSetting, toast, showToast
+      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, repairDataIntegrityIssues, getStoredSetting, setStoredSetting, toast, showToast
     }}>
       {children}
     </AppContext.Provider>
