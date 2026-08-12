@@ -8,6 +8,7 @@ import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
 import { advanceRecurringDate, toLocalDateKey } from '../domain/recurring';
 import { normalizeAffordabilityClass } from '../domain/categoryAffordability';
+import { AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -792,6 +793,7 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
         monthCycleDay: Number(userConfig.month_cycle_day ?? 25),
       });
     }
+    await upsertAppSetting(driver, AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings(data.affordabilitySettings));
     await driver.execute('COMMIT');
   } catch (error) {
     await driver.execute('ROLLBACK');

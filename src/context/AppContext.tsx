@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -50,6 +50,7 @@ import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
 import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
 import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
+import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -68,6 +69,7 @@ type LedgerImportData = {
   widgets?: Widget[];
   loanRevisions?: LoanRevision[];
   recurringRules?: RecurringRule[];
+  affordabilitySettings?: AffordabilitySettings;
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -110,6 +112,8 @@ interface AppContextType {
   autoRecur: boolean;
   setAutoRecur: (val: boolean) => void;
   recurringRules: RecurringRule[];
+  affordabilitySettings: AffordabilitySettings;
+  setAffordabilitySettings: (settings: AffordabilitySettings) => void;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -406,6 +410,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
+  const [affordabilitySettings, setAffordabilitySettingsState] = useState<AffordabilitySettings>(() => ({ ...DEFAULT_AFFORDABILITY_SETTINGS }));
+  const setAffordabilitySettings = useCallback((settings: AffordabilitySettings) => {
+    setAffordabilitySettingsState(normalizeAffordabilitySettings(settings));
+  }, []);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
@@ -508,6 +516,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setCurrency(userConfig.currency);
         setMonthCycleDay(userConfig.monthCycleDay);
         if (settings.profile && typeof settings.profile === 'object') setProfile(settings.profile as typeof profile);
+        setAffordabilitySettingsState(normalizeAffordabilitySettings(settings[AFFORDABILITY_SETTINGS_KEY]));
         setDbReady(true);
       })
       .catch((err) => {
@@ -531,10 +540,11 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         persistAppSetting('biometric', biometric),
         persistAppSetting('passcode', passcode),
         persistAppSetting('profile', profile),
+        persistAppSetting(AFFORDABILITY_SETTINGS_KEY, affordabilitySettings),
       ]);
       void persistDbAction(() => upsertUserConfig(dbDriver!, { currency, monthCycleDay }));
     }
-  }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
+  }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, affordabilitySettings, dbReady, dbDriver]);
 
   useEffect(() => {
     localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
@@ -1412,6 +1422,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     setEvents([]);
     setLoanRevisions([]);
     setRecurringRules([]);
+    setAffordabilitySettingsState({ ...DEFAULT_AFFORDABILITY_SETTINGS });
     setIntegrityWarning(null);
     clearStacks();
     setLastUpdated(new Date().toISOString());
@@ -1436,6 +1447,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
       setRecurringRules(refreshed.recurringRules);
+      const restoredAppSettings = await loadAppSettings(dbDriver);
+      setAffordabilitySettingsState(normalizeAffordabilitySettings(restoredAppSettings[AFFORDABILITY_SETTINGS_KEY]));
       const integrity = await auditDatabaseIntegrity(dbDriver);
       if (integrity.mismatches.length > 0) {
         setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
@@ -1451,6 +1464,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
       if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
       if (data.recurringRules && Array.isArray(data.recurringRules)) setRecurringRules(data.recurringRules);
+      setAffordabilitySettingsState(normalizeAffordabilitySettings(data.affordabilitySettings));
     }
 
     if (data.currency) setCurrency(data.currency);
@@ -1472,6 +1486,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     widgets,
     loanRevisions,
     recurringRules,
+    affordabilitySettings,
     currency,
   });
 
@@ -1488,7 +1503,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
-      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, recurringRules, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
+      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, recurringRules, affordabilitySettings, setAffordabilitySettings, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,
