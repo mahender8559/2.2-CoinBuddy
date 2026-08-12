@@ -23,7 +23,10 @@ jobs:
           node-version: 20
           cache: npm
       - name: Apply v3.3 implementation
-        run: python3 scripts/apply_v33_planning_reliability.py
+        shell: bash
+        run: |
+          sed -i "s/marker = '      <Header onLogout={handleLogout} showLogout={authConfigured} \/>'/marker = '      <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} \/>'/" scripts/apply_v33_planning_reliability.py
+          python3 scripts/apply_v33_planning_reliability.py
       - name: Install dependencies
         run: npm ci
       - name: Install Chromium
