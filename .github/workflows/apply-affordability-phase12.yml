@@ -30,6 +30,26 @@ jobs:
       - name: Apply phase 1 and 2
         run: python3 scripts/apply_affordability_phase12.py
 
+      - name: Fix typed icon fixtures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+            'src/domain/affordability.ts': [("rule.icon ?? 'Wallet'", "rule.icon ?? 'ShoppingBag'")],
+            'src/domain/affordability.test.ts': [("icon: 'Wallet'", "icon: 'ShoppingBag'")],
+            'src/domain/categoryAffordability.test.ts': [("icon: 'Wrench'", "icon: 'Heart'")],
+          }
+          for filename, pairs in replacements.items():
+            path = Path(filename)
+            text = path.read_text(encoding='utf-8')
+            for old, new in pairs:
+              if old not in text:
+                raise RuntimeError(f'Missing expected fixture in {filename}: {old}')
+              text = text.replace(old, new)
+            path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Install dependencies
         run: npm ci
 
