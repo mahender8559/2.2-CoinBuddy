@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 scripts/apply_affordability_v31_followup.py
           python3 scripts/fix_normal_living_test_icons.py
+          python3 scripts/update_affordability_expected_tests.py
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: TypeScript
