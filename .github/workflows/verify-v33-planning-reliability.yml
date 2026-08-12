@@ -25,7 +25,15 @@ jobs:
       - name: Apply v3.3 implementation
         shell: bash
         run: |
-          sed -i "s/marker = '      <Header onLogout={handleLogout} showLogout={authConfigured} \/>'/marker = '      <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} \/>'/" scripts/apply_v33_planning_reliability.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_v33_planning_reliability.py')
+          s = p.read_text()
+          s = s.replace("marker = '      <Header onLogout={handleLogout} showLogout={authConfigured} />'", "marker = '      <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />'")
+          s = s.replace("needle = '''  const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined' '''", "needle = \"  const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined'\\n\"")
+          s = s.replace("  const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined' '''", "  const buildTimeFormatted = typeof __BUILD_TIME__ !== 'undefined'\n'''", 1)
+          p.write_text(s)
+          PY
           python3 scripts/apply_v33_planning_reliability.py
       - name: Install dependencies
         run: npm ci
