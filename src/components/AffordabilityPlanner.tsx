@@ -18,7 +18,7 @@ function statusCopy(status: AffordabilityPlannerResult['projection']['status']) 
 }
 
 export function AffordabilityPlanner() {
-  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, monthCycleDay, formatCurrency } = useAppContext();
+  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, monthCycleDay, formatCurrency } = useAppContext();
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
@@ -53,6 +53,7 @@ export function AffordabilityPlanner() {
       creditCards,
       purchaseAmount: amount,
       affordabilitySettings,
+      savingsGoals,
       monthCycleDay,
     }));
   };
@@ -142,6 +143,12 @@ export function AffordabilityPlanner() {
             </div>
           </div>
 
+          {result.goalSummary.activeGoalCount > 0 && (
+            <div className="rounded-2xl border border-primary/20 bg-primary/8 p-4 text-sm text-on-surface-variant">
+              <strong className="text-on-surface">Goals protection:</strong> {result.goalSummary.activeGoalCount} active goal{result.goalSummary.activeGoalCount === 1 ? '' : 's'} · {formatCurrency(result.goalSummary.monthlyContributionTarget)}/month planned contribution{result.goalSummary.protectedReserve > 0 ? ` · ${formatCurrency(result.goalSummary.protectedReserve)} linked emergency cash protected` : ''}.
+            </div>
+          )}
+
           <button type="button" onClick={() => setShowBreakdown(value => !value)} className="w-full min-h-11 rounded-xl border border-outline-variant/30 text-sm font-semibold text-on-surface flex items-center justify-center gap-2 hover:bg-surface-container-high">{showBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />} How did we calculate this?</button>
 
           {showBreakdown && (
@@ -153,12 +160,12 @@ export function AffordabilityPlanner() {
                 ['Credit-card outstanding still to cover', result.projection.creditCardOutstandingReserve, '-'],
                 ['Additional normal living expenses (history)', result.projection.normalLivingExpenseForecast, '-'],
                 ['Scheduled savings', result.projection.scheduledSavings, '-'],
-                ['Additional savings target to protect', additionalSavingsTarget, '-'],
+                ['Additional savings target to protect (preferences / goals)', additionalSavingsTarget, '-'],
                 ['Unexpected-spending buffer', result.projection.contingencyBuffer, '-'],
                 ['Protected cash reserve', result.projection.protectedCashReserve, '-'],
               ].map(([label, raw, sign]) => <div key={String(label)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="min-w-0 text-on-surface-variant leading-snug">{label}</span><span className="whitespace-nowrap font-numeric font-semibold tabular-nums text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
               <div className="px-4 py-3 border-t border-outline-variant/15 bg-surface-container-low text-xs leading-relaxed text-on-surface-variant">
-                <p><strong className="text-on-surface">Known scheduled expenses</strong> are concrete future obligations CoinBuddy can see, such as recurring entries and EMIs. <strong className="text-on-surface">Credit-card outstanding</strong> separately protects today's revolving card debt even when it is still unbilled or the current due amount is zero. <strong className="text-on-surface">Normal living expenses</strong> use the median NORMAL-category spend from completed cycles and only add the portion not already scheduled.</p>
+                <p><strong className="text-on-surface">Known scheduled expenses</strong> are concrete future obligations CoinBuddy can see, such as recurring entries and EMIs. <strong className="text-on-surface">Credit-card outstanding</strong> separately protects today's revolving card debt even when it is still unbilled or the current due amount is zero. <strong className="text-on-surface">Normal living expenses</strong> use the median NORMAL-category spend from completed cycles and only add the portion not already scheduled. Active <strong className="text-on-surface">Goals</strong> can raise the protected monthly savings target, and an emergency goal linked to liquid cash can raise the protected cash reserve.</p>
                 {result.projection.expectedExpenses === 0 && <p className="mt-2">No concrete expense is currently scheduled in this horizon. Spending already logged in your current cycle is already reflected in today&apos;s balances and is not counted a second time.</p>}
               </div>
               <div className="flex items-center justify-between gap-4 px-4 py-4 bg-primary/10"><strong className="text-on-surface">Safe purchase capacity</strong><strong className="font-numeric text-primary text-lg">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>

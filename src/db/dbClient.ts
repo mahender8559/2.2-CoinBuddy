@@ -9,6 +9,8 @@ import { validateLedgerSchema } from '../utils/ledgerSchema';
 import { advanceRecurringDate, toLocalDateKey } from '../domain/recurring';
 import { normalizeAffordabilityClass } from '../domain/categoryAffordability';
 import { AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
+import { SAVINGS_GOALS_KEY, normalizeSavingsGoals } from '../domain/savingsGoals';
+import { buildInvestmentSipRule, investmentSipRuleId, isInvestmentSipAccount } from '../domain/investmentSip';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -626,6 +628,47 @@ export async function deleteRecurringRuleRow(driver: SqlJsDatabaseDriver, id: st
   await driver.execute(`DELETE FROM recurring_rules WHERE id = ?;`, [id]);
 }
 
+/** Keep Investment-account SIP metadata and the recurring scheduler in sync. */
+export async function syncInvestmentSipRecurringRule(
+  driver: SqlJsDatabaseDriver,
+  accountId: string,
+  account: Account,
+  sourceAccountId?: string,
+): Promise<void> {
+  const ruleId = investmentSipRuleId(accountId);
+  const existing = await driver.query(`SELECT id FROM recurring_rules WHERE id = ?`, [ruleId]);
+
+  if (!isInvestmentSipAccount(account)) {
+    if (existing.length) await deleteRecurringRuleRow(driver, ruleId);
+    return;
+  }
+  if (!sourceAccountId) throw new Error('Choose the account that funds this SIP.');
+
+  const rule = buildInvestmentSipRule(accountId, account, sourceAccountId);
+  if (existing.length) {
+    await updateRecurringRuleRow(driver, rule);
+  } else {
+    await createRecurringRule(driver, {
+      title: rule.title,
+      subtitle: rule.subtitle ?? '',
+      amount: rule.amount,
+      date: `${rule.nextDueDate}T12:00:00`,
+      category: rule.category ?? '#investment',
+      icon: rule.icon ?? 'Target',
+      type: 'transfer',
+      fromAccountId: rule.fromAccountId,
+      toAccountId: rule.toAccountId,
+      transaction_type: 'TRANSFER',
+      isRecurring: true,
+      recurrenceFrequency: 'MONTHLY',
+      notes: rule.notes,
+    }, { id: rule.id, nextDueDate: rule.nextDueDate });
+  }
+
+  // If the first SIP is already due, create it as Needs confirmation now.
+  await generateDueRecurringTransactions(driver, false);
+}
+
 export async function skipRecurringRuleOccurrence(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
   const rows = await driver.query(`SELECT next_due_date, frequency, anchor_day FROM recurring_rules WHERE id = ?`, [id]);
   const row = rows[0];
@@ -797,6 +840,7 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
       });
     }
     await upsertAppSetting(driver, AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings(data.affordabilitySettings));
+    await upsertAppSetting(driver, SAVINGS_GOALS_KEY, normalizeSavingsGoals(data.savingsGoals));
     await driver.execute('COMMIT');
   } catch (error) {
     await driver.execute('ROLLBACK');

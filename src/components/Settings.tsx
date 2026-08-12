@@ -550,13 +550,13 @@ export function Settings() {
           <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-background" />
           </div>
-          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.1</span>
+          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.2</span>
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
         </div>
 
         <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface-container/60 border border-outline-variant/20 text-xs font-medium text-on-surface-variant shadow-xs">
           <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.1</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
+          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.2</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
         </div>
 
         <p className="text-[10px] text-on-surface-variant text-center leading-relaxed opacity-60">

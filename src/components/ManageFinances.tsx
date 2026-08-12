@@ -7,6 +7,7 @@ import { Cards } from './Cards';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { getCategorySpend } from '../utils/budget';
 import { CurrencyInput } from './CurrencyInput';
+import { GoalsPanel } from './GoalsPanel';
 
 
 export function ManageFinances() {
@@ -40,7 +41,7 @@ export function ManageFinances() {
     document.addEventListener('openAddCategoryModal', handleOpenModal);
     return () => document.removeEventListener('openAddCategoryModal', handleOpenModal);
   }, []);
-  const [activeTab, setActiveTab] = useState<'Categories' | 'Savings Goals'>('Categories');
+  const [activeTab, setActiveTab] = useState<'Categories' | 'Goals'>('Categories');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
@@ -59,13 +60,7 @@ export function ManageFinances() {
     .reduce((acc, c) => acc + (c.budget || 0), 0);
 
   const displayedItems = categories.filter(c => {
-    const isSavings = c.affordabilityClass === 'SAVINGS' || c.group === 'Savings';
-    if (activeTab === 'Categories') {
-      if (isSavings) return false;
-      if (filterType !== 'All' && (c.type || 'expense') !== filterType) return false;
-    } else {
-      if (!isSavings) return false;
-    }
+    if (filterType !== 'All' && (c.type || 'expense') !== filterType) return false;
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -75,12 +70,7 @@ export function ManageFinances() {
     return category ? getCategorySpend(category, transactions, isDateInCurrentCycle) : 0;
   };
 
-  const getSavingsTotal = (catId: string, catName: string) => {
-    const catTag = `#${catName.toLowerCase().replace(/\s+/g, '')}`;
-    return transactions
-      .filter(t => !t.isOpeningBalance && t.is_verified !== 0 && t.type === 'expense' && (t.category === catTag || t.category === catId))
-      .reduce((acc, t) => acc + Math.abs(t.amount), 0); // treating savings deposit as expense in the ledger
-  };
+
 
   const handleEdit = (c: Category) => {
     setEditingId(c.id);
@@ -96,10 +86,9 @@ export function ManageFinances() {
 
   const saveCategory = () => {
     if (!editName) return;
-    const categoryType = activeTab === 'Savings Goals' ? 'expense' : editType;
+    const categoryType = editType;
     const finalBudget = categoryType === 'income' ? 0 : editBudget;
-    
-    const affordabilityClass: AffordabilityClass = activeTab === 'Savings Goals' ? 'SAVINGS' : categoryType === 'income' ? 'NORMAL' : editAffordabilityClass;
+    const affordabilityClass: AffordabilityClass = categoryType === 'income' ? 'NORMAL' : editAffordabilityClass;
     if (editingId) {
       const existing = categories.find(category => category.id === editingId);
       updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, tags: existing?.tags, affordabilityClass });
@@ -138,26 +127,30 @@ export function ManageFinances() {
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
               <ShieldCheck className="w-8 h-8 text-primary" />
-              <h1 className="text-2xl font-bold text-primary-container-on">Manage Categories</h1>
+              <h1 className="text-2xl font-bold text-primary-container-on">Categories & Goals</h1>
             </div>
-            <button 
-              onClick={() => {
-                setEditingId(null);
-                setEditName('');
-                setEditIcon('ShoppingBag');
-                setEditType('expense');
-                setEditAffordabilityClass(activeTab === 'Savings Goals' ? 'SAVINGS' : 'NORMAL');
-                setEditBudget(0);
-                setEditIsRollover(false);
-                setEditRolloverAccountId(undefined);
-                setIsEditingModalOpen(true);
-              }}
-              className="p-2 text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
+            {activeTab === 'Categories' && (
+              <button
+                aria-label="Add category"
+                onClick={() => {
+                  setEditingId(null);
+                  setEditName('');
+                  setEditIcon('ShoppingBag');
+                  setEditType('expense');
+                  setEditAffordabilityClass('NORMAL');
+                  setEditBudget(0);
+                  setEditIsRollover(false);
+                  setEditRolloverAccountId(undefined);
+                  setIsEditingModalOpen(true);
+                }}
+                className="p-2 text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+              >
+                <Plus className="w-6 h-6" />
+              </button>
+            )}
           </div>
 
+          {activeTab === 'Categories' && (
           <div className="bg-surface-container rounded-3xl p-6 border border-outline-variant/30 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">TOTAL MONTHLY BUDGET</p>
@@ -169,6 +162,7 @@ export function ManageFinances() {
               </div>
             </div>
           </div>
+          )}
 
       <div className="flex bg-surface-container rounded-xl p-1">
         <button 
@@ -178,10 +172,10 @@ export function ManageFinances() {
           Categories
         </button>
         <button 
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'Savings Goals' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-          onClick={() => setActiveTab('Savings Goals')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'Goals' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+          onClick={() => setActiveTab('Goals')}
         >
-          Savings Goals
+          Goals
         </button>
       </div>
 
@@ -213,101 +207,45 @@ export function ManageFinances() {
         </div>
       )}
 
-      <div className="space-y-4">
-        {displayedItems.map(c => {
-          const Icon = icons[c.icon as keyof typeof icons] || ShoppingBag;
-          const isSavings = activeTab === 'Savings Goals';
-          const currentAmount = isSavings ? getSavingsTotal(c.id, c.name) : getSpent(c.id, c.name);
-          const target = c.budget || 0;
-          const percent = target > 0 ? Math.min(100, (currentAmount / target) * 100) : 0;
-          
-          return (
-            <div key={c.id} className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/30">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center shrink-0">
-                    <Icon className="w-6 h-6 text-on-surface-variant" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-on-surface text-lg">{c.name}</h3>
-                      {c.type === 'income' && (
-                        <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                          Income
-                        </span>
-                      )}
+      {activeTab === 'Categories' ? (
+        <div className="space-y-4">
+          {displayedItems.map(c => {
+            const Icon = icons[c.icon as keyof typeof icons] || ShoppingBag;
+            const currentAmount = getSpent(c.id, c.name);
+            const target = c.budget || 0;
+            const percent = target > 0 ? Math.min(100, (currentAmount / target) * 100) : 0;
+            return (
+              <div key={c.id} className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant/30">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center shrink-0"><Icon className="w-6 h-6 text-on-surface-variant" /></div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap"><h3 className="font-semibold text-on-surface text-lg">{c.name}</h3>{c.type === 'income' && <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Income</span>}</div>
+                      {c.tags && c.tags.length > 0 && <p className="text-xs text-on-surface-variant font-mono">{c.tags.join(' ')}</p>}
+                      {c.type !== 'income' && <span className="inline-flex mt-1 text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">{(c.affordabilityClass ?? (c.group === 'Savings' ? 'SAVINGS' : c.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL')).toLowerCase().replace('_', ' ')}</span>}
                     </div>
-                    {c.tags && c.tags.length > 0 && <p className="text-xs text-on-surface-variant font-mono">{c.tags.join(' ')}</p>}
-                    {c.type !== 'income' && <span className="inline-flex mt-1 text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">{(c.affordabilityClass ?? (c.group === 'Savings' ? 'SAVINGS' : c.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL')).toLowerCase().replace('_', ' ')}</span>}
                   </div>
+                  <div className="flex items-center gap-1 shrink-0"><button aria-label={`Edit ${c.name}`} onClick={() => handleEdit(c)} className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant hover:text-on-surface transition-colors"><Edit2 className="w-4 h-4" /></button><button aria-label={`Delete ${c.name}`} onClick={() => deleteCategory(c.id)} className="p-2 hover:bg-error/10 rounded-lg text-on-surface-variant hover:text-error transition-colors"><Trash2 className="w-4 h-4" /></button></div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => handleEdit(c)}
-                    className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant hover:text-on-surface transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => deleteCategory(c.id)}
-                    className="p-2 hover:bg-error/10 rounded-lg text-on-surface-variant hover:text-error transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {c.type === 'income' ? (
+                  <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10"><span className="text-xs font-semibold text-emerald-500/90">Income Category</span><span className="text-xs text-on-surface-variant/70">No budget limit</span></div>
+                ) : (
+                  <div><p className="text-xs font-semibold text-on-surface-variant mb-1">Budget</p><div className="flex items-end justify-between mb-2 gap-3"><div className="text-primary font-bold font-numeric text-lg">{formatCurrency(target)} <span className="text-xs text-on-surface-variant font-normal">/mo</span></div><div className="w-32 h-1.5 bg-surface-container-highest rounded-full overflow-hidden flex"><div className="bg-primary h-full rounded-full transition-all" style={{ width: `${percent}%` }} /></div></div></div>
+                )}
               </div>
-              
-              {c.type === 'income' ? (
-                <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
-                  <span className="text-xs font-semibold text-emerald-500/90 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Income Category
-                  </span>
-                  <span className="text-xs text-on-surface-variant/70">No budget limit</span>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs font-semibold text-on-surface-variant mb-1">{isSavings ? 'Goal Target' : 'Budget'}</p>
-                  <div className="flex items-end justify-between mb-2">
-                    <div className="text-primary font-bold font-numeric text-lg">
-                      {formatCurrency(target)} {isSavings ? '' : <span className="text-xs text-on-surface-variant font-normal">/mo</span>}
-                    </div>
-                    <div className="w-32 h-1.5 bg-surface-container-highest rounded-full overflow-hidden flex">
-                      <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${percent}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        
-        <button 
-          onClick={() => {
-            setEditingId(null);
-            setEditName('');
-            setEditIcon('ShoppingBag');
-            setEditType('expense');
-            setEditAffordabilityClass(activeTab === 'Savings Goals' ? 'SAVINGS' : 'NORMAL');
-            setEditBudget(0);
-            setEditIsRollover(false);
-            setEditRolloverAccountId(undefined);
-            setIsEditingModalOpen(true);
-          }}
-          className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"
-        >
-          <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-            <Plus className="w-5 h-5 group-hover:text-primary" />
-          </div>
-          <span className="text-xs tracking-wider uppercase font-bold text-on-surface-variant group-hover:text-primary transition-colors">ADD {activeTab === 'Savings Goals' ? 'GOAL' : 'CATEGORY'}</span>
-        </button>
-      </div>
+            );
+          })}
+          <button onClick={() => { setEditingId(null); setEditName(''); setEditIcon('ShoppingBag'); setEditType('expense'); setEditAffordabilityClass('NORMAL'); setEditBudget(0); setEditIsRollover(false); setEditRolloverAccountId(undefined); setIsEditingModalOpen(true); }} className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"><div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary/20 transition-colors"><Plus className="w-5 h-5 group-hover:text-primary" /></div><span className="text-xs tracking-wider uppercase font-bold text-on-surface-variant group-hover:text-primary transition-colors">ADD CATEGORY</span></button>
+        </div>
+      ) : (
+        <GoalsPanel searchQuery={searchQuery} />
+      )}
 
-      {isEditingModalOpen && (
+      {activeTab === 'Categories' && isEditingModalOpen && (
         <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface-container-low w-full max-w-md rounded-3xl p-6 border border-outline-variant/30 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-on-surface">{editingId ? 'Edit' : 'Add'} {activeTab === 'Savings Goals' ? 'Goal' : 'Category'}</h2>
+              <h2 className="text-xl font-bold text-on-surface">{editingId ? 'Edit' : 'Add'} Category</h2>
               <button 
                 onClick={() => {
                   setIsEditingModalOpen(false);
@@ -349,7 +287,7 @@ export function ManageFinances() {
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
                   className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary/50"
-                  placeholder={activeTab === 'Savings Goals' ? 'e.g. Vacation Fund' : (editType === 'income' ? 'e.g. Freelance Income' : 'e.g. Groceries')}
+                  placeholder={editType === 'income' ? 'e.g. Freelance Income' : 'e.g. Groceries'}
                 />
               </div>
 
@@ -386,9 +324,9 @@ export function ManageFinances() {
                 </div>
               </div>
 
-              {(activeTab === 'Savings Goals' || editType !== 'income') && (
+              {editType !== 'income' && (
                 <div>
-                  <label className="block text-sm font-semibold text-on-surface-variant mb-1">{activeTab === 'Savings Goals' ? 'Target Amount' : 'Monthly Budget'}</label>
+                  <label className="block text-sm font-semibold text-on-surface-variant mb-1">Monthly Budget</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">{getCurrencySymbol()}</span>
                     <CurrencyInput
@@ -400,7 +338,7 @@ export function ManageFinances() {
                   </div>
                 </div>
               )}
-              {activeTab !== 'Savings Goals' && editType === 'expense' && (
+              {editType === 'expense' && (
                 <>
                   <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
                     <span><span className="block text-sm font-semibold text-on-surface">Enable Rollover / Sinking Fund</span><span className="block text-xs text-on-surface-variant mt-0.5">Carry unused budget into the next cycle.</span></span>
@@ -433,7 +371,7 @@ export function ManageFinances() {
                 onClick={saveCategory}
                 className="w-full bg-primary text-on-primary font-bold py-4 rounded-xl mt-4 hover:scale-[1.02] active:scale-95 transition-all shadow-lg"
               >
-                Save {activeTab === 'Savings Goals' ? 'Goal' : 'Category'}
+                Save Category
               </button>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { isSafeMathError } from '../utils/safeMath';
 import { SafeValueBadge } from './SafeValueBadge';
 import { getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { ReconcileWizard } from './ReconcileWizard';
+import { findInvestmentSipRule } from '../domain/investmentSip';
 
 export function Cards() {
   const { 
@@ -20,7 +21,8 @@ export function Cards() {
     transactions,
     deleteAccount, 
     setEditingAccount, 
-    setEditingCreditCard 
+    setEditingCreditCard,
+    recurringRules
   } = useAppContext();
   
   const assets = accounts.filter(a => a.type === 'asset' && !a.is_archived);
@@ -108,6 +110,8 @@ export function Cards() {
         <div className="space-y-4">
           {assets.map((account, idx) => {
             const isInvestment = account.group === 'Investment';
+            const hasConfiguredSip = Boolean(isInvestment && account.investmentMethod === 'SIP' && findInvestmentSipRule(account.id, recurringRules));
+            const needsSipLink = Boolean(isInvestment && account.investmentMethod === 'SIP' && Number(account.monthlySIPAmount ?? 0) > 0 && account.nextSIPDate && !hasConfiguredSip);
             const profitLoss = isInvestment && account.investedAmount ? account.balance - account.investedAmount : null;
             const profitLossPercent = isInvestment && account.investedAmount ? (profitLoss! / account.investedAmount) * 100 : null;
 
@@ -124,6 +128,7 @@ export function Cards() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-on-surface text-[15px]">{account.name}</h3>
                     <p className="text-xs text-on-surface-variant">{account.group || 'Asset account'}</p>
+                    {needsSipLink && <p className="mt-1 text-[11px] font-semibold text-amber-500">SIP schedule needs a funding account — edit this investment to link it.</p>}
                   </div>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0">
