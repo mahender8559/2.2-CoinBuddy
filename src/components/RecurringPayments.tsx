@@ -104,46 +104,61 @@ export function RecurringPayments() {
               const eventName = events.find(event => event.id === rule.eventId)?.name;
               const isBusy = busyId === rule.id;
               const isManagedSip = rule.id.startsWith('investment-sip:');
+              const pendingCount = pendingByRule.get(rule.id) ?? 0;
+              const ruleWarnings = warningMap.get(rule.id) ?? [];
               return (
                 <div key={rule.id} className="p-4">
-                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1">
+                  {isManagedSip ? (
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-semibold text-on-surface">{rule.title}</p>
+                        <p className="font-semibold text-on-surface">{rule.title}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rule.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
                           {rule.isActive ? 'Active' : 'Paused'}
                         </span>
-                        {isManagedSip && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
-                            <LockKeyhole className="h-3 w-3" /> Investment SIP
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                          <LockKeyhole className="h-3 w-3" /> Investment SIP
+                        </span>
                       </div>
                       <p className="mt-1 text-xs text-on-surface-variant">
                         {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
                         {eventName ? ` · ${eventName}` : ''}
                       </p>
-                      {(pendingByRule.get(rule.id) ?? 0) > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingByRule.get(rule.id)} occurrence{(pendingByRule.get(rule.id) ?? 0) === 1 ? '' : 's'} waiting for confirmation.</p>}
-                      {(warningMap.get(rule.id)?.length ?? 0) > 0 && <div className="mt-2 space-y-1">{warningMap.get(rule.id)!.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
-                      {isManagedSip && <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>}
+                      {pendingCount > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingCount} occurrence{pendingCount === 1 ? '' : 's'} waiting for confirmation.</p>}
+                      {ruleWarnings.length > 0 && <div className="mt-2 space-y-1">{ruleWarnings.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
+                      <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>
                     </div>
-                    {!isManagedSip && (
-                      <div className="flex flex-wrap gap-2 sm:shrink-0">
-                        <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Edit ${rule.title}`}>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-semibold text-on-surface">{rule.title}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rule.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                            {rule.isActive ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
+                          {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
+                          {eventName ? ` · ${eventName}` : ''}
+                        </p>
+                        {pendingCount > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingCount} occurrence{pendingCount === 1 ? '' : 's'} waiting for confirmation.</p>}
+                        {ruleWarnings.length > 0 && <div className="mt-2 space-y-1">{ruleWarnings.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
+                      </div>
+                      <div className="grid shrink-0 grid-cols-4 gap-2">
+                        <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Edit ${rule.title}`}>
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
+                        <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
                           {rule.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                         </button>
-                        <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Skip next ${rule.title}`}>
+                        <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Skip next ${rule.title}`}>
                           <SkipForward className="h-4 w-4" />
                         </button>
-                        <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="rounded-lg border border-error/30 p-2 text-error hover:bg-error/10 disabled:opacity-50" aria-label={`Delete recurring schedule ${rule.title}`}>
+                        <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="flex h-10 w-10 items-center justify-center rounded-xl border border-error/30 text-error hover:bg-error/10 disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Delete recurring schedule ${rule.title}`}>
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
