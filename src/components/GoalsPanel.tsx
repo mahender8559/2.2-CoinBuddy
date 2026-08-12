@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Edit2, Plus, ShieldCheck, Target, Trash2, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import type { SavingsGoal, SavingsGoalPriority, SavingsGoalType } from '../types';
+import type { SavingsGoal, SavingsGoalType } from '../types';
 import { CurrencyInput } from './CurrencyInput';
 import { getGoalCurrentAmount, getGoalProgressPercent, getRequiredMonthlyContribution } from '../domain/savingsGoals';
 
@@ -133,10 +133,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
 
             <div className="mt-5 space-y-4">
               <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Goal name</span><input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} placeholder="e.g. Emergency Fund" className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-4 py-3 text-on-surface outline-none focus:border-primary/60" /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Goal type</span><select value={draft.type} onChange={event => setDraft(current => ({ ...current, type: event.target.value as SavingsGoalType }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none">{Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Priority</span><select value={draft.priority} onChange={event => setDraft(current => ({ ...current, priority: event.target.value as SavingsGoalPriority }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none"><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select></label>
-              </div>
+              <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Goal type</span><select value={draft.type} onChange={event => setDraft(current => ({ ...current, type: event.target.value as SavingsGoalType }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none">{Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Target amount</span><div className="relative mt-1.5"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">{getCurrencySymbol()}</span><CurrencyInput value={draft.targetAmount || ''} onValueChange={value => setDraft(current => ({ ...current, targetAmount: Number(value) || 0 }))} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container py-3 pl-8 pr-4 font-numeric text-on-surface outline-none focus:border-primary/60" /></div></label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Target date</span><input type="date" value={draft.targetDate ?? ''} onChange={event => setDraft(current => ({ ...current, targetDate: event.target.value || undefined }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none" /></label>

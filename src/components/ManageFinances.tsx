@@ -35,7 +35,6 @@ export function ManageFinances() {
       setEditAffordabilityClass('NORMAL');
       setEditBudget(0);
       setEditIsRollover(false);
-      setEditRolloverAccountId(undefined);
       setIsEditingModalOpen(true);
     };
     document.addEventListener('openAddCategoryModal', handleOpenModal);
@@ -52,7 +51,6 @@ export function ManageFinances() {
   const [editAffordabilityClass, setEditAffordabilityClass] = useState<AffordabilityClass>('NORMAL');
   const [editBudget, setEditBudget] = useState(0);
   const [editIsRollover, setEditIsRollover] = useState(false);
-  const [editRolloverAccountId, setEditRolloverAccountId] = useState<string | undefined>(undefined);
   const [filterType, setFilterType] = useState<'All' | 'expense' | 'income'>('All');
 
   const totalMonthlyBudget = categories
@@ -80,7 +78,6 @@ export function ManageFinances() {
     setEditAffordabilityClass(c.affordabilityClass ?? (c.group === 'Savings' ? 'SAVINGS' : c.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL'));
     setEditBudget(c.budget || 0);
     setEditIsRollover(Boolean(c.isRollover));
-    setEditRolloverAccountId(c.rolloverAccountId);
     setIsEditingModalOpen(true);
   };
 
@@ -91,12 +88,11 @@ export function ManageFinances() {
     const affordabilityClass: AffordabilityClass = categoryType === 'income' ? 'NORMAL' : editAffordabilityClass;
     if (editingId) {
       const existing = categories.find(category => category.id === editingId);
-      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, tags: existing?.tags, affordabilityClass });
+      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: undefined, tags: existing?.tags, affordabilityClass });
     } else {
-      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, affordabilityClass });
+      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: undefined, affordabilityClass });
     }
     setIsEditingModalOpen(false);
-    setEditRolloverAccountId(undefined);
   };
 
   return (
@@ -124,30 +120,9 @@ export function ManageFinances() {
         <Cards />
       ) : (
         <>
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="w-8 h-8 text-primary" />
-              <h1 className="text-2xl font-bold text-primary-container-on">Categories & Goals</h1>
-            </div>
-            {activeTab === 'Categories' && (
-              <button
-                aria-label="Add category"
-                onClick={() => {
-                  setEditingId(null);
-                  setEditName('');
-                  setEditIcon('ShoppingBag');
-                  setEditType('expense');
-                  setEditAffordabilityClass('NORMAL');
-                  setEditBudget(0);
-                  setEditIsRollover(false);
-                  setEditRolloverAccountId(undefined);
-                  setIsEditingModalOpen(true);
-                }}
-                className="p-2 text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
-              >
-                <Plus className="w-6 h-6" />
-              </button>
-            )}
+          <div className="mb-8 flex items-center gap-3">
+            <ShieldCheck className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl font-bold text-primary-container-on">Categories & Goals</h1>
           </div>
 
           {activeTab === 'Categories' && (
@@ -155,11 +130,6 @@ export function ManageFinances() {
             <div>
               <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">TOTAL MONTHLY BUDGET</p>
               <h2 className="text-4xl text-primary font-numeric font-bold">{formatCurrency(totalMonthlyBudget)}</h2>
-              <div className="mt-4 flex items-center gap-2">
-                <div className="text-xs text-on-surface-variant">
-                  <p>Updated just now</p>
-                </div>
-              </div>
             </div>
           </div>
           )}
@@ -235,7 +205,7 @@ export function ManageFinances() {
               </div>
             );
           })}
-          <button onClick={() => { setEditingId(null); setEditName(''); setEditIcon('ShoppingBag'); setEditType('expense'); setEditAffordabilityClass('NORMAL'); setEditBudget(0); setEditIsRollover(false); setEditRolloverAccountId(undefined); setIsEditingModalOpen(true); }} className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"><div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary/20 transition-colors"><Plus className="w-5 h-5 group-hover:text-primary" /></div><span className="text-xs tracking-wider uppercase font-bold text-on-surface-variant group-hover:text-primary transition-colors">ADD CATEGORY</span></button>
+          <button onClick={() => { setEditingId(null); setEditName(''); setEditIcon('ShoppingBag'); setEditType('expense'); setEditAffordabilityClass('NORMAL'); setEditBudget(0); setEditIsRollover(false); setIsEditingModalOpen(true); }} className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"><div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary/20 transition-colors"><Plus className="w-5 h-5 group-hover:text-primary" /></div><span className="text-xs tracking-wider uppercase font-bold text-on-surface-variant group-hover:text-primary transition-colors">ADD CATEGORY</span></button>
         </div>
       ) : (
         <GoalsPanel searchQuery={searchQuery} />
@@ -249,7 +219,6 @@ export function ManageFinances() {
               <button 
                 onClick={() => {
                   setIsEditingModalOpen(false);
-                  setEditRolloverAccountId(undefined);
                 }}
                 className="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors"
               >
@@ -339,32 +308,10 @@ export function ManageFinances() {
                 </div>
               )}
               {editType === 'expense' && (
-                <>
-                  <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
-                    <span><span className="block text-sm font-semibold text-on-surface">Enable Rollover / Sinking Fund</span><span className="block text-xs text-on-surface-variant mt-0.5">Carry unused budget into the next cycle.</span></span>
-                    <input type="checkbox" checked={editIsRollover} onChange={event => setEditIsRollover(event.target.checked)} className="h-5 w-5 accent-primary" />
-                  </label>
-                  
-                  {editIsRollover && (
-                    <div className="space-y-2">
-                      <label className="block text-sm font-semibold text-on-surface">Where should leftover funds go?</label>
-                      <select 
-                        value={editRolloverAccountId || ''} 
-                        onChange={(e) => setEditRolloverAccountId(e.target.value || undefined)}
-                        className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary/50"
-                      >
-                        <option value="">Select an account</option>
-                        {accounts
-                          .filter(acc => acc.type === 'asset' && acc.group && !['Cash', 'Physical Assets'].includes(acc.group))
-                          .map(acc => (
-                            <option key={acc.id} value={acc.id}>
-                              {acc.name} ({acc.group})
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  )}
-                </>
+                <label className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 cursor-pointer">
+                  <span><span className="block text-sm font-semibold text-on-surface">Carry unused budget forward</span><span className="block text-xs text-on-surface-variant mt-0.5">Add unused budget allowance to this category's next financial cycle. This does not move money between accounts.</span></span>
+                  <input type="checkbox" checked={editIsRollover} onChange={event => setEditIsRollover(event.target.checked)} className="h-5 w-5 accent-primary" />
+                </label>
               )}
               
               <button 

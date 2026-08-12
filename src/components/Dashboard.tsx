@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Sparkles, ShieldCheck, ArrowDownRight, ArrowUpRight, Plus, PiggyBank, Bell, PlusSquare, Utensils, Car, Briefcase, Zap, CreditCard, ShoppingBag, Banknote, Home, Trash2, Wallet, Target, MoreHorizontal, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Sparkles, ShieldCheck, ArrowDownRight, ArrowUpRight, Plus, PiggyBank, Bell, PlusSquare, Utensils, Car, Briefcase, Zap, CreditCard, ShoppingBag, Banknote, Home, Trash2, Wallet, Target, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { useEffect, useState, useMemo } from 'react';
@@ -318,19 +318,11 @@ export function Dashboard() {
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden">
         <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
           <h2 className="text-lg font-bold text-on-surface">Needs confirmation</h2>
-          <MoreHorizontal aria-hidden="true" className="w-5 h-5 text-on-surface-variant/50" />
         </div>
         <div className="divide-y divide-outline-variant/10">
           {pendingTxs.slice(0, 2).map((tx) => (
             <div key={tx.id} className="p-5 flex items-start justify-between hover:bg-surface-container-high transition-colors">
               <div className="flex items-start gap-4 flex-grow min-w-0">
-                <button
-                  onClick={() => { setPendingConfirmTx(tx); setPendingConfirmDate(tx.date); }}
-                  title="Review this recurring transaction"
-                  className="w-10 h-10 rounded-full bg-surface-container-high hover:bg-primary/20 flex items-center justify-center shrink-0 transition-colors text-on-surface-variant hover:text-primary cursor-pointer group mt-0.5"
-                >
-                   <CheckCircle2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                </button>
                 <div className="flex-grow min-w-0">
                   <p className="font-medium text-on-surface break-words whitespace-pre-wrap">{tx.title}</p>
                   <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-0.5">{tx.subtitle || 'Verification'} • Recurring</p>
@@ -521,10 +513,9 @@ export function Dashboard() {
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden mb-6">
         <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
           <h2 className="text-lg font-bold text-on-surface">Recent Activity</h2>
-          <MoreHorizontal aria-hidden="true" className="w-5 h-5 text-on-surface-variant/50" />
         </div>
         <div className="divide-y divide-outline-variant/10">
-          {transactions.filter(t => t.is_verified !== 0).slice(0, 4).map((tx) => {
+          {transactions.filter(t => t.is_verified !== 0 && ['income', 'expense', 'transfer'].includes(t.type)).slice(0, 4).map((tx) => {
             const isIncome = tx.type === 'income';
             return (
               <div key={tx.id} className="p-5 flex items-start justify-between hover:bg-surface-container-high transition-colors cursor-pointer" onClick={() => { setEditingTransaction(tx); setAddModalOpen(true); }}>
@@ -554,7 +545,7 @@ export function Dashboard() {
               </div>
             );
           })}
-          {transactions.length === 0 && (
+          {transactions.filter(t => t.is_verified !== 0 && ['income', 'expense', 'transfer'].includes(t.type)).length === 0 && (
             <div className="p-5 text-center text-sm text-on-surface-variant">No recent activity.</div>
           )}
         </div>

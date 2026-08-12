@@ -19,7 +19,7 @@ export function Header({ onLogout, showLogout = true }: HeaderProps) {
       <div className="flex items-center gap-3">
         <div className="hidden md:flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant/50">
           <ShieldCheck className="w-4 h-4 text-primary" />
-          <span className="text-xs font-semibold text-on-surface-variant">Local Only</span>
+          <span className="text-xs font-semibold text-on-surface-variant">Local Ledger</span>
         </div>
         <button
           onClick={handleUndo}

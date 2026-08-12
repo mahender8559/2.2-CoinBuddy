@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { X, ChevronRight, ChevronLeft, Check, Sparkles, Lock, ShieldCheck } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Tab } from '../types';
 
@@ -12,93 +12,55 @@ export interface TourStep {
 }
 
 export const TOUR_STEPS: TourStep[] = [
-  { targetId: 'tour-add-transaction', tab: 'dashboard', title: 'Add Transaction', content: 'Use this floating button anywhere to quickly log income, expenses, or transfers.' },
-  { targetId: 'tour-account-cards', tab: 'dashboard', title: 'Account Selector', content: 'Quickly switch between your accounts to see their balances and recent activity.' },
-  { targetId: 'tour-summary-widgets', tab: 'dashboard', title: 'Summary Widgets', content: 'Get a quick overview of your financial health, spending trends, and loan summaries.' },
-  { targetId: 'tour-add-account', tab: 'manage', title: 'Add Account', content: 'Create new asset or liability accounts to keep your ledger comprehensive.' },
-  { targetId: 'tour-account-interactions', tab: 'manage', title: 'Manage Accounts', content: 'Click on any account to edit details, adjust opening balances, or archive it.' },
-  { targetId: 'tour-transaction-search', tab: 'activity', title: 'Search Transactions', content: 'Find specific transactions instantly using the search bar.' },
-  { targetId: 'tour-transaction-filters', tab: 'activity', title: 'Filter Toggles', content: 'Filter your activity by date, type, or specific accounts.' },
-  { targetId: 'tour-transaction-actions', tab: 'activity', title: 'Quick Actions', content: 'Edit, delete, or use undo/redo capabilities directly from the transaction list.' },
-  { targetId: 'tour-backup-now', tab: 'settings', title: 'Backup Now', content: 'Secure your data with AES-256-GCM encryption and download a local copy.' },
-  { targetId: 'tour-cloud-dest', tab: 'settings', title: 'Cloud Destination', content: 'Sync your encrypted backups to Google Drive or other cloud providers.' },
-  { targetId: 'tour-security-toggle', tab: 'settings', title: 'App Security', content: 'Enable biometric authentication or passcode to lock your financial data.' },
+  { targetId: 'tour-add-transaction', tab: 'dashboard', title: 'Add Transaction', content: 'Use this button from Dashboard, Activity, or Insights to log income, expenses, or transfers.' },
+  { targetId: 'tour-account-cards', tab: 'dashboard', title: 'Net Worth Breakdown', content: 'See total assets and liabilities that make up your current net worth.' },
+  { targetId: 'tour-summary-widgets', tab: 'dashboard', title: 'Current Cycle', content: 'See current-cycle income, expenses, and net cash flow at a glance.' },
+  { targetId: 'tour-add-account', tab: 'manage', title: 'Add Account', content: 'Create a new asset account. Liability accounts have their own Add Liability action further down the page.' },
+  { targetId: 'tour-account-interactions', tab: 'manage', title: 'Manage Accounts', content: 'Edit account details, reconcile a ledger balance, update investment market value, or remove an account when allowed.' },
+  { targetId: 'tour-transaction-search', tab: 'activity', title: 'Search Transactions', content: 'Search by title, category, account, event, or amount.' },
+  { targetId: 'tour-transaction-filters', tab: 'activity', title: 'Filter Activity', content: 'Combine cycle, sort, event, category, type, and account filters to narrow the ledger.' },
+  { targetId: 'tour-transaction-actions', tab: 'activity', title: 'Transaction Actions', content: 'Tap or click an editable transaction row to edit it. Use the delete action when the ledger entry is allowed to be removed.' },
+  { targetId: 'tour-backup-now', tab: 'settings', title: 'Backup Now', content: 'Create an AES-256-GCM encrypted recovery backup after setting a backup password.' },
+  { targetId: 'tour-cloud-dest', tab: 'settings', title: 'Backup Destination', content: 'Keep encrypted backups on this device or connect Google Drive.' },
+  { targetId: 'tour-security-toggle', tab: 'settings', title: 'App Security', content: 'Set a passcode and optionally use supported device biometrics to protect app access.' },
 ];
 
 export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (tab: Tab) => void }) {
   const { isButtonTourOpen, setButtonTourOpen } = useAppContext();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
-
-  // Post-tour backup password setup modal state
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordStepComplete, setPasswordStepComplete] = useState(false);
-  const [newPwdInput, setNewPwdInput] = useState('');
-  const [confirmPwdInput, setConfirmPwdInput] = useState('');
-  const [pwdError, setPwdError] = useState<string | null>(null);
-  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
-
   const step = TOUR_STEPS[currentStepIndex];
-
-  useEffect(() => {
-    if (!isButtonTourOpen) {
-      setShowPasswordModal(false);
-      setPasswordStepComplete(false);
-      return;
-    }
-    if (passwordStepComplete) return;
-
-    try {
-      const savedConfig = localStorage.getItem('coinbuddy_backup_config');
-      const config = savedConfig ? JSON.parse(savedConfig) : null;
-      setShowPasswordModal(!config?.hasPassword || !config?.backupPassword);
-    } catch {
-      setShowPasswordModal(true);
-    }
-  }, [isButtonTourOpen, passwordStepComplete]);
 
   const updateTargetRect = useCallback(() => {
     if (!step || !isButtonTourOpen) return;
     const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      setTargetRect(rect);
-    } else {
-      setTargetRect(null);
-    }
+    setTargetRect(el ? el.getBoundingClientRect() : null);
   }, [step, isButtonTourOpen]);
 
   useEffect(() => {
-    if (isButtonTourOpen && step) {
-      if (activeTab !== step.tab) {
-        setActiveTab(step.tab);
+    if (!isButtonTourOpen || !step) return;
+    if (activeTab !== step.tab) setActiveTab(step.tab);
+    const checkAndScroll = () => {
+      const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
+      if (!el) {
+        window.setTimeout(() => {
+          const retry = document.querySelector(`[data-tour-id="${step.targetId}"]`);
+          if (retry) {
+            retry.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            window.setTimeout(updateTargetRect, 350);
+          }
+        }, 300);
+        return;
       }
-      
-      const checkAndScroll = () => {
-        const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          setTimeout(updateTargetRect, 350);
-        } else {
-          setTimeout(() => {
-            const elRetry = document.querySelector(`[data-tour-id="${step.targetId}"]`);
-            if (elRetry) {
-              elRetry.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              setTimeout(updateTargetRect, 350);
-            }
-          }, 300);
-        }
-      };
-      
-      checkAndScroll();
-    }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(updateTargetRect, 350);
+    };
+    checkAndScroll();
   }, [isButtonTourOpen, currentStepIndex, activeTab, setActiveTab, step, updateTargetRect]);
 
   useEffect(() => {
     window.addEventListener('resize', updateTargetRect);
-    const scrollListener = () => {
-      requestAnimationFrame(updateTargetRect);
-    };
+    const scrollListener = () => requestAnimationFrame(updateTargetRect);
     window.addEventListener('scroll', scrollListener, true);
     return () => {
       window.removeEventListener('resize', updateTargetRect);
@@ -106,185 +68,16 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     };
   }, [updateTargetRect]);
 
-  const handleNext = () => {
-    if (currentStepIndex < TOUR_STEPS.length - 1) {
-      setCurrentStepIndex(curr => curr + 1);
-    } else {
-      handleClose();
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex(curr => curr - 1);
-    }
-  };
-
   const handleClose = () => {
     localStorage.setItem('hasCompletedButtonTour', 'true');
     setButtonTourOpen(false);
     setCurrentStepIndex(0);
   };
 
-  const generateRandomPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let rand = '';
-    for (let i = 0; i < 6; i++) {
-      rand += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    const generated = `CB-${rand}`;
-    setNewPwdInput(generated);
-    setConfirmPwdInput(generated);
-    setPwdError(null);
+  const handleNext = () => {
+    if (currentStepIndex < TOUR_STEPS.length - 1) setCurrentStepIndex(current => current + 1);
+    else handleClose();
   };
-
-  const handleSaveBackupPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdError(null);
-
-    if (!newPwdInput) {
-      setPwdError('Please enter or generate a password.');
-      return;
-    }
-
-    if (newPwdInput.length < 4) {
-      setPwdError('Password must be at least 4 characters long.');
-      return;
-    }
-
-    if (newPwdInput !== confirmPwdInput) {
-      setPwdError('Passwords do not match.');
-      return;
-    }
-
-    // Save the master password used exclusively for encrypted backups.
-    try {
-      const savedConfig = localStorage.getItem('coinbuddy_backup_config');
-      const parsed = savedConfig ? JSON.parse(savedConfig) : {};
-      localStorage.setItem('coinbuddy_backup_config', JSON.stringify({
-        ...parsed,
-        hasPassword: true,
-        backupPassword: newPwdInput
-      }));
-    } catch (err) {}
-
-    setPwdSuccess('Backup password saved. You can now download encrypted backups.');
-    setTimeout(() => {
-      setPwdSuccess(null);
-      setShowPasswordModal(false);
-      setPasswordStepComplete(true);
-      setNewPwdInput('');
-      setConfirmPwdInput('');
-    }, 2000);
-  };
-
-  if (showPasswordModal) {
-    return (
-      <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-surface-container rounded-3xl w-full max-w-md p-6 border border-outline-variant/30 shadow-2xl space-y-5 relative">
-          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                    <h3 className="font-bold text-lg text-on-surface">Set Backup Password</h3>
-                <p className="text-xs text-on-surface-variant">Before Your Interactive Tour</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => {
-                setShowPasswordModal(false);
-                setPasswordStepComplete(true);
-              }}
-              className="p-1.5 text-on-surface-variant hover:text-on-surface rounded-full transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="bg-surface-container-low border border-outline-variant/30 p-3.5 rounded-2xl text-xs text-on-surface-variant flex items-start gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              Set or generate the passphrase that encrypts your backup files. Keep it safe; it is required to restore your data.
-            </p>
-          </div>
-
-          {pwdError && (
-            <div className="p-3 bg-error/10 border border-error/20 text-error text-xs font-semibold rounded-xl">
-              {pwdError}
-            </div>
-          )}
-
-          {pwdSuccess && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold rounded-xl flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0" />
-              <span>{pwdSuccess}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSaveBackupPassword} className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                  Backup Password
-                </label>
-                <button
-                  type="button"
-                  onClick={generateRandomPassword}
-                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> Auto-Generate
-                </button>
-              </div>
-              <input
-                type="text"
-                required
-                value={newPwdInput}
-                onChange={(e) => setNewPwdInput(e.target.value)}
-                placeholder="e.g. CB-8F92A1"
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-sm text-on-surface font-numeric font-bold focus:outline-none focus:border-primary/50"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">
-                Confirm Password
-              </label>
-              <input
-                type="text"
-                required
-                value={confirmPwdInput}
-                onChange={(e) => setConfirmPwdInput(e.target.value)}
-                placeholder="Re-enter password"
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-sm text-on-surface font-numeric font-bold focus:outline-none focus:border-primary/50"
-              />
-            </div>
-
-            <div className="flex items-center gap-3 pt-3 border-t border-outline-variant/20">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPasswordStepComplete(true);
-                }}
-                className="w-1/2 py-3 rounded-xl border border-outline-variant/30 text-on-surface-variant font-bold text-xs hover:bg-surface-variant transition-colors"
-              >
-                Skip For Now
-              </button>
-              <button
-                type="submit"
-                className="w-1/2 py-3 rounded-xl bg-primary text-on-primary font-bold text-xs hover:bg-primary/90 transition-colors shadow-sm active:scale-95 flex items-center justify-center gap-1.5"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Save Password</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   if (!isButtonTourOpen || !step) return null;
 
@@ -301,27 +94,18 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     zIndex: 9998,
     pointerEvents: 'none',
   } : {
-    top: '50%',
-    left: '50%',
-    width: 0,
-    height: 0,
-    borderRadius: '50%',
+    top: '50%', left: '50%', width: 0, height: 0, borderRadius: '50%',
     boxShadow: '0 0 0 9999px rgba(0,0,0,0.65)',
-    transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-    position: 'fixed',
-    zIndex: 9998,
-    pointerEvents: 'none',
+    transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)', position: 'fixed', zIndex: 9998, pointerEvents: 'none',
   };
 
   const tooltipWidth = Math.min(320, window.innerWidth - 32);
   let tooltipTop = '50%';
   let tooltipLeft = '50%';
   let tooltipTranslate = '-50% -50%';
-
   if (targetRect) {
     const spaceBelow = window.innerHeight - targetRect.bottom;
     const spaceAbove = targetRect.top;
-    
     if (spaceBelow > 200) {
       tooltipTop = `${targetRect.bottom + pad + 16}px`;
       tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - tooltipWidth - 16, targetRect.left + targetRect.width / 2 - tooltipWidth / 2))}px`;
@@ -330,84 +114,35 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
       tooltipTop = `${targetRect.top - pad - 16}px`;
       tooltipLeft = `${Math.max(16, Math.min(window.innerWidth - tooltipWidth - 16, targetRect.left + targetRect.width / 2 - tooltipWidth / 2))}px`;
       tooltipTranslate = '0 -100%';
-    } else {
-      tooltipTop = '50%';
-      tooltipLeft = '50%';
-      tooltipTranslate = '-50% -50%';
     }
   }
 
   return (
     <div className="fixed inset-0 z-[9999]" style={{ pointerEvents: 'none' }}>
-      <div className="absolute inset-0 z-[9997]" style={{ pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()} />
+      <div className="absolute inset-0 z-[9997]" style={{ pointerEvents: 'auto' }} onClick={event => event.stopPropagation()} />
       <div style={spotlightStyle} />
-
       <motion.div
         layout
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.3 }}
-        style={{
-          position: 'fixed',
-          top: tooltipTop,
-          left: tooltipLeft,
-          translate: tooltipTranslate,
-          width: `${tooltipWidth}px`,
-          maxWidth: 'calc(100vw - 32px)',
-          zIndex: 9999,
-          pointerEvents: 'auto'
-        }}
+        style={{ position: 'fixed', top: tooltipTop, left: tooltipLeft, translate: tooltipTranslate, width: `${tooltipWidth}px`, maxWidth: 'calc(100vw - 32px)', zIndex: 9999, pointerEvents: 'auto' }}
         className="bg-surface-container-high border border-outline-variant/30 rounded-2xl shadow-2xl p-5"
       >
         <div className="flex items-start justify-between mb-2">
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-primary uppercase tracking-wider mb-1">
-              Step {currentStepIndex + 1} of {TOUR_STEPS.length}
-            </span>
-            <h3 className="text-lg font-bold text-on-surface leading-tight">
-              {step.title}
-            </h3>
+            <span className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Step {currentStepIndex + 1} of {TOUR_STEPS.length}</span>
+            <h3 className="text-lg font-bold text-on-surface leading-tight">{step.title}</h3>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-1.5 -mr-1.5 -mt-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <button aria-label="Close tour" onClick={handleClose} className="p-1.5 -mr-1.5 -mt-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-full transition-colors"><X className="w-5 h-5" /></button>
         </div>
-        
-        <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
-          {step.content}
-        </p>
-
+        <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">{step.content}</p>
         <div className="flex items-center justify-between">
-          <button
-            onClick={handleClose}
-            className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
-          >
-            Skip Tour
-          </button>
-
+          <button onClick={handleClose} className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">Skip Tour</button>
           <div className="flex gap-2">
-            {currentStepIndex > 0 && (
-              <button
-                onClick={handlePrev}
-                className="p-2 text-on-surface hover:bg-surface-container rounded-xl transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            )}
-            
-            <button
-              onClick={handleNext}
-              className="px-4 py-2 font-bold text-on-primary bg-primary hover:bg-primary/90 rounded-xl transition-transform active:scale-95 flex items-center gap-1 shadow-sm"
-            >
-              {currentStepIndex === TOUR_STEPS.length - 1 ? (
-                <>Finish <Check className="w-4 h-4 ml-1" /></>
-              ) : (
-                <>Next <ChevronRight className="w-4 h-4" /></>
-              )}
+            {currentStepIndex > 0 && <button aria-label="Previous tour step" onClick={() => setCurrentStepIndex(current => current - 1)} className="p-2 text-on-surface hover:bg-surface-container rounded-xl transition-colors"><ChevronLeft className="w-5 h-5" /></button>}
+            <button onClick={handleNext} className="px-4 py-2 font-bold text-on-primary bg-primary hover:bg-primary/90 rounded-xl transition-transform active:scale-95 flex items-center gap-1 shadow-sm">
+              {currentStepIndex === TOUR_STEPS.length - 1 ? <>Finish <Check className="w-4 h-4 ml-1" /></> : <>Next <ChevronRight className="w-4 h-4" /></>}
             </button>
           </div>
         </div>

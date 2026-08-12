@@ -37,7 +37,7 @@ export function OnboardingModal() {
     {
       id: 'transactions',
       title: 'Transactions & Transfers',
-      description: 'Log your income, expenses, and cross-account transfers. Our robust dual-entry system ensures accurate ledger balances.',
+      description: 'Log income, expenses, and cross-account transfers. Centralized ledger rules keep account effects and computed balances consistent.',
       image: '/logo.png',
       icon: <Activity className="w-8 h-8 text-emerald-500" />
     },
@@ -51,7 +51,7 @@ export function OnboardingModal() {
     {
       id: 'security',
       title: 'Encrypted Backups & Security',
-      description: 'Your data stays with you. Enjoy AES-256-GCM encrypted local storage and optional cloud synchronization for ultimate peace of mind.',
+      description: 'Your live ledger stays local to this device. Backup files use AES-256-GCM encryption and can optionally be copied to Google Drive.',
       image: '/logo.png',
       icon: <Lock className="w-8 h-8 text-rose-500" />
     }

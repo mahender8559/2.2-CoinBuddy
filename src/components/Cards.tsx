@@ -231,7 +231,6 @@ export function Cards() {
                   
                   <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-outline-variant/10">
                     <button onClick={() => setAdjustmentTarget({ account, kind: 'BALANCE_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-primary hover:bg-primary/10 rounded-lg" title="Reconcile balance">Reconcile</button>
-                    {isLoan && <button onClick={() => setAdjustmentTarget({ account, kind: 'MARKET_ADJUSTMENT' })} className="px-2 py-1.5 text-xs font-bold text-emerald-500 hover:bg-emerald-500/10 rounded-lg" title="Update market value">Market</button>}
                     <div className="flex items-center gap-2 sm:gap-3">
                       <p className="text-lg sm:text-xl font-bold font-numeric text-rose-400">
                         {isSafeMathError(account.balance) ? (
@@ -395,11 +394,6 @@ export function Cards() {
             <Plus className="w-4 h-4" /> Add Liability
           </button>
         </div>
-      </div>
-
-      <div className="flex items-center justify-center gap-2 pt-8 pb-4 opacity-50">
-        <HardDrive className="w-3.5 h-3.5 text-on-surface-variant" />
-        <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Local Storage Encryption Active</span>
       </div>
 
       <UpdateLoanRateModal
