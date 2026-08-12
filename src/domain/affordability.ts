@@ -164,7 +164,7 @@ function shouldProjectExistingTransaction(transaction: Transaction, asOfDate: st
   // in Account.balance. Pending recurring occurrences are not, so they remain a
   // future obligation even when due today or overdue.
   if (transaction.is_verified === 0) {
-    return Boolean(transaction.recurringRuleId || transaction.isRecurring) && dueDate >= asOfDate;
+    return Boolean(transaction.recurringRuleId || transaction.isRecurring);
   }
   return dueDate > asOfDate;
 }
