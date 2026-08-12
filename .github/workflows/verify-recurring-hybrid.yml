@@ -1,0 +1,28 @@
+name: Verify recurring hybrid layout
+
+on:
+  push:
+    branches:
+      - feature/v3.3-planning-reliability
+    paths:
+      - ci/run-recurring-hybrid.txt
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v3.3-planning-reliability
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: TypeScript
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Desktop and mobile browser regression
+        run: npm run test:e2e
