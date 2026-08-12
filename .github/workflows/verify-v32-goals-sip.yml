@@ -26,14 +26,25 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Preserve original dependency lock
+        run: cp package-lock.json /tmp/coinbuddy-package-lock.json
+
       - name: Apply v3.2 product changes
         run: |
           python3 scripts/apply_v32_goals_and_sip.py
           python3 scripts/fix_v32_sip_safety_and_accessibility.py
           python3 scripts/add_v32_e2e.py
 
-      - name: Normalize package lock after version bump
-        run: npm install --package-lock-only --ignore-scripts
+      - name: Set only CoinBuddy root lock versions
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lock = json.loads(Path('/tmp/coinbuddy-package-lock.json').read_text())
+          lock['version'] = '3.2.0'
+          lock.setdefault('packages', {}).setdefault('', {})['version'] = '3.2.0'
+          Path('package-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
+          PY
 
       - name: Install dependencies
         run: npm ci
