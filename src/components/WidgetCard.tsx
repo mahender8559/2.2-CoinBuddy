@@ -21,7 +21,7 @@ export const WidgetCard: React.FC<{ widget: Widget }> = ({ widget }) => {
 
     return (
       <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm relative group">
-        <button onClick={() => removeWidget(widget.id)} className="absolute top-3 right-3 p-1 rounded-full bg-surface-container hover:bg-error/20 text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-all">
+        <button aria-label={`Remove ${category.name} widget`} title={`Remove ${category.name} widget`} onClick={() => removeWidget(widget.id)} className="absolute top-3 right-3 p-1 rounded-full bg-surface-container hover:bg-error/20 text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-all focus:opacity-100">
           <X className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-3 mb-4">
@@ -69,7 +69,7 @@ export const WidgetCard: React.FC<{ widget: Widget }> = ({ widget }) => {
 
     return (
       <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm relative group">
-        <button onClick={() => removeWidget(widget.id)} className="absolute top-3 right-3 p-1 rounded-full bg-surface-container hover:bg-error/20 text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-all">
+        <button aria-label={`Remove ${account.name} widget`} title={`Remove ${account.name} widget`} onClick={() => removeWidget(widget.id)} className="absolute top-3 right-3 p-1 rounded-full bg-surface-container hover:bg-error/20 text-on-surface-variant hover:text-error opacity-0 group-hover:opacity-100 transition-all focus:opacity-100">
           <X className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-3 mb-4">
