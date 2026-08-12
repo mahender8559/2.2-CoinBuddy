@@ -16,7 +16,9 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
   const errors = await prepare(page, 'manage');
   await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
   await expect(page.getByText('Local Storage Encryption Active', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
+  // Market valuation is legitimate for Investment assets; it must not appear on loans.
+  const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
+  await expect(loanCard.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
@@ -47,12 +49,22 @@ test('first-use tour goes directly from onboarding to UI spotlight without writi
   await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
+    localStorage.removeItem('backupConfig');
     localStorage.removeItem('coinbuddy_backup_config');
   });
   await page.reload();
-  for (let step = 0; step < 4; step += 1) await page.getByRole('button', { name: 'Next' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: 'Next' }).click();
+  }
   await page.getByRole('button', { name: 'Get Started' }).click();
-  await expect(page.getByRole('heading', { name: 'Set Backup Password' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('coinbuddy_backup_config'))).toBeNull();
+  await expect(page.getByText(/Dashboard, Activity, or Insights to log income, expenses, or transfers/i)).toBeVisible();
+  const legacyBackup = await page.evaluate(() => ({
+    old: localStorage.getItem('backupConfig'),
+    current: localStorage.getItem('coinbuddy_backup_config'),
+  }));
+  expect(legacyBackup.old).toBeNull();
+  expect(legacyBackup.current).toBeNull();
 });

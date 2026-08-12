@@ -378,62 +378,68 @@ function normalizeDemoCategoryType(type?: string): 'INCOME' | 'EXPENSE' {
   return 'EXPENSE';
 }
 
+function resolveDemoRelativeDate(offsetValue: unknown, dateOnly = false): string | undefined {
+  if (offsetValue === undefined || offsetValue === null || offsetValue === '') return undefined;
+  const offset = Number(offsetValue);
+  if (!Number.isFinite(offset)) return undefined;
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + Math.trunc(offset));
+  return dateOnly ? toLocalDateKey(date) : date.toISOString();
+}
+
+function hydrateDemoData(raw: any): any {
+  const data = JSON.parse(JSON.stringify(raw ?? {}));
+  data.accounts = (Array.isArray(data.accounts) ? data.accounts : []).map((account: any) => ({
+    ...account,
+    loanStartDate: resolveDemoRelativeDate(account.loanStartOffsetDays, true) ?? account.loanStartDate,
+    nextEMIDate: resolveDemoRelativeDate(account.nextEMIOffsetDays, true) ?? account.nextEMIDate,
+    nextSIPDate: resolveDemoRelativeDate(account.nextSIPOffsetDays, true) ?? account.nextSIPDate,
+  }));
+  data.events = (Array.isArray(data.events) ? data.events : []).map((event: any) => ({
+    ...event,
+    createdAt: resolveDemoRelativeDate(event.createdOffsetDays) ?? event.createdAt ?? new Date().toISOString(),
+  }));
+  data.transactions = (Array.isArray(data.transactions) ? data.transactions : []).map((tx: any) => ({
+    ...tx,
+    date: resolveDemoRelativeDate(tx.dateOffsetDays) ?? tx.date ?? new Date().toISOString(),
+    dueDate: resolveDemoRelativeDate(tx.dueDateOffsetDays, true) ?? tx.dueDate,
+  }));
+  data.creditCards = (Array.isArray(data.creditCards) ? data.creditCards : []).map((card: any) => ({
+    ...card,
+    dueDate: resolveDemoRelativeDate(card.dueOffsetDays, true) ?? card.dueDate ?? '',
+  }));
+  data.recurringRules = (Array.isArray(data.recurringRules) ? data.recurringRules : []).map((rule: any) => ({
+    ...rule,
+    nextDueDate: resolveDemoRelativeDate(rule.nextDueOffsetDays, true) ?? rule.nextDueDate ?? toLocalDateKey(new Date()),
+  }));
+  data.savingsGoals = (Array.isArray(data.savingsGoals) ? data.savingsGoals : []).map((goal: any) => ({
+    ...goal,
+    targetDate: resolveDemoRelativeDate(goal.targetOffsetDays, true) ?? goal.targetDate,
+    createdAt: resolveDemoRelativeDate(goal.createdOffsetDays) ?? goal.createdAt ?? new Date().toISOString(),
+  }));
+  data.loanRevisions = (Array.isArray(data.loanRevisions) ? data.loanRevisions : []).map((revision: any) => ({
+    ...revision,
+    effectiveDate: resolveDemoRelativeDate(revision.effectiveOffsetDays, true) ?? revision.effectiveDate ?? toLocalDateKey(new Date()),
+  }));
+  data.users_config = [{
+    currency_code: data.currency ?? 'INR',
+    month_cycle_day: Number(data.monthCycleDay ?? 25),
+  }];
+  return data;
+}
+
 export async function loadDemoDataFromJson(driver: SqlJsDatabaseDriver): Promise<void> {
-  await clearDatabase(driver);
-
-  const data = demoData as any;
-  const categories = Array.isArray(data.categories) ? data.categories : [];
-  for (const category of categories) {
-    await driver.execute(
-      `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      [category.id, category.name, normalizeDemoCategoryType(category.type), category.icon ?? category.icon_name ?? 'Tag', Number(category.budget ?? 0), category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]
-    );
-  }
-
-  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-  for (const account of accounts) {
-    const accountType = account.type?.toString().toUpperCase() === 'LIABILITY' ? 'LIABILITY' : 'ASSET';
-    await driver.execute(
-      `INSERT INTO accounts (id, name, type, subtype, credit_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`,
-      [account.id, account.name, accountType, account.group ?? null, account.limit ?? account.credit_limit ?? null, account.apr ?? account.interestRate ?? null, account.monthlyEMI ?? account.monthly_emi ?? null, account.interestCalculationType ?? account.interest_calculation_type ?? null, account.paymentFrequency ?? account.payment_frequency ?? null, account.tenureMonths ?? account.tenure_months ?? null, account.loanStartDate ?? account.loan_start_date ?? null, account.originalPrincipal ?? account.original_principal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null]
-    );
-  }
-
-  const txs = Array.isArray(data.transactions) ? data.transactions : [];
-  for (const rawTx of txs) {
-    const tx = {
-      ...rawTx,
-      amount: Math.abs(Number(rawTx.amount ?? 0)),
-      transaction_type: rawTx.transaction_type ?? rawTx.type?.toString().toUpperCase(),
-      is_verified: rawTx.is_verified ?? 1,
-      is_opening_balance: rawTx.isOpeningBalance ? 1 : 0,
-      is_recurring: rawTx.isRecurring ? 1 : 0,
-      is_interest_only: rawTx.isInterestOnly ? 1 : 0,
-    };
-    await insertTransactionRow(driver, tx as any);
-  }
-
-  const creditCards = Array.isArray(data.creditCards) ? data.creditCards : [];
-  for (const card of creditCards) {
-    await insertCreditCardRow(driver, {
-      id: card.id,
-      name: card.name,
-      balance: Number(card.balance ?? 0),
-      dueAmount: Number(card.dueAmount ?? 0),
-      dueDate: card.dueDate ?? '',
-      billingCycleDay: Number(card.billingCycleDay ?? 1),
-      limit: Number(card.limit ?? 0)
-    });
-  }
-
-  const widgets = Array.isArray(data.widgets) ? data.widgets : [];
-  for (const widget of widgets) {
-    await insertWidgetRow(driver, widget);
-  }
-
-  const loanRevisions = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
-  for (const revision of loanRevisions) {
-    await insertLoanRevisionRow(driver, revision);
+  // Keep security/backup preferences intact. Demo data replaces the financial
+  // ledger and planning examples, not the user's device protection choices.
+  const existingSettings = await loadAppSettings(driver);
+  const preservedKeys = ['passcode', 'biometric', 'backupConfig', 'backupHistory', 'theme', 'colorPalette'];
+  const data = hydrateDemoData(demoData);
+  await importLedgerToDatabase(driver, data, { skipValidation: true });
+  if (data.profile && typeof data.profile === 'object') await upsertAppSetting(driver, 'profile', data.profile);
+  await upsertAppSetting(driver, 'demoDatasetVersion', data.version ?? 'v3.3_showcase');
+  for (const key of preservedKeys) {
+    if (Object.prototype.hasOwnProperty.call(existingSettings, key)) await upsertAppSetting(driver, key, existingSettings[key]);
   }
 }
 

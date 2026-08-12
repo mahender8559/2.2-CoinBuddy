@@ -795,10 +795,9 @@ export async function auditDatabaseIntegrity(
       if (!linked) addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} points to a missing account.`, id);
       else if (Number(linked.is_archived) === 1) addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} points to archived account ${String(linked.name)}.`, id);
       else if (linked.type !== 'ASSET') addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} is linked to a liability instead of an asset.`, id);
-      if (goal?.protectLinkedBalance && linked) {
-        const group = String(linked.subtype ?? '').trim().toLowerCase();
-        if (group === 'investment' || group === 'physical asset') addIssue('GOAL_PROTECTED_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} cannot protect a non-liquid ${String(linked.subtype)} balance as cash reserve.`, id);
-      }
+      // Any active Asset may track Goal progress. Affordability independently
+      // decides whether that linked account is liquid enough to count as cash/reserve,
+      // so Investment and Physical Asset links are valid and need no integrity warning.
     }
   }
 
