@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Settings2, ShieldAlert, Tags } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { projectAffordabilityWithHistory, type AffordabilityPlannerResult } from '../domain/affordabilityPlanner';
+import { buildUpcomingMoneyProjection } from '../domain/upcomingMoney';
+import { isLiquidCashAccount } from '../domain/affordability';
 import { getCycleDetailsForDay, getCycleRange, shiftCycle } from '../utils/cycles';
 import { AffordabilitySettings } from './AffordabilitySettings';
 import { CurrencyInput } from './CurrencyInput';
@@ -23,6 +25,7 @@ export function AffordabilityPlanner() {
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [expandedBreakdownSource, setExpandedBreakdownSource] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [error, setError] = useState('');
@@ -58,10 +61,22 @@ export function AffordabilityPlanner() {
     }));
   };
 
+  const sourceProjection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, accounts, transactions, recurringRules, creditCards, savingsGoals]);
   const copy = result ? statusCopy(result.projection.status) : null;
   const amount = Number(purchaseAmount) || 0;
   const safeDifference = result ? amount - result.projection.safePurchaseCapacity : 0;
   const additionalSavingsTarget = result ? Math.max(0, result.projection.plannedSavings - result.projection.scheduledSavings) : 0;
+  const breakdownRows = result ? [
+    { key: 'cash', label: 'Liquid cash now', raw: result.projection.openingCash, sign: '+', sources: accounts.filter(account => account.type === 'asset' && account.is_archived !== 1 && isLiquidCashAccount(account)).map(account => `${account.name} · ${formatCurrency(account.balance)}`) },
+    { key: 'income', label: 'Expected income', raw: result.projection.expectedIncome + result.projection.otherCashInflows, sign: '+', sources: sourceProjection.items.filter(item => item.kind === 'INCOME').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
+    { key: 'expenses', label: 'Known scheduled expenses', raw: Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), sign: '-', sources: sourceProjection.items.filter(item => item.kind === 'OBLIGATION').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
+    { key: 'cards', label: 'Credit-card outstanding still to cover', raw: result.projection.creditCardOutstandingReserve, sign: '-', sources: creditCards.filter(card => card.balance > 0 || card.dueAmount > 0).map(card => `${card.name} · outstanding ${formatCurrency(card.balance)}${card.dueAmount > 0 ? ` · due ${formatCurrency(card.dueAmount)}` : ''}`) },
+    { key: 'living', label: 'Additional normal living expenses (history)', raw: result.projection.normalLivingExpenseForecast, sign: '-', sources: [result.normalLivingSpending.estimateUsable ? `Median NORMAL spending from ${result.normalLivingSpending.observedCycleCount} completed cycle${result.normalLivingSpending.observedCycleCount === 1 ? '' : 's'} · ${formatCurrency(result.normalLivingSpending.medianNormalSpend)}` : 'No usable completed-cycle history yet.'] },
+    { key: 'savings', label: 'Scheduled savings', raw: result.projection.scheduledSavings, sign: '-', sources: sourceProjection.items.filter(item => item.kind === 'SAVINGS').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
+    { key: 'target', label: 'Additional savings target to protect (preferences / goals)', raw: additionalSavingsTarget, sign: '-', sources: [`Safety preference · ${formatCurrency(affordabilitySettings.monthlySavingsTarget)}`, ...savingsGoals.filter(goal => goal.isActive && goal.monthlyContribution > 0).map(goal => `${goal.name} · ${formatCurrency(goal.monthlyContribution)}/month`)] },
+    { key: 'buffer', label: 'Unexpected-spending buffer', raw: result.projection.contingencyBuffer, sign: '-', sources: [result.irregularSpending.contingencySource === 'FIXED' ? `Fixed safety preference · ${formatCurrency(result.irregularSpending.recommendedBuffer)}` : result.irregularSpending.contingencySource === 'HISTORICAL' ? `Historical irregular spending · ${result.irregularSpending.observedCycleCount} completed cycles · ${result.irregularSpending.confidence} confidence` : 'Automatic historical estimate is not available yet.'] },
+    { key: 'reserve', label: 'Protected cash reserve', raw: result.projection.protectedCashReserve, sign: '-', sources: [`Safety preference · ${formatCurrency(affordabilitySettings.protectedCashReserve)}`, ...savingsGoals.filter(goal => goal.isActive && goal.protectLinkedBalance).map(goal => `${goal.name} linked reserve`)] },
+  ] : [];
 
   return (
     <section className="rounded-3xl border border-primary/25 bg-surface-container-low overflow-hidden shadow-sm">
@@ -153,17 +168,10 @@ export function AffordabilityPlanner() {
 
           {showBreakdown && (
             <div className="rounded-2xl border border-outline-variant/20 overflow-hidden text-sm">
-              {[
-                ['Liquid cash now', result.projection.openingCash, '+'],
-                ['Expected income', result.projection.expectedIncome + result.projection.otherCashInflows, '+'],
-                ['Known scheduled expenses', Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), '-'],
-                ['Credit-card outstanding still to cover', result.projection.creditCardOutstandingReserve, '-'],
-                ['Additional normal living expenses (history)', result.projection.normalLivingExpenseForecast, '-'],
-                ['Scheduled savings', result.projection.scheduledSavings, '-'],
-                ['Additional savings target to protect (preferences / goals)', additionalSavingsTarget, '-'],
-                ['Unexpected-spending buffer', result.projection.contingencyBuffer, '-'],
-                ['Protected cash reserve', result.projection.protectedCashReserve, '-'],
-              ].map(([label, raw, sign]) => <div key={String(label)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="min-w-0 text-on-surface-variant leading-snug">{label}</span><span className="whitespace-nowrap font-numeric font-semibold tabular-nums text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
+              {breakdownRows.map(row => <div key={row.key} className="border-b last:border-b-0 border-outline-variant/15 bg-surface-container">
+                <button type="button" onClick={() => setExpandedBreakdownSource(value => value === row.key ? null : row.key)} className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left"><span className="min-w-0 text-on-surface-variant leading-snug flex items-center gap-2">{row.label}{row.sources.length > 0 && (expandedBreakdownSource === row.key ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />)}</span><span className="whitespace-nowrap font-numeric font-semibold tabular-nums text-on-surface">{row.sign}{formatCurrency(Number(row.raw))}</span></button>
+                {expandedBreakdownSource === row.key && <div className="border-t border-outline-variant/10 bg-surface-container-low px-4 py-3 space-y-1.5">{row.sources.length ? row.sources.map(source => <p key={source} className="text-xs leading-relaxed text-on-surface-variant">• {source}</p>) : <p className="text-xs text-on-surface-variant">No separate scheduled source is available for this line.</p>}</div>}
+              </div>)}
               <div className="px-4 py-3 border-t border-outline-variant/15 bg-surface-container-low text-xs leading-relaxed text-on-surface-variant">
                 <p><strong className="text-on-surface">Known scheduled expenses</strong> are concrete future obligations CoinBuddy can see, such as recurring entries and EMIs. <strong className="text-on-surface">Credit-card outstanding</strong> separately protects today's revolving card debt even when it is still unbilled or the current due amount is zero. <strong className="text-on-surface">Normal living expenses</strong> use the median NORMAL-category spend from completed cycles and only add the portion not already scheduled. Active <strong className="text-on-surface">Goals</strong> can raise the protected monthly savings target, and an emergency goal linked to liquid cash can raise the protected cash reserve.</p>
                 {result.projection.expectedExpenses === 0 && <p className="mt-2">No concrete expense is currently scheduled in this horizon. Spending already logged in your current cycle is already reflected in today&apos;s balances and is not counted a second time.</p>}

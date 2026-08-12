@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X, LockKeyhole } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X, LockKeyhole, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import type { RecurringRule } from '../types';
 import { CurrencyInput } from './CurrencyInput';
 
 export function RecurringPayments() {
-  const { recurringRules, events, formatCurrency, updateRecurringRule, deleteRecurringRule, skipRecurringRule } = useAppContext();
+  const { recurringRules, events, accounts, transactions, creditCards, formatCurrency, updateRecurringRule, deleteRecurringRule, skipRecurringRule } = useAppContext();
   const [editing, setEditing] = useState<RecurringRule | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'UPCOMING' | 'CONFIRMATION' | 'ACTIVE' | 'PAUSED'>('ALL');
 
   useEffect(() => {
     if (!editing) return;
@@ -43,12 +44,55 @@ export function RecurringPayments() {
     if (ok) setEditing(null);
   };
 
+  const accountMap = useMemo(() => new Map(accounts.map(account => [account.id, account])), [accounts]);
+  const pendingByRule = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const transaction of transactions) if (transaction.is_verified === 0 && transaction.recurringRuleId) counts.set(transaction.recurringRuleId, (counts.get(transaction.recurringRuleId) ?? 0) + 1);
+    return counts;
+  }, [transactions]);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const upcomingCutoff = new Date(); upcomingCutoff.setDate(upcomingCutoff.getDate() + 31);
+  const upcomingCutoffKey = upcomingCutoff.toISOString().slice(0, 10);
+  const activeCount = recurringRules.filter(rule => rule.isActive).length;
+  const pausedCount = recurringRules.length - activeCount;
+  const needsConfirmationCount = [...pendingByRule.values()].reduce((sum, value) => sum + value, 0);
+  const upcomingCount = recurringRules.filter(rule => rule.isActive && rule.nextDueDate >= todayKey && rule.nextDueDate <= upcomingCutoffKey).length;
+  const warningMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const rule of recurringRules) {
+      const warnings: string[] = [];
+      const sourceId = rule.fromAccountId ?? (rule.transactionType === 'EXPENSE' ? rule.account : undefined);
+      const destinationId = rule.toAccountId ?? (rule.transactionType === 'INCOME' ? rule.account : undefined);
+      const source = sourceId ? accountMap.get(sourceId) : undefined;
+      const destination = destinationId ? accountMap.get(destinationId) : undefined;
+      if ((rule.transactionType === 'EXPENSE' || rule.transactionType === 'TRANSFER') && !source) warnings.push('Funding account is missing.');
+      else if (source?.is_archived === 1) warnings.push(`Funding account ${source.name} is archived.`);
+      else if (source?.type === 'asset' && Math.abs(Number(rule.amount)) > Math.max(0, Number(source.balance) || 0)) warnings.push(`${source.name} currently has less than this next payment requires.`);
+      if ((rule.transactionType === 'INCOME' || rule.transactionType === 'TRANSFER') && !destination) warnings.push('Destination account is missing.');
+      else if (destination?.is_archived === 1) warnings.push(`Destination account ${destination.name} is archived.`);
+      map.set(rule.id, warnings);
+    }
+    return map;
+  }, [recurringRules, accountMap]);
+  const cardWarnings = creditCards.filter(card => card.dueDate && card.dueAmount > 0 && card.dueDate >= todayKey && card.dueDate <= upcomingCutoffKey).map(card => `${card.name} has ${formatCurrency(card.dueAmount)} due on ${card.dueDate}.`);
+  const visibleRules = recurringRules.filter(rule => {
+    if (filter === 'ACTIVE') return rule.isActive;
+    if (filter === 'PAUSED') return !rule.isActive;
+    if (filter === 'CONFIRMATION') return (pendingByRule.get(rule.id) ?? 0) > 0;
+    if (filter === 'UPCOMING') return rule.isActive && rule.nextDueDate >= todayKey && rule.nextDueDate <= upcomingCutoffKey;
+    return true;
+  });
+
   return (
     <section>
       <div className="mb-3 ml-2 flex items-center gap-2">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-primary">Recurring Payments</h3>
         <CalendarClock className="h-4 w-4 text-on-surface-variant" />
       </div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {([['ALL', 'All', recurringRules.length], ['UPCOMING', 'Upcoming', upcomingCount], ['CONFIRMATION', 'Needs confirmation', needsConfirmationCount], ['ACTIVE', 'Active', activeCount], ['PAUSED', 'Paused', pausedCount]] as const).map(([value, label, count]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-9 rounded-full border px-3 text-xs font-semibold ${filter === value ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant/30 bg-surface-container text-on-surface-variant'}`}>{label} · {count}</button>)}
+      </div>
+      {cardWarnings.length > 0 && <div className="mb-3 space-y-2">{cardWarnings.map(warning => <div key={warning} className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-on-surface"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />{warning}</div>)}</div>}
       <div className="overflow-hidden rounded-2xl border border-outline-variant/30 bg-surface-container">
         {recurringRules.length === 0 ? (
           <div className="p-5 text-sm text-on-surface-variant">
@@ -56,48 +100,65 @@ export function RecurringPayments() {
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/20">
-            {recurringRules.map(rule => {
+            {visibleRules.map(rule => {
               const eventName = events.find(event => event.id === rule.eventId)?.name;
               const isBusy = busyId === rule.id;
               const isManagedSip = rule.id.startsWith('investment-sip:');
+              const pendingCount = pendingByRule.get(rule.id) ?? 0;
+              const ruleWarnings = warningMap.get(rule.id) ?? [];
               return (
                 <div key={rule.id} className="p-4">
-                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1">
+                  {isManagedSip ? (
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-semibold text-on-surface">{rule.title}</p>
+                        <p className="font-semibold text-on-surface">{rule.title}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rule.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
                           {rule.isActive ? 'Active' : 'Paused'}
                         </span>
-                        {isManagedSip && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
-                            <LockKeyhole className="h-3 w-3" /> Investment SIP
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                          <LockKeyhole className="h-3 w-3" /> Investment SIP
+                        </span>
                       </div>
                       <p className="mt-1 text-xs text-on-surface-variant">
                         {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
                         {eventName ? ` · ${eventName}` : ''}
                       </p>
-                      {isManagedSip && <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>}
+                      {pendingCount > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingCount} occurrence{pendingCount === 1 ? '' : 's'} waiting for confirmation.</p>}
+                      {ruleWarnings.length > 0 && <div className="mt-2 space-y-1">{ruleWarnings.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
+                      <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>
                     </div>
-                    {!isManagedSip && (
-                      <div className="flex flex-wrap gap-2 sm:shrink-0">
-                        <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Edit ${rule.title}`}>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-semibold text-on-surface">{rule.title}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rule.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                            {rule.isActive ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
+                          {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
+                          {eventName ? ` · ${eventName}` : ''}
+                        </p>
+                        {pendingCount > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingCount} occurrence{pendingCount === 1 ? '' : 's'} waiting for confirmation.</p>}
+                        {ruleWarnings.length > 0 && <div className="mt-2 space-y-1">{ruleWarnings.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
+                      </div>
+                      <div className="grid shrink-0 grid-cols-4 gap-2">
+                        <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Edit ${rule.title}`}>
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
+                        <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
                           {rule.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                         </button>
-                        <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Skip next ${rule.title}`}>
+                        <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline-variant/40 text-on-surface-variant hover:text-primary disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Skip next ${rule.title}`}>
                           <SkipForward className="h-4 w-4" />
                         </button>
-                        <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="rounded-lg border border-error/30 p-2 text-error hover:bg-error/10 disabled:opacity-50" aria-label={`Delete recurring schedule ${rule.title}`}>
+                        <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="flex h-10 w-10 items-center justify-center rounded-xl border border-error/30 text-error hover:bg-error/10 disabled:opacity-50 sm:h-11 sm:w-11" aria-label={`Delete recurring schedule ${rule.title}`}>
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

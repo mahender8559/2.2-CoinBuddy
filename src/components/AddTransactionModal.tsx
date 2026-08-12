@@ -7,7 +7,7 @@ import type { Transaction } from '../types';
 
 
 export function AddTransactionModal() {
-  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, createEvent, setManageCategoriesOpen } = useAppContext();
+  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, savingsGoals, createEvent, setManageCategoriesOpen } = useAppContext();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -22,6 +22,7 @@ export function AddTransactionModal() {
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'>('MONTHLY');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [groupId, setGroupId] = useState('');
+  const [goalId, setGoalId] = useState('');
 
   const activeAccounts = useMemo(() => accounts.filter(a => !a.is_archived), [accounts]);
   const assets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived), [accounts]);
@@ -79,6 +80,7 @@ export function AddTransactionModal() {
       setRecurrenceFrequency(recurringRules.find(rule => rule.id === editingTransaction.recurringRuleId)?.frequency ?? 'MONTHLY');
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
       setGroupId(events.find(event => event.id === editingTransaction.eventId)?.name || '');
+      setGoalId(editingTransaction.goalId || '');
       
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
       if (catObj) setCategoryId(catObj.id);
@@ -90,6 +92,7 @@ export function AddTransactionModal() {
       setRecurrenceFrequency('MONTHLY');
       setDate(new Date().toISOString().split('T')[0]);
       setGroupId('');
+      setGoalId('');
       setCategoryId(categories[0]?.id || '');
       
       if (assets.length > 0) setAccount(assets[0].id);
@@ -208,7 +211,8 @@ export function AddTransactionModal() {
       recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
-      is_verified: shouldRemainPending ? 0 : 1
+      is_verified: shouldRemainPending ? 0 : 1,
+      goalId: goalId || undefined
     };
 
     let res: { success: boolean; error?: string };
@@ -286,6 +290,17 @@ export function AddTransactionModal() {
     )}
   </div>
 </div>
+
+{type !== 'income' && savingsGoals.length > 0 && (
+  <div>
+    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Goal contribution (optional)</label>
+    <select aria-label="Goal contribution" value={goalId} onChange={event => setGoalId(event.target.value)} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60">
+      <option value="">No goal</option>
+      {savingsGoals.filter(goal => goal.isActive).map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
+    </select>
+    <p className="mt-2 text-[11px] leading-relaxed text-on-surface-variant">After confirmation, this transfer/expense advances an unlinked Goal automatically. Goals linked to an account use that account balance instead, so CoinBuddy never double-counts the contribution.</p>
+  </div>
+)}
 
 {editingTransaction ? null : (
 

@@ -4,6 +4,7 @@ import { Tab } from './types';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
+import { BackupAutomationService } from './components/BackupAutomationService';
 import { Activity } from './components/Activity';
 import { Insights } from './components/Insights';
 import { Settings } from './components/Settings';
@@ -307,6 +308,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-on-background selection:bg-primary/30 relative overflow-x-hidden">
+      <BackupAutomationService />
       <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       

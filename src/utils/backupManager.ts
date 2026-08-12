@@ -11,6 +11,7 @@ export interface BackupMetadata {
   date: string;
   /** ISO timestamp used for schedule decisions; `date` remains display-only. */
   completedAt?: string;
+  verifiedAt?: string;
   filename: string;
   size: string;
   syncStatus: 'UP_TO_DATE' | 'PENDING_NETWORK' | 'NOT_CONFIGURED' | 'FAILED';
@@ -333,7 +334,8 @@ export class BackupStorageAdapter {
   static async uploadBackup(
     filename: string,
     encryptedContent: string,
-    provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM'
+    provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM',
+    downloadLocal: boolean = true
   ): Promise<void> {
     const encryptedFilename = toEncryptedBackupFilename(filename);
     if (provider === 'GOOGLE_DRIVE') {
@@ -380,7 +382,7 @@ export class BackupStorageAdapter {
     // Enforce 5-file retention policy
     await this.pruneOldBackups(5, provider);
 
-    if (provider === 'LOCAL') {
+    if (provider === 'LOCAL' && downloadLocal) {
       // Trigger browser file download if DOM is present
       if (typeof document !== 'undefined' && document.createElement) {
         const blob = new Blob([encryptedContent], { type: 'application/octet-stream' });
@@ -546,13 +548,16 @@ export class BackupManager {
   static async executeManualBackup(
     password?: string,
     provider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM' = 'LOCAL',
-    ledgerData?: Record<string, unknown>
+    ledgerData?: Record<string, unknown>,
+    options: { downloadLocal?: boolean } = {},
   ): Promise<BackupMetadata> {
     if (!password) {
       throw new Error('Set a backup password before creating an encrypted backup.');
     }
     const jsonStr = this.generateBackupJSON(ledgerData);
     const encryptedPayload = await encryptBackup(jsonStr, password);
+    const verificationPayload = await decryptBackup(encryptedPayload, password);
+    if (verificationPayload !== jsonStr) throw new Error('Encrypted backup verification failed before storage.');
 
     const now = new Date();
     const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
@@ -570,11 +575,14 @@ export class BackupManager {
       txCount = parsed.transactions?.length || 0;
     } catch (e) {}
 
-    await BackupStorageAdapter.uploadBackup(filename, encryptedPayload, provider);
+    await BackupStorageAdapter.uploadBackup(filename, encryptedPayload, provider, options.downloadLocal !== false);
+    const stored = await BackupStorageAdapter.listAvailableBackups(provider);
+    if (!stored.some((item: any) => item?.name === filename)) throw new Error('Backup storage verification failed: the new encrypted file could not be confirmed.');
 
     const metadata: BackupMetadata = {
       date: dateFormatted,
       completedAt: now.toISOString(),
+      verifiedAt: new Date().toISOString(),
       filename,
       size: sizeStr,
       syncStatus: 'UP_TO_DATE',
@@ -615,7 +623,8 @@ export class BackupManager {
       const metadata = await this.executeManualBackup(
         settings.backupPassword,
         settings.storageProvider,
-        ledgerData
+        ledgerData,
+        { downloadLocal: false },
       );
       return metadata;
     } catch (err: any) {

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_opening_balance INTEGER NOT NULL DEFAULT 0,
   is_interest_only INTEGER NOT NULL DEFAULT 0,
   event_id TEXT,
+  goal_id TEXT,
   FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS recurring_rules (
   next_due_date TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
   event_id TEXT,
+  goal_id TEXT,
   anchor_day INTEGER CHECK(anchor_day BETWEEN 1 AND 31),
   FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL
 );
@@ -313,6 +315,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE recurring_rules ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
   `ALTER TABLE recurring_rules ADD COLUMN anchor_day INTEGER;`,
   `ALTER TABLE categories ADD COLUMN affordability_class TEXT;`,
+  `ALTER TABLE transactions ADD COLUMN goal_id TEXT;`,
+  `ALTER TABLE recurring_rules ADD COLUMN goal_id TEXT;`,
   `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
 ];
 
@@ -796,6 +800,15 @@ export async function auditDatabaseIntegrity(
         if (group === 'investment' || group === 'physical asset') addIssue('GOAL_PROTECTED_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} cannot protect a non-liquid ${String(linked.subtype)} balance as cash reserve.`, id);
       }
     }
+  }
+
+  const transactionGoalLinks = await db.query(`SELECT id, title, goal_id FROM transactions WHERE goal_id IS NOT NULL AND goal_id <> ''`);
+  for (const row of transactionGoalLinks) {
+    if (!goalIds.has(String(row.goal_id))) addIssue('GOAL_TRANSACTION_LINK', 'warning', `Transaction “${String(row.title ?? row.id)}” points to a Goal that no longer exists.`, String(row.id));
+  }
+  const recurringGoalLinks = await db.query(`SELECT id, title, goal_id FROM recurring_rules WHERE goal_id IS NOT NULL AND goal_id <> ''`);
+  for (const row of recurringGoalLinks) {
+    if (!goalIds.has(String(row.goal_id))) addIssue('GOAL_RECURRING_LINK', 'warning', `Recurring schedule “${String(row.title ?? row.id)}” points to a Goal that no longer exists.`, String(row.id));
   }
 
   return {

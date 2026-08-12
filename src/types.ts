@@ -126,6 +126,7 @@ export interface RecurringRule {
   nextDueDate: string;
   isActive: boolean;
   eventId?: string;
+  goalId?: string;
   anchorDay?: number;
 }
 
@@ -148,6 +149,7 @@ export type Transaction = {
   recurringRuleId?: string;
   dueDate?: string;
   eventId?: string;
+  goalId?: string;
   transaction_type?: TransactionType;
   is_verified?: number;
   notes?: string;

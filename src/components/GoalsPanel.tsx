@@ -32,6 +32,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
     updateSavingsGoal,
     deleteSavingsGoal,
     accounts,
+    transactions,
     formatCurrency,
     getCurrencySymbol,
   } = useAppContext();
@@ -98,12 +99,12 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
         </div>
       ) : (
         filteredGoals.map(goal => {
-          const current = getGoalCurrentAmount(goal, accounts);
-          const percent = getGoalProgressPercent(goal, accounts);
-          const required = getRequiredMonthlyContribution(goal, accounts);
+          const current = getGoalCurrentAmount(goal, accounts, transactions);
+          const percent = getGoalProgressPercent(goal, accounts, transactions);
+          const required = getRequiredMonthlyContribution(goal, accounts, transactions);
           const linked = goal.linkedAccountId ? accounts.find(account => account.id === goal.linkedAccountId) : undefined;
           return (
-            <div key={goal.id} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-5">
+            <article key={goal.id} aria-label={`Goal ${goal.name}`} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -111,7 +112,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">{GOAL_TYPE_LABELS[goal.type]}</span>
                     {!goal.isActive && <span className="rounded-full bg-surface-container-highest px-2 py-0.5 text-[10px] font-bold uppercase text-on-surface-variant">Paused</span>}
                   </div>
-                  <p className="mt-1 text-xs text-on-surface-variant">{linked ? `Tracked from ${linked.name}` : 'Progress entered manually'}{goal.targetDate ? ` · Target ${new Date(`${goal.targetDate}T12:00:00`).toLocaleDateString()}` : ''}</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">{linked ? `Tracked from ${linked.name}` : 'Manual progress + verified Goal-linked contributions'}{goal.targetDate ? ` · Target ${new Date(`${goal.targetDate}T12:00:00`).toLocaleDateString()}` : ''}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button type="button" aria-label={`Edit ${goal.name}`} onClick={() => openEdit(goal)} className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button>
@@ -128,7 +129,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-highest"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} /></div>
               {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}
-            </div>
+            </article>
           );
         })
       )}
