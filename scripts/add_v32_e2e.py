@@ -27,7 +27,8 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await openTab(page, 'Insights');
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
-  await expect(page.getByText(/Goals protection:/)).toContainText(/5,000/);
+  const goalProtection = page.getByText('Goals protection:', { exact: true }).locator('..');
+  await expect(goalProtection).toContainText(/5,000/);
   await assertNoDocumentOverflow(page);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
