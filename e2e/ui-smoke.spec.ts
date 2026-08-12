@@ -12,7 +12,7 @@ async function prepareApp(page: Page) {
     localStorage.setItem('hasCompletedButtonTour', 'true');
   });
   await page.goto('/');
-  await expect(page.getByText('Total Balance', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('Net Worth', { exact: true }).first()).toBeVisible();
   return runtimeErrors;
 }
 
@@ -107,6 +107,7 @@ test('first tour spotlight and description match the add transaction button', as
   await expect(target).toBeVisible();
   await expect(tooltip).toContainText('quickly log income, expenses, or transfers');
   await expect(spotlight).toBeVisible();
+  await page.waitForTimeout(900);
 
   const [targetBounds, tooltipBounds, spotlightBounds, viewport] = await Promise.all([
     target.boundingBox(),
@@ -129,12 +130,13 @@ test('first tour spotlight and description match the add transaction button', as
 });
 
 test('first-use setup runs walkthrough, password step, then spotlight tour once', async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.goto('/');
+  await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
     localStorage.removeItem('coinbuddy_backup_config');
   });
-  await page.goto('/');
+  await page.reload();
 
   await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
   for (let step = 0; step < 4; step += 1) {

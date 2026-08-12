@@ -495,7 +495,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setDbDriver(driver);
         // Seed only a genuinely new database. An intentionally empty persisted
         // ledger must remain empty after refresh.
-        if (driver.isNewDatabase && localStorage.getItem('coinbuddy_skip_demo_seed') !== 'true') {
+        if (driver.isNewDatabase && !driver.skipDemoSeed) {
           await seedDemoData(driver);
           await persistDatabase(driver);
         }

@@ -317,7 +317,7 @@ export function Dashboard() {
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden">
         <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
           <h2 className="text-lg font-bold text-on-surface">Needs confirmation</h2>
-          <button className="text-on-surface-variant hover:text-on-surface"><MoreHorizontal className="w-5 h-5" /></button>
+          <MoreHorizontal aria-hidden="true" className="w-5 h-5 text-on-surface-variant/50" />
         </div>
         <div className="divide-y divide-outline-variant/10">
           {pendingTxs.slice(0, 2).map((tx) => (
@@ -508,7 +508,7 @@ export function Dashboard() {
       <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden mb-6">
         <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
           <h2 className="text-lg font-bold text-on-surface">Recent Activity</h2>
-          <button className="text-on-surface-variant hover:text-on-surface"><MoreHorizontal className="w-5 h-5" /></button>
+          <MoreHorizontal aria-hidden="true" className="w-5 h-5 text-on-surface-variant/50" />
         </div>
         <div className="divide-y divide-outline-variant/10">
           {transactions.filter(t => t.is_verified !== 0).slice(0, 4).map((tx) => {

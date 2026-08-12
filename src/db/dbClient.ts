@@ -54,6 +54,8 @@ export interface SqlJsDatabaseDriver {
   rawDb: any;
   /** True only when startup found no previously persisted database snapshot. */
   isNewDatabase?: boolean;
+  /** One-shot startup decision used after destructive clear so a fresh empty ledger stays empty. */
+  skipDemoSeed?: boolean;
   execute: (sql: string, params?: (string | number | null | undefined)[]) => Promise<void>;
   query: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
   exportToBase64: () => string;
@@ -116,10 +118,11 @@ async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
   return true;
 }
 
-function createDriver(db: any, isNewDatabase = false): SqlJsDatabaseDriver {
+function createDriver(db: any, isNewDatabase = false, skipDemoSeed = false): SqlJsDatabaseDriver {
   return {
     rawDb: db,
     isNewDatabase,
+    skipDemoSeed,
     async execute(sql, params = []) {
       if (params.length === 0) {
         db.exec(sql);
@@ -187,7 +190,7 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     localStorage.removeItem(SKIP_DEMO_SEED_KEY);
   }
 
-  return createDriver(db, isNewDatabase);
+  return createDriver(db, isNewDatabase, shouldSkipDemoSeed);
 }
 
 export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
