@@ -1,3 +1,5 @@
 Vercel preview deployment suppression check
 Branch: feature/affordability-planner
 Expected: no Vercel Preview deployment
+Rule: ** false + feature/* false
+Check: second push after corrected minimatch config
