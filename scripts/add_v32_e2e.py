@@ -50,7 +50,6 @@ test('investment SIP setup creates a recurring transfer rule', async ({ page }) 
   await expect(page.getByText('Retirement SIP', { exact: true })).toBeVisible();
 
   await openTab(page, 'Settings');
-  await page.getByText('Auto-create recurring entries', { exact: true }).click();
   await expect(page.getByText('SIP: Retirement SIP', { exact: true })).toBeVisible();
   await expect(page.getByText(/5,000/).first()).toBeVisible();
   await assertNoDocumentOverflow(page);
