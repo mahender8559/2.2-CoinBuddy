@@ -58,6 +58,7 @@ export interface AffordabilityResult {
 }
 
 const LIQUID_ACCOUNT_GROUPS = new Set([
+  'bank',
   'bank account',
   'cash',
   'wallet',
@@ -175,8 +176,40 @@ interface ProjectionAccumulator {
   expectedExpenses: number;
   scheduledSavings: number;
   expensesByClass: Record<AffordabilityClass, number>;
-  coveredLiabilityIds: Set<string>;
+  liabilityPaymentsByDate: Map<string, Map<string, number>>;
   occurrenceCount: number;
+}
+
+function recordLiabilityPayment(
+  accumulator: ProjectionAccumulator,
+  liabilityId: string,
+  paymentDate: string,
+  amount: number,
+): void {
+  const value = nonNegative(amount);
+  if (value <= 0) return;
+  let payments = accumulator.liabilityPaymentsByDate.get(liabilityId);
+  if (!payments) {
+    payments = new Map<string, number>();
+    accumulator.liabilityPaymentsByDate.set(liabilityId, payments);
+  }
+  payments.set(paymentDate, (payments.get(paymentDate) ?? 0) + value);
+}
+
+function liabilityPaymentForDate(
+  accumulator: ProjectionAccumulator,
+  liabilityId: string,
+  paymentDate: string,
+): number {
+  return accumulator.liabilityPaymentsByDate.get(liabilityId)?.get(paymentDate) ?? 0;
+}
+
+function totalLiabilityPayments(accumulator: ProjectionAccumulator, liabilityId: string): number {
+  const payments = accumulator.liabilityPaymentsByDate.get(liabilityId);
+  if (!payments) return 0;
+  let total = 0;
+  for (const amount of payments.values()) total += amount;
+  return total;
 }
 
 function applyProjectedTransaction(
@@ -205,7 +238,12 @@ function applyProjectedTransaction(
 
   if (type === 'EXPENSE') {
     if (fromLiquid) {
-      if (classification === 'SAVINGS') {
+      const destination = toId ? accountsById.get(toId) : undefined;
+      if (destination?.type === 'liability' && toId) {
+        accumulator.expectedExpenses += amount;
+        accumulator.expensesByClass.COMMITTED += amount;
+        recordLiabilityPayment(accumulator, toId, projectedTransactionDate(transaction), amount);
+      } else if (classification === 'SAVINGS') {
         accumulator.scheduledSavings += amount;
       } else {
         accumulator.expectedExpenses += amount;
@@ -226,13 +264,17 @@ function applyProjectedTransaction(
   } else if (liquidDelta < 0) {
     const outflow = Math.abs(liquidDelta);
     const destination = toId ? accountsById.get(toId) : undefined;
-    if (classification === 'SAVINGS' || String(destination?.group ?? '').toLowerCase() === 'investment') {
+    if (destination?.type === 'liability' && toId) {
+      // Card/loan payments are cash commitments, not ordinary consumption.
+      accumulator.expectedExpenses += outflow;
+      accumulator.expensesByClass.COMMITTED += outflow;
+      recordLiabilityPayment(accumulator, toId, projectedTransactionDate(transaction), outflow);
+    } else if (classification === 'SAVINGS' || String(destination?.group ?? '').trim().toLowerCase() === 'investment') {
       accumulator.scheduledSavings += outflow;
     } else {
       accumulator.expectedExpenses += outflow;
       accumulator.expensesByClass[classification] += outflow;
     }
-    if (destination?.type === 'liability' && toId) accumulator.coveredLiabilityIds.add(toId);
   }
   accumulator.occurrenceCount += 1;
 }
@@ -270,7 +312,6 @@ function projectRecurringRules(
 
 function projectLoanFallbacks(
   accounts: Account[],
-  coveredLiabilityIds: Set<string>,
   creditCardIds: Set<string>,
   asOfDate: string,
   endDate: string,
@@ -281,7 +322,6 @@ function projectLoanFallbacks(
       account.type !== 'liability' ||
       account.is_archived === 1 ||
       creditCardIds.has(account.id) ||
-      coveredLiabilityIds.has(account.id) ||
       nonNegative(account.monthlyEMI) <= 0 ||
       !account.nextEMIDate
     ) continue;
@@ -292,7 +332,9 @@ function projectLoanFallbacks(
       dueDate = advanceRecurringDate(dueDate, account.paymentFrequency ?? 'MONTHLY');
     }
     while (dueDate <= endDate && guard++ < 240) {
-      addCommittedFallbackExpense(accumulator, nonNegative(account.monthlyEMI));
+      const explicitPayment = liabilityPaymentForDate(accumulator, account.id, dueDate);
+      const remainingEmi = Math.max(0, nonNegative(account.monthlyEMI) - explicitPayment);
+      addCommittedFallbackExpense(accumulator, remainingEmi);
       dueDate = advanceRecurringDate(dueDate, account.paymentFrequency ?? 'MONTHLY');
     }
   }
@@ -313,7 +355,7 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
     expectedExpenses: 0,
     scheduledSavings: 0,
     expensesByClass: ZERO_EXPENSES_BY_CLASS(),
-    coveredLiabilityIds: new Set<string>(),
+    liabilityPaymentsByDate: new Map<string, Map<string, number>>(),
     occurrenceCount: 0,
   };
 
@@ -340,23 +382,26 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
     applyProjectedTransaction(transaction, accountsById, liquidAccountIds, input.categories, accumulator);
   }
 
-  const creditCards = input.creditCards ?? [];
+  // A card record is only authoritative while its backing liability account
+  // is active. This prevents stale/archived card metadata from reducing capacity.
+  const creditCards = (input.creditCards ?? []).filter(card => accountsById.has(card.id));
   const creditCardIds = new Set(creditCards.map(card => card.id));
   for (const card of creditCards) {
     if (
       nonNegative(card.dueAmount) > 0 &&
       card.dueDate &&
-      dateKey(card.dueDate) <= input.endDate &&
-      !accumulator.coveredLiabilityIds.has(card.id)
+      dateKey(card.dueDate) <= input.endDate
     ) {
-      addCommittedFallbackExpense(accumulator, card.dueAmount);
-      accumulator.coveredLiabilityIds.add(card.id);
+      // Explicit bank -> card payments are already counted as committed cash
+      // outflows. Only add the unpaid remainder of the card obligation.
+      const explicitPayments = totalLiabilityPayments(accumulator, card.id);
+      const remainingDue = Math.max(0, nonNegative(card.dueAmount) - explicitPayments);
+      addCommittedFallbackExpense(accumulator, remainingDue);
     }
   }
 
   projectLoanFallbacks(
     accounts,
-    accumulator.coveredLiabilityIds,
     creditCardIds,
     input.asOfDate,
     input.endDate,
