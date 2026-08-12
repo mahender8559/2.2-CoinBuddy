@@ -32,6 +32,9 @@ jobs:
           python3 scripts/fix_v32_sip_safety_and_accessibility.py
           python3 scripts/add_v32_e2e.py
 
+      - name: Normalize package lock after version bump
+        run: npm install --package-lock-only --ignore-scripts
+
       - name: Install dependencies
         run: npm ci
 
@@ -53,15 +56,22 @@ jobs:
       - name: Verify v3.2 labels and retired fake goal tab
         shell: bash
         run: |
-          if grep -R -n -E 'V3\.[01]|v3\.[01]|"version": "3\.1\.0"' src package.json package-lock.json; then
-            echo 'Found a stale v3.0/v3.1 label.'
+          if grep -R -n -E 'V3\.[01]|v3\.[01]' src; then
+            echo 'Found a stale visible v3.0/v3.1 label.'
             exit 1
           fi
           if grep -R -n 'Savings Goals' src; then
             echo 'Found the retired Savings Goals UI label.'
             exit 1
           fi
-          grep -n '"version": "3.2.0"' package.json package-lock.json
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          if (pkg.version !== '3.2.0') throw new Error(`package.json is ${pkg.version}`);
+          if (lock.version !== '3.2.0') throw new Error(`package-lock root is ${lock.version}`);
+          if (lock.packages?.['']?.version !== '3.2.0') throw new Error(`package-lock package root is ${lock.packages?.['']?.version}`);
+          console.log('CoinBuddy package versions are consistently 3.2.0');
+          NODE
 
       - name: Commit verified v3.2 product changes
         shell: bash
