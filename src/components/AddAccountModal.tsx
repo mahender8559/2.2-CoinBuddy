@@ -2,6 +2,7 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { X, ShieldAlert, Info } from 'lucide-react';
 import { calculateEmiAmount } from '../utils/emi';
+import { CurrencyInput } from './CurrencyInput';
 
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
@@ -18,7 +19,8 @@ export function AddAccountModal() {
     setEditingAccount,
     editingCreditCard,
     setEditingCreditCard,
-    transactions
+    transactions,
+    getCurrencySymbol
   } = useAppContext();
   
   // Generic fields
@@ -424,15 +426,10 @@ export function AddAccountModal() {
           {addAccountModalType === 'liability' && liabilityType === 'Credit Card' && (
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Credit Limit</label>
-              <input 
-                type="number"
-                step="0.01"
+              <CurrencyInput
                 required
                 value={limit}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setLimit(isNaN(val) ? '' : e.target.value);
-                }}
+                onValueChange={setLimit}
                 className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                 placeholder="e.g. 5000"
               />
@@ -464,30 +461,20 @@ export function AddAccountModal() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Total Invested Amount</label>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     required
                     value={investedAmount}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      setInvestedAmount(isNaN(val) ? '' : e.target.value);
-                    }}
+                    onValueChange={setInvestedAmount}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                     placeholder="0.00"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Current Market Value</label>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     required
                     value={balance}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      setBalance(isNaN(val) ? '' : e.target.value);
-                    }}
+                    onValueChange={setBalance}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                     placeholder="0.00"
                   />
@@ -498,15 +485,10 @@ export function AddAccountModal() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Monthly SIP Amount</label>
-                    <input 
-                      type="number"
-                      step="0.01"
+                    <CurrencyInput
                       required
                       value={monthlySIPAmount}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        setMonthlySIPAmount(isNaN(val) ? '' : e.target.value);
-                      }}
+                      onValueChange={setMonthlySIPAmount}
                       className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                       placeholder="0.00"
                     />
@@ -531,15 +513,10 @@ export function AddAccountModal() {
               <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
                 {isEditing ? 'Initial / Starting Balance' : (group === 'Physical Asset' ? 'Estimated Current Value' : 'Current Balance')}
               </label>
-              <input 
-                type="number"
-                step="0.01"
+              <CurrencyInput
                 required
                 value={balance}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setBalance(isNaN(val) ? '' : e.target.value);
-                }}
+                onValueChange={setBalance}
                 className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                 placeholder="0.00"
               />
@@ -553,12 +530,10 @@ export function AddAccountModal() {
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
                     {isEditing ? 'Initial / Starting Balance' : 'Current Balance'}
                   </label>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     required
                     value={balance}
-                    onChange={(e) => setBalance(e.target.value)}
+                    onValueChange={setBalance}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                     placeholder="0.00"
                   />
@@ -567,11 +542,9 @@ export function AddAccountModal() {
               {liabilityType === 'Credit Card' && (
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Due Amount</label>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     value={dueAmount}
-                    onChange={(e) => setDueAmount(e.target.value)}
+                    onValueChange={setDueAmount}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
                     placeholder="0.00"
                   />
@@ -615,16 +588,13 @@ export function AddAccountModal() {
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
                     Initial Loan Amount (Principal)
                   </label>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     required
                     value={originalPrincipal}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setOriginalPrincipal(val);
+                    onValueChange={(value) => {
+                      setOriginalPrincipal(value);
                       if (!isEditing || !balance) {
-                        setBalance(val);
+                        setBalance(value);
                       }
                     }}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
@@ -792,13 +762,11 @@ export function AddAccountModal() {
                       </button>
                     )}
                   </div>
-                  <input 
-                    type="number"
-                    step="0.01"
+                  <CurrencyInput
                     required
                     value={monthlyEMI}
-                    onChange={(e) => {
-                      setMonthlyEMI(e.target.value);
+                    onValueChange={(value) => {
+                      setMonthlyEMI(value);
                       setIsEmiManualOverride(true);
                     }}
                     className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
@@ -832,13 +800,11 @@ export function AddAccountModal() {
                 <div className="grid grid-cols-3 gap-2.5 pt-1">
                   <div>
                     <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Fixed Late Fee (₹)
+                      Fixed Late Fee ({getCurrencySymbol()})
                     </label>
-                    <input 
-                      type="number"
-                      step="0.01"
+                    <CurrencyInput
                       value={lateFeeFixedAmount}
-                      onChange={(e) => setLateFeeFixedAmount(e.target.value)}
+                      onValueChange={setLateFeeFixedAmount}
                       className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 px-3 text-xs text-on-surface font-numeric focus:outline-none focus:border-amber-500/50"
                       placeholder="e.g. 500"
                     />

@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { projectAffordabilityWithHistory, type AffordabilityPlannerResult } from '../domain/affordabilityPlanner';
 import { getCycleDetailsForDay, getCycleRange, shiftCycle } from '../utils/cycles';
 import { AffordabilitySettings } from './AffordabilitySettings';
+import { CurrencyInput } from './CurrencyInput';
 import { CategoryAffordabilityReview } from './CategoryAffordabilityReview';
 
 function localDateKey(date: Date): string {
@@ -83,7 +84,7 @@ export function AffordabilityPlanner() {
           </label>
           <label className="block">
             <span className="text-xs font-semibold text-on-surface-variant">Amount</span>
-            <input type="number" min="0" step="100" value={purchaseAmount} onChange={event => setPurchaseAmount(event.target.value)} placeholder="0" className="mt-1.5 w-full min-h-12 rounded-xl border border-outline-variant/30 bg-surface-container px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/60" />
+            <CurrencyInput value={purchaseAmount} onValueChange={setPurchaseAmount} placeholder="0.00" className="mt-1.5 w-full min-h-12 rounded-xl border border-outline-variant/30 bg-surface-container px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/60" />
           </label>
         </div>
 
@@ -120,10 +121,10 @@ export function AffordabilityPlanner() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 min-[390px]:grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-surface-container border border-outline-variant/20 p-4"><span className="text-xs text-on-surface-variant">Safe to spend</span><strong className="mt-1 block text-xl font-numeric text-on-surface">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>
-            <div className="rounded-2xl bg-surface-container border border-outline-variant/20 p-4"><span className="text-xs text-on-surface-variant">Purchase</span><strong className="mt-1 block text-xl font-numeric text-on-surface">{formatCurrency(result.projection.purchaseAmount)}</strong></div>
-            <div className="rounded-2xl bg-surface-container border border-outline-variant/20 p-4"><span className="text-xs text-on-surface-variant">Against safe limit</span><strong className={`mt-1 block text-xl font-numeric ${safeDifference <= 0 ? 'text-emerald-500' : 'text-amber-500'}`}>{safeDifference <= 0 ? `${formatCurrency(Math.abs(safeDifference))} spare` : `${formatCurrency(safeDifference)} over`}</strong></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="min-w-0 overflow-hidden rounded-2xl bg-surface-container border border-outline-variant/20 p-3.5 sm:p-4"><span className="text-xs text-on-surface-variant">Safe to spend</span><strong className="mt-1 block text-lg min-[390px]:text-xl font-numeric tabular-nums whitespace-nowrap text-on-surface">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>
+            <div className="min-w-0 overflow-hidden rounded-2xl bg-surface-container border border-outline-variant/20 p-3.5 sm:p-4"><span className="text-xs text-on-surface-variant">Purchase</span><strong className="mt-1 block text-lg min-[390px]:text-xl font-numeric tabular-nums whitespace-nowrap text-on-surface">{formatCurrency(result.projection.purchaseAmount)}</strong></div>
+            <div className="col-span-2 sm:col-span-1 min-w-0 rounded-2xl bg-surface-container border border-outline-variant/20 p-3.5 sm:p-4"><span className="text-xs text-on-surface-variant">Against safe limit</span><strong className={`mt-1 block text-lg min-[390px]:text-xl font-numeric tabular-nums break-words ${safeDifference <= 0 ? 'text-emerald-500' : 'text-amber-500'}`}>{safeDifference <= 0 ? `${formatCurrency(Math.abs(safeDifference))} spare` : `${formatCurrency(safeDifference)} over`}</strong></div>
           </div>
 
           <div className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -141,14 +142,14 @@ export function AffordabilityPlanner() {
               {[
                 ['Liquid cash now', result.projection.openingCash, '+'],
                 ['Expected income', result.projection.expectedIncome + result.projection.otherCashInflows, '+'],
-                ['Known projected expenses (scheduled)', result.projection.expectedExpenses, '-'],
+                ['Known scheduled expenses', result.projection.expectedExpenses, '-'],
                 ['Scheduled savings', result.projection.scheduledSavings, '-'],
                 ['Additional savings target to protect', additionalSavingsTarget, '-'],
                 ['Unexpected-spending buffer', result.projection.contingencyBuffer, '-'],
                 ['Protected cash reserve', result.projection.protectedCashReserve, '-'],
-              ].map(([label, raw, sign]) => <div key={String(label)} className="flex items-center justify-between gap-4 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="text-on-surface-variant">{label}</span><span className="font-numeric font-semibold text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
+              ].map(([label, raw, sign]) => <div key={String(label)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="min-w-0 text-on-surface-variant leading-snug">{label}</span><span className="whitespace-nowrap font-numeric font-semibold tabular-nums text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
               <div className="px-4 py-3 border-t border-outline-variant/15 bg-surface-container-low text-xs leading-relaxed text-on-surface-variant">
-                <p><strong className="text-on-surface">Known projected expenses</strong> are concrete future obligations CoinBuddy can see, such as scheduled recurring entries, card dues and EMIs. Category behavior labels describe how spending is treated; they do not create a forecast amount by themselves.</p>
+                <p><strong className="text-on-surface">Known projected expenses</strong> are concrete future obligations CoinBuddy can see, such as scheduled recurring entries, card dues and EMIs. Category behavior labels describe how spending is treated; they do not create a forecast amount by themselves. Recurring card charges count as expenses, while transfers into investments/savings appear under Scheduled savings.</p>
                 {result.projection.expectedExpenses === 0 && <p className="mt-2">No concrete expense is currently scheduled in this horizon. Spending already logged in your current cycle is already reflected in today&apos;s balances and is not counted a second time.</p>}
               </div>
               <div className="flex items-center justify-between gap-4 px-4 py-4 bg-primary/10"><strong className="text-on-surface">Safe purchase capacity</strong><strong className="font-numeric text-primary text-lg">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>

@@ -4,9 +4,10 @@ import { X, CreditCard, Sparkles, CheckCircle2, Flame, Trophy, ArrowRight, Alert
 import { motion, AnimatePresence } from 'motion/react';
 import { calculateEmiSplit } from '../utils/emi';
 import { UpdateLoanRateModal } from './UpdateLoanRateModal';
+import { CurrencyInput } from './CurrencyInput';
 
 export function PayCardModal() {
-  const { payCardModalState, setPayCardModalState, creditCards, accounts, payCreditCard, payLiability, formatCurrency } = useAppContext();
+  const { payCardModalState, setPayCardModalState, creditCards, accounts, payCreditCard, payLiability, formatCurrency, getCurrencySymbol } = useAppContext();
   const [amount, setAmount] = useState('');
   const [error, setError] = useState<{ message: string; id: number } | null>(null);
   const showError = (message: string) => setError({ message, id: Date.now() });
@@ -222,7 +223,7 @@ export function PayCardModal() {
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-on-surface-variant font-medium">Remaining Balance</span>
                   <span className={`font-bold font-numeric ${celebration.newBalance === 0 ? 'text-emerald-500 font-black' : 'text-on-surface'}`}>
-                    {celebration.newBalance === 0 ? '₹0.00 (DEBT FREE)' : formatCurrency(celebration.newBalance)}
+                    {celebration.newBalance === 0 ? `${formatCurrency(0)} (DEBT FREE)` : formatCurrency(celebration.newBalance)}
                   </span>
                 </div>
               </div>
@@ -324,7 +325,7 @@ export function PayCardModal() {
                 <span className="text-on-surface-variant font-numeric">{formatCurrency(balance)}</span>
                 <ArrowRight className="w-4 h-4 text-emerald-500" />
                 <span className={`font-bold font-numeric ${newBalance === 0 ? 'text-emerald-500' : 'text-on-surface'}`}>
-                  {newBalance === 0 ? '₹0.00 (DEBT FREE! 🎉)' : formatCurrency(newBalance)}
+                  {newBalance === 0 ? `${formatCurrency(0)} (DEBT FREE! 🎉)` : formatCurrency(newBalance)}
                 </span>
               </div>
               
@@ -387,13 +388,11 @@ export function PayCardModal() {
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant font-numeric">
                 {formatCurrency(0).replace(/[0-9.,]/g, '').trim()}
               </span>
-              <input 
-                type="number"
-                step="0.01"
+              <CurrencyInput
                 required
                 value={amount}
-                onChange={(e) => {
-                  updateSplitForAmount(e.target.value, paymentMode);
+                onValueChange={(value) => {
+                  updateSplitForAmount(value, paymentMode);
                 }}
                 className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 pl-10 pr-4 text-on-surface font-numeric focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-lg font-bold"
                 placeholder="0.00"
@@ -464,14 +463,11 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-500 font-numeric">
-                      ₹
+                      {getCurrencySymbol()}
                     </span>
-                    <input
-                      type="number"
-                      step="0.01"
+                    <CurrencyInput
                       value={principalAmount}
-                      onChange={(e) => {
-                        const newP = e.target.value;
+                      onValueChange={(newP) => {
                         setPrincipalAmount(newP);
                         const p = parseFloat(newP) || 0;
                         const i = parseFloat(interestAmount) || 0;
@@ -490,14 +486,11 @@ export function PayCardModal() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-rose-400 font-numeric">
-                      ₹
+                      {getCurrencySymbol()}
                     </span>
-                    <input
-                      type="number"
-                      step="0.01"
+                    <CurrencyInput
                       value={interestAmount}
-                      onChange={(e) => {
-                        const newI = e.target.value;
+                      onValueChange={(newI) => {
                         setInterestAmount(newI);
                         const i = parseFloat(newI) || 0;
                         const p = parseFloat(principalAmount) || 0;

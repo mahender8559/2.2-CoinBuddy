@@ -237,6 +237,7 @@ function applyProjectedTransaction(
   }
 
   if (type === 'EXPENSE') {
+    const source = fromId ? accountsById.get(fromId) : undefined;
     if (fromLiquid) {
       const destination = toId ? accountsById.get(toId) : undefined;
       if (destination?.type === 'liability' && toId) {
@@ -244,6 +245,20 @@ function applyProjectedTransaction(
         accumulator.expensesByClass.COMMITTED += amount;
         recordLiabilityPayment(accumulator, toId, projectedTransactionDate(transaction), amount);
       } else if (classification === 'SAVINGS') {
+        accumulator.scheduledSavings += amount;
+      } else {
+        accumulator.expectedExpenses += amount;
+        accumulator.expensesByClass[classification] += amount;
+      }
+    } else if (
+      source?.type === 'liability' &&
+      (transaction.id.startsWith('projection:') ||
+        (transaction.is_verified === 0 && Boolean(transaction.recurringRuleId || transaction.isRecurring)))
+    ) {
+      // A recurring/pending card-financed purchase is still known consumption even though
+      // cash leaves later when the card is repaid. Do not record it as a
+      // liability payment: this occurrence increases the obligation.
+      if (classification === 'SAVINGS') {
         accumulator.scheduledSavings += amount;
       } else {
         accumulator.expectedExpenses += amount;

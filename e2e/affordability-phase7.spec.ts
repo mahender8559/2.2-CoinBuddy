@@ -48,9 +48,9 @@ test('clean-ledger affordability setup survives reload and does not silently dem
   await page.reload();
   await openTab(page, 'Insights');
   await page.getByRole('button', { name: 'Safety preferences' }).click();
-  await expect(page.getByLabel('Monthly savings target')).toHaveValue('10000');
-  await expect(page.getByLabel('Protected cash reserve')).toHaveValue('20000');
-  await expect(page.getByLabel('Fixed contingency amount')).toHaveValue('5000');
+  await expect(page.getByLabel('Monthly savings target')).toHaveValue('10,000.00');
+  await expect(page.getByLabel('Protected cash reserve')).toHaveValue('20,000.00');
+  await expect(page.getByLabel('Fixed contingency amount')).toHaveValue('5,000.00');
   await page.getByRole('button', { name: 'Close safety preferences' }).click();
 
   await page.getByRole('button', { name: 'Review categories' }).click();
@@ -87,7 +87,7 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   const addButton = page.getByRole('button', { name: /add transaction/i }).first();
   await addButton.click();
   await page.getByRole('button', { name: 'Transfer', exact: true }).first().click();
-  await page.locator('input[type="number"]').first().fill('999999');
+  await page.getByLabel('Transaction amount').fill('999999');
   await page.locator('label').filter({ has: page.locator('input[name="fromAccount"][value="acc_sbi_01"]') }).click();
   await page.locator('label').filter({ has: page.locator('input[name="toAccount"][value="acc_cash_01"]') }).click();
   await page.getByRole('button', { name: 'Toggle recurring transaction' }).click();
@@ -101,5 +101,22 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   await expect(page.getByRole('alert')).toContainText(/Insufficient funds in SBI/i);
   await expect(pending).toBeVisible();
 
+  expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
+});
+
+
+test('money inputs use selected-currency grouping and affordability cards do not overflow mobile', async ({ page }) => {
+  const errors = await prepare(page, false);
+  await openTab(page, 'Insights');
+
+  const amount = page.getByLabel('Amount', { exact: true });
+  await amount.fill('100000');
+  await expect(amount).toHaveValue('1,00,000');
+  await page.getByRole('button', { name: 'Check affordability' }).click();
+  await expect(amount).toHaveValue('1,00,000.00');
+
+  await assertNoDocumentOverflow(page);
+  const summaryCards = page.getByText('Safe to spend', { exact: true }).locator('..');
+  await expect(summaryCards).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });

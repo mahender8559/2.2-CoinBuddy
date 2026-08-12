@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import type { RecurringRule } from '../types';
+import { CurrencyInput } from './CurrencyInput';
 
 export function RecurringPayments() {
   const { recurringRules, events, formatCurrency, updateRecurringRule, deleteRecurringRule, skipRecurringRule } = useAppContext();
@@ -106,7 +107,7 @@ export function RecurringPayments() {
               <input value={editing.title} onChange={event => setEditing({ ...editing, title: event.target.value })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
             </label>
             <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Amount
-              <input type="number" min="0.01" step="0.01" value={editing.amount} onChange={event => setEditing({ ...editing, amount: Number(event.target.value) })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
+              <CurrencyInput value={editing.amount || ''} onValueChange={value => setEditing({ ...editing, amount: Number(value) || 0 })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Frequency

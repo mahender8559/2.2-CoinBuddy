@@ -65,6 +65,18 @@ describe('projectAffordability', () => {
     expect(result.expensesByClass.COMMITTED).toBe(20000);
   });
 
+  it('projects recurring expenses charged to a credit-card liability', () => {
+    const cardAccount = liability('cc', 5000, { group: 'Credit Card' });
+    const result = run({
+      accounts: [bank('bank', 40000), cardAccount],
+      recurringRules: [
+        rule({ id: 'subscription-card', amount: 999, transactionType: 'EXPENSE', account: 'cc', fromAccountId: 'cc', category: 'general', nextDueDate: '2026-09-05' }),
+      ],
+    });
+    expect(result.expectedExpenses).toBe(999);
+    expect(result.expensesByClass.NORMAL).toBe(999);
+  });
+
   it('does not treat transfers between liquid accounts as spending', () => {
     const result = run({
       accounts: [bank('bank', 40000), cash('wallet', 5000)],

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { generateLoanSchedule, LoanScheduleRow } from '../utils/emi';
 import { UpdateLoanRateModal } from './UpdateLoanRateModal';
+import { CurrencyInput } from './CurrencyInput';
 import { 
   Calculator, PieChart, Landmark, Calendar, Percent, 
   ChevronDown, ChevronUp, Clock, Info, ShieldAlert, Sparkles, Layers, RefreshCw
@@ -196,12 +197,10 @@ export function LoanAmortizationExplorer() {
           <label className="block text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1 flex items-center gap-1">
             <Landmark className="w-3.5 h-3.5 text-primary" /> Principal ()
           </label>
-          <input
-            type="number"
-            step="1000"
+          <CurrencyInput
             value={principal}
-            onChange={(e) => {
-              setPrincipal(e.target.value);
+            onValueChange={(value) => {
+              setPrincipal(value);
               setSelectedAccountId('custom');
             }}
             className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 px-3 text-sm font-bold font-numeric text-on-surface focus:outline-none focus:border-primary"

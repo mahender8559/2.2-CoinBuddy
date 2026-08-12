@@ -3,6 +3,7 @@ import { ShieldCheck, X } from 'lucide-react';
 import type { AffordabilitySettings as AffordabilitySettingsType } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
+import { CurrencyInput } from './CurrencyInput';
 
 interface Props {
   onClose: () => void;
@@ -41,13 +42,13 @@ export function AffordabilitySettings({ onClose }: Props) {
           <label className="block">
             <span className="text-sm font-semibold text-on-surface">Monthly savings target</span>
             <span className="block text-xs text-on-surface-variant mt-1">Money you want the planner to protect for savings each financial cycle.</span>
-            <input type="number" min="0" step="100" value={draft.monthlySavingsTarget || ''} onChange={event => update('monthlySavingsTarget', Math.max(0, Number(event.target.value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0" />
+            <CurrencyInput value={draft.monthlySavingsTarget || ''} onValueChange={value => update('monthlySavingsTarget', Math.max(0, Number(value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0.00" />
           </label>
 
           <label className="block">
             <span className="text-sm font-semibold text-on-surface">Protected cash reserve</span>
             <span className="block text-xs text-on-surface-variant mt-1">A liquid-cash floor CoinBuddy should never call safe to spend. It is not a separate emergency-fund account.</span>
-            <input type="number" min="0" step="100" value={draft.protectedCashReserve || ''} onChange={event => update('protectedCashReserve', Math.max(0, Number(event.target.value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0" />
+            <CurrencyInput value={draft.protectedCashReserve || ''} onValueChange={value => update('protectedCashReserve', Math.max(0, Number(value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0.00" />
           </label>
 
           <fieldset>
@@ -65,7 +66,7 @@ export function AffordabilitySettings({ onClose }: Props) {
           {draft.contingencyMode === 'FIXED' && (
             <label className="block">
               <span className="text-sm font-semibold text-on-surface">Fixed contingency amount</span>
-              <input type="number" min="0" step="100" value={draft.fixedContingencyAmount || ''} onChange={event => update('fixedContingencyAmount', Math.max(0, Number(event.target.value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0" />
+              <CurrencyInput value={draft.fixedContingencyAmount || ''} onValueChange={value => update('fixedContingencyAmount', Math.max(0, Number(value) || 0))} className="mt-2 w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/60" placeholder="0.00" />
             </label>
           )}
 

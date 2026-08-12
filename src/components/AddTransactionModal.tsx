@@ -1,5 +1,6 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { CurrencyInput } from './CurrencyInput';
 import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { icons } from '../icons';
 import type { Transaction } from '../types';
@@ -323,15 +324,11 @@ export function AddTransactionModal() {
             <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">AMOUNT</span>
             <div className="flex items-center justify-center gap-2 sm:gap-3 w-full px-2">
               <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary shrink-0">{getCurrencySymbol()}</span>
-              <input 
-                type="number"
-                step="0.01"
+              <CurrencyInput
+                aria-label="Transaction amount"
                 required
                 value={amount}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setAmount(isNaN(val) ? '' : e.target.value);
-                }}
+                onValueChange={setAmount}
                 className={`bg-transparent font-numeric font-bold text-on-surface focus:outline-none min-w-[140px] max-w-[280px] sm:max-w-[360px] w-full text-center placeholder:text-on-surface-variant/30 transition-all ${
                   amount.length > 12 
                     ? 'text-2xl sm:text-3xl' 

@@ -6,6 +6,7 @@ import { icons } from '../icons';
 import { Cards } from './Cards';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { getCategorySpend } from '../utils/budget';
+import { CurrencyInput } from './CurrencyInput';
 
 
 export function ManageFinances() {
@@ -390,10 +391,9 @@ export function ManageFinances() {
                   <label className="block text-sm font-semibold text-on-surface-variant mb-1">{activeTab === 'Savings Goals' ? 'Target Amount' : 'Monthly Budget'}</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">{getCurrencySymbol()}</span>
-                    <input 
-                      type="number" 
+                    <CurrencyInput
                       value={editBudget || ''}
-                      onChange={e => setEditBudget(Number(e.target.value))}
+                      onValueChange={value => setEditBudget(Number(value) || 0)}
                       className="w-full bg-surface-container border border-outline-variant/30 rounded-xl pl-8 pr-4 py-3 text-on-surface font-numeric focus:outline-none focus:border-primary/50"
                       placeholder="0.00"
                     />
