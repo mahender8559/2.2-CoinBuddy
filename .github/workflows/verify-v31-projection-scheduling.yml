@@ -34,6 +34,16 @@ jobs:
           path = Path('e2e/affordability-phase7.spec.ts')
           text = path.read_text()
           text = text.replace("page.getByRole('button', { name: 'Transfer', exact: true }).click()", "page.getByRole('button', { name: 'Transfer', exact: true }).first().click()", 1)
+          text = text.replace(
+              "await page.locator('input[name=\"fromAccount\"][value=\"acc_sbi_01\"]').check({ force: true });",
+              "await page.locator('label').filter({ has: page.locator('input[name=\"fromAccount\"][value=\"acc_sbi_01\"]') }).click();",
+              1,
+          )
+          text = text.replace(
+              "await page.locator('input[name=\"toAccount\"][value=\"acc_cash_01\"]').check({ force: true });",
+              "await page.locator('label').filter({ has: page.locator('input[name=\"toAccount\"][value=\"acc_cash_01\"]') }).click();",
+              1,
+          )
           path.write_text(text)
           PY
 
