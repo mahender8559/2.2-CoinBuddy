@@ -40,6 +40,8 @@ export interface Account {
   gracePeriodDays?: number;
 }
 
+export type AffordabilityClass = 'COMMITTED' | 'NORMAL' | 'FLEXIBLE' | 'IRREGULAR' | 'SAVINGS';
+
 export type Category = {
   id: string;
   name: string;
@@ -48,7 +50,10 @@ export type Category = {
   isRollover?: boolean;
   rolloverAccountId?: string;
   tags?: string[];
+  /** @deprecated Legacy presentation grouping kept only for old backups/UI compatibility. */
   group?: 'Essential' | 'Leisure' | 'Savings';
+  /** Financial behavior used by planning/projection features. */
+  affordabilityClass?: AffordabilityClass;
   type?: 'expense' | 'income';
 };
 

@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS categories (
   is_rollover INTEGER NOT NULL DEFAULT 0,
   rollover_account_id TEXT,
   tags_json TEXT,
-  group_name TEXT
+  group_name TEXT,
+  affordability_class TEXT CHECK(affordability_class IN ('COMMITTED', 'NORMAL', 'FLEXIBLE', 'IRREGULAR', 'SAVINGS'))
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -311,6 +312,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE categories ADD COLUMN rollover_account_id TEXT;`,
   `ALTER TABLE recurring_rules ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
   `ALTER TABLE recurring_rules ADD COLUMN anchor_day INTEGER;`,
+  `ALTER TABLE categories ADD COLUMN affordability_class TEXT;`,
+  `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -385,6 +388,7 @@ export interface CategoryRow {
   icon_name?: string | null;
   is_rollover: number;
   rollover_account_id?: string | null;
+  affordability_class?: string | null;
 }
 
 export interface TransactionRow {

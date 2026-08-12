@@ -49,6 +49,7 @@ import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/pas
 import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
 import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
+import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -1278,7 +1279,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
-    const newCategory = { ...category, id: crypto.randomUUID() };
+    const newCategory: Category = ensureCategoryAffordabilityClass({ ...category, id: crypto.randomUUID() });
     setCategories(prev => [newCategory, ...prev]);
     if (dbDriver) {
       persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
@@ -1286,9 +1287,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   };
 
   const updateCategory = (id: string, category: Omit<Category, 'id'>) => {
-    setCategories(cats => cats.map(c => c.id === id ? { ...c, ...category } : c));
+    const normalizedCategory: Category = ensureCategoryAffordabilityClass({ ...category, id });
+    setCategories(cats => cats.map(c => c.id === id ? { ...c, ...normalizedCategory } : c));
     if (dbDriver) {
-      persistDbAction(() => updateCategoryRow(dbDriver, id, category as Category));
+      persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
     }
   };
 
