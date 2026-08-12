@@ -45,19 +45,26 @@ test('Insights removes fake clickable savings advice and duplicate security badg
 });
 
 test('first-use tour goes directly from onboarding to UI spotlight without writing backup password', async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.goto('/');
+  await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
     localStorage.removeItem('backupConfig');
+    localStorage.removeItem('coinbuddy_backup_config');
   });
-  await page.goto('/');
-  const getStarted = page.getByRole('button', { name: /Get Started/i });
-  if (await getStarted.isVisible()) await getStarted.click();
-  const next = page.getByRole('button', { name: /Next/i });
-  while (await next.isVisible()) await next.click();
-  const finish = page.getByRole('button', { name: /Finish/i });
-  if (await finish.isVisible()) await finish.click();
-  await expect(page.getByText(/Track your income, expenses, and transfers/i)).toBeVisible();
-  const legacyBackup = await page.evaluate(() => localStorage.getItem('backupConfig'));
-  expect(legacyBackup).toBeNull();
+  await page.reload();
+
+  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: 'Next' }).click();
+  }
+  await page.getByRole('button', { name: 'Get Started' }).click();
+  await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
+  await expect(page.getByText(/Dashboard, Activity, or Insights to log income, expenses, or transfers/i)).toBeVisible();
+  const legacyBackup = await page.evaluate(() => ({
+    old: localStorage.getItem('backupConfig'),
+    current: localStorage.getItem('coinbuddy_backup_config'),
+  }));
+  expect(legacyBackup.old).toBeNull();
+  expect(legacyBackup.current).toBeNull();
 });
