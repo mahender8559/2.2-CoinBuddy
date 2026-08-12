@@ -1,0 +1,64 @@
+name: Verify cross-page clutter cleanup v3
+
+on:
+  push:
+    branches:
+      - feature/affordability-planner
+    paths:
+      - ci/run-cross-page-clutter-v3.txt
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/affordability-planner
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply product cleanup
+        run: |
+          python3 scripts/apply_cross_page_clutter_cleanup.py
+          python3 scripts/fix_cross_page_clutter_patch.py
+          python3 scripts/fix_cross_page_clutter_patch_v2.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: TypeScript
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Production and PWA build
+        run: npm run build
+      - name: Desktop and mobile browser regression
+        run: npm run test:e2e
+      - name: Clutter hygiene checks
+        shell: bash
+        run: |
+          if grep -R -n 'Updated just now\|Enable Rollover / Sinking Fund\|Where should leftover funds go?\|Local Storage Encryption Active\|Data stored securely on this device\|Savings Potential\|Review Recent Purchases\|Setting aside.*week could fund\|Before Your Interactive Tour' src/components; then
+            echo 'Found retired, fake, or misleading cross-page UI.'
+            exit 1
+          fi
+          if grep -n 'title="Add Category/Goal"\|setEditRolloverAccountId\|editRolloverAccountId' src/App.tsx src/components/ManageFinances.tsx; then
+            echo 'Found stale Manage add/rollover behavior.'
+            exit 1
+          fi
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add src e2e/ui-smoke.spec.ts e2e/cross-page-clutter.spec.ts
+          if git diff --cached --quiet; then
+            echo "No verified product changes to commit"
+            exit 0
+          fi
+          git commit -m "Remove cross-page clutter and stale controls"
+          git push origin HEAD:feature/affordability-planner
