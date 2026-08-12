@@ -154,6 +154,122 @@ CREATE TABLE IF NOT EXISTS recurring_rules (
   FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL
 );
 
+-- v3.4 Shared Finances -------------------------------------------------------
+-- People are counterparties/participants, never ledger accounts. Exactly one active
+-- self person is enforced by the partial unique index below.
+CREATE TABLE IF NOT EXISTS people (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  relationship TEXT,
+  is_self INTEGER NOT NULL DEFAULT 0 CHECK(is_self IN (0, 1)),
+  is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_self_person
+  ON people(is_self) WHERE is_self = 1 AND is_archived = 0;
+
+-- A shared obligation describes the family/household economic bill. It does NOT
+-- move money and therefore cannot accidentally alter account balances.
+CREATE TABLE IF NOT EXISTS shared_obligations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('EXPENSE', 'LOAN_PAYMENT')),
+  total_amount REAL NOT NULL CHECK(total_amount > 0),
+  due_date TEXT,
+  transaction_id TEXT,
+  liability_account_id TEXT,
+  recurring_rule_id TEXT,
+  settlement_mode TEXT NOT NULL DEFAULT 'TRACK' CHECK(settlement_mode IN ('TRACK', 'IGNORE')),
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN', 'SETTLED', 'CANCELLED')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+  FOREIGN KEY (liability_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
+  FOREIGN KEY (recurring_rule_id) REFERENCES recurring_rules(id) ON DELETE SET NULL
+);
+
+-- Responsibility is economic ownership of the cost, independent of who paid it.
+CREATE TABLE IF NOT EXISTS shared_responsibilities (
+  id TEXT PRIMARY KEY,
+  obligation_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount > 0),
+  FOREIGN KEY (obligation_id) REFERENCES shared_obligations(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  UNIQUE(obligation_id, person_id)
+);
+
+-- Funding records who actually satisfied the bill. EXTERNAL entries deliberately
+-- have no transaction_id and therefore never touch tracked cash.
+CREATE TABLE IF NOT EXISTS shared_payments (
+  id TEXT PRIMARY KEY,
+  obligation_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  transaction_id TEXT,
+  amount REAL NOT NULL CHECK(amount > 0),
+  source TEXT NOT NULL CHECK(source IN ('TRACKED', 'EXTERNAL')),
+  paid_at TEXT NOT NULL,
+  FOREIGN KEY (obligation_id) REFERENCES shared_obligations(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+  CHECK((source = 'EXTERNAL' AND transaction_id IS NULL) OR source = 'TRACKED')
+);
+
+-- Settlements are reimbursements between people and are intentionally separate
+-- from income/expense classification. A linked transaction is optional when the
+-- money settled outside the user's tracked accounts.
+CREATE TABLE IF NOT EXISTS shared_settlements (
+  id TEXT PRIMARY KEY,
+  obligation_id TEXT,
+  from_person_id TEXT NOT NULL,
+  to_person_id TEXT NOT NULL,
+  transaction_id TEXT,
+  amount REAL NOT NULL CHECK(amount > 0),
+  settled_at TEXT NOT NULL,
+  FOREIGN KEY (obligation_id) REFERENCES shared_obligations(id) ON DELETE SET NULL,
+  FOREIGN KEY (from_person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  FOREIGN KEY (to_person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+  CHECK(from_person_id <> to_person_id)
+);
+
+-- Loan sharing keeps the legal/full liability intact while separately describing
+-- how much belongs in the user's personal net-worth exposure.
+CREATE TABLE IF NOT EXISTS loan_sharing_rules (
+  account_id TEXT PRIMARY KEY,
+  personal_responsibility_percent REAL NOT NULL DEFAULT 100 CHECK(personal_responsibility_percent BETWEEN 0 AND 100),
+  is_shared INTEGER NOT NULL DEFAULT 0 CHECK(is_shared IN (0, 1)),
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- EMI contribution responsibility can differ from legal/economic liability share.
+CREATE TABLE IF NOT EXISTS loan_contribution_rules (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('PERCENT', 'FIXED')),
+  value REAL NOT NULL CHECK(value >= 0),
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  UNIQUE(account_id, person_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_responsibility_obligation ON shared_responsibilities(obligation_id);
+CREATE INDEX IF NOT EXISTS idx_shared_payment_obligation ON shared_payments(obligation_id);
+CREATE INDEX IF NOT EXISTS idx_shared_settlement_people ON shared_settlements(from_person_id, to_person_id);
+CREATE INDEX IF NOT EXISTS idx_shared_obligation_due ON shared_obligations(status, due_date);
+
+-- Central derived view: all totals are calculated once from normalized rows.
+CREATE VIEW IF NOT EXISTS shared_obligation_summary_view AS
+SELECT
+  o.id, o.title, o.kind, o.total_amount, o.due_date, o.transaction_id,
+  o.liability_account_id, o.recurring_rule_id, o.settlement_mode, o.status, o.created_at,
+  COALESCE((SELECT SUM(r.amount) FROM shared_responsibilities r WHERE r.obligation_id = o.id), 0) AS responsibility_total,
+  COALESCE((SELECT SUM(p.amount) FROM shared_payments p WHERE p.obligation_id = o.id), 0) AS funded_total,
+  COALESCE((SELECT SUM(p.amount) FROM shared_payments p WHERE p.obligation_id = o.id AND p.source = 'TRACKED'), 0) AS tracked_cash_paid,
+  COALESCE((SELECT SUM(p.amount) FROM shared_payments p WHERE p.obligation_id = o.id AND p.source = 'EXTERNAL'), 0) AS external_paid
+FROM shared_obligations o;
+
 -- 5. Centralized Computed Account Balances View
 CREATE VIEW IF NOT EXISTS account_balances_view AS
 SELECT 

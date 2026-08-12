@@ -155,6 +155,79 @@ export type Transaction = {
   notes?: string;
 };
 
+export interface Person {
+  id: string;
+  name: string;
+  relationship?: string;
+  isSelf: boolean;
+  isArchived: boolean;
+}
+
+export type SharedObligationKind = 'EXPENSE' | 'LOAN_PAYMENT';
+export type SharedSettlementMode = 'TRACK' | 'IGNORE';
+export type SharedObligationStatus = 'OPEN' | 'SETTLED' | 'CANCELLED';
+
+/** Household/family obligation. This is not itself a cash movement. */
+export interface SharedObligation {
+  id: string;
+  title: string;
+  kind: SharedObligationKind;
+  totalAmount: number;
+  dueDate?: string;
+  transactionId?: string;
+  liabilityAccountId?: string;
+  recurringRuleId?: string;
+  settlementMode: SharedSettlementMode;
+  status: SharedObligationStatus;
+  createdAt: string;
+}
+
+/** Economic responsibility for an obligation, independent of who paid. */
+export interface SharedResponsibility {
+  id: string;
+  obligationId: string;
+  personId: string;
+  amount: number;
+}
+
+/** Funding of an obligation. EXTERNAL never changes a tracked CoinBuddy account. */
+export interface SharedPayment {
+  id: string;
+  obligationId: string;
+  personId: string;
+  transactionId?: string;
+  amount: number;
+  source: 'TRACKED' | 'EXTERNAL';
+  paidAt: string;
+}
+
+/** Reimbursement/settlement between people; separate from income/expense semantics. */
+export interface SharedSettlement {
+  id: string;
+  obligationId?: string;
+  fromPersonId: string;
+  toPersonId: string;
+  transactionId?: string;
+  amount: number;
+  settledAt: string;
+}
+
+/** One real liability can have a different personal exposure and EMI contribution share. */
+export interface LoanSharingRule {
+  accountId: string;
+  personalResponsibilityPercent: number;
+  isShared: boolean;
+}
+
+export interface LoanContributionRule {
+  id: string;
+  accountId: string;
+  personId: string;
+  mode: 'PERCENT' | 'FIXED';
+  value: number;
+  isActive: boolean;
+}
+
 export interface Event {
   id: string;
   name: string;
