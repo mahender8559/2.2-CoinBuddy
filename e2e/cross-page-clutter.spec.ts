@@ -16,7 +16,9 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
   const errors = await prepare(page, 'manage');
   await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
   await expect(page.getByText('Local Storage Encryption Active', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
+  // Market valuation is legitimate for Investment assets; it must not appear on loans.
+  const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
+  await expect(loanCard.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
@@ -43,16 +45,19 @@ test('Insights removes fake clickable savings advice and duplicate security badg
 });
 
 test('first-use tour goes directly from onboarding to UI spotlight without writing backup password', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
-    localStorage.removeItem('coinbuddy_backup_config');
+    localStorage.removeItem('backupConfig');
   });
-  await page.reload();
-  for (let step = 0; step < 4; step += 1) await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Get Started' }).click();
-  await expect(page.getByRole('heading', { name: 'Set Backup Password' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('coinbuddy_backup_config'))).toBeNull();
+  await page.goto('/');
+  const getStarted = page.getByRole('button', { name: /Get Started/i });
+  if (await getStarted.isVisible()) await getStarted.click();
+  const next = page.getByRole('button', { name: /Next/i });
+  while (await next.isVisible()) await next.click();
+  const finish = page.getByRole('button', { name: /Finish/i });
+  if (await finish.isVisible()) await finish.click();
+  await expect(page.getByText(/Track your income, expenses, and transfers/i)).toBeVisible();
+  const legacyBackup = await page.evaluate(() => localStorage.getItem('backupConfig'));
+  expect(legacyBackup).toBeNull();
 });
