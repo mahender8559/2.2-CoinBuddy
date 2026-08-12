@@ -43,7 +43,25 @@ jobs:
           new = "  await expect(page.getByText('V33 Goal', { exact: true })).toBeVisible();\n\n  await openTab(page, 'Dashboard');\n  await page.getByRole('button', { name: /add transaction/i }).first().click();"
           if old not in s:
               raise SystemExit('v3.3 Goal E2E navigation anchor not found')
-          p.write_text(s.replace(old, new, 1))
+          s = s.replace(old, new, 1)
+          old_assert = "  await expect(page.getByText('V33 Goal', { exact: true }).locator('..').locator('..')).toContainText(/1,000/);"
+          new_assert = "  await expect(page.getByRole('article', { name: 'Goal V33 Goal' })).toContainText(/1,000/);"
+          if old_assert not in s:
+              raise SystemExit('v3.3 Goal E2E assertion anchor not found')
+          p.write_text(s.replace(old_assert, new_assert, 1))
+
+          p = Path('src/components/GoalsPanel.tsx')
+          s = p.read_text()
+          old_card = '<div key={goal.id} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-5">'
+          new_card = '<article key={goal.id} aria-label={`Goal ${goal.name}`} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-5">'
+          if old_card not in s:
+              raise SystemExit('GoalsPanel card anchor not found')
+          s = s.replace(old_card, new_card, 1)
+          old_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </div>;'
+          new_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </article>;'
+          if old_close not in s:
+              raise SystemExit('GoalsPanel card close anchor not found')
+          p.write_text(s.replace(old_close, new_close, 1))
           PY
       - name: Install dependencies
         run: npm ci
