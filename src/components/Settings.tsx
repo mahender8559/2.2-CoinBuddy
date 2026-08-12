@@ -556,7 +556,7 @@ export function Settings() {
 
         <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface-container/60 border border-outline-variant/20 text-xs font-medium text-on-surface-variant shadow-xs">
           <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-          <span>Installed Build Version Date: <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
+          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.1</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
         </div>
 
         <p className="text-[10px] text-on-surface-variant text-center leading-relaxed opacity-60">
