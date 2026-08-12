@@ -1,0 +1,77 @@
+name: Verify v3.2 Goals and SIP
+
+on:
+  push:
+    branches:
+      - feature/affordability-planner
+    paths:
+      - ci/run-v32-goals-sip.txt
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/affordability-planner
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply v3.2 product changes
+        run: |
+          python3 scripts/apply_v32_goals_and_sip.py
+          python3 scripts/fix_v32_sip_safety_and_accessibility.py
+          python3 scripts/add_v32_e2e.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: TypeScript
+        run: npm run lint
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Production and PWA build
+        run: npm run build
+
+      - name: Browser regression
+        run: npm run test:e2e
+
+      - name: Verify v3.2 labels and retired fake goal tab
+        shell: bash
+        run: |
+          if grep -R -n -E 'V3\.[01]|v3\.[01]|"version": "3\.1\.0"' src package.json package-lock.json; then
+            echo 'Found a stale v3.0/v3.1 label.'
+            exit 1
+          fi
+          if grep -R -n 'Savings Goals' src; then
+            echo 'Found the retired Savings Goals UI label.'
+            exit 1
+          fi
+          grep -n '"version": "3.2.0"' package.json package-lock.json
+
+      - name: Commit verified v3.2 product changes
+        shell: bash
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add src e2e/affordability-phase7.spec.ts package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "No verified product changes to commit"
+            exit 0
+          fi
+          git commit -m "Add v3.2 Goals and investment SIP scheduling"
+          git push origin HEAD:feature/affordability-planner
