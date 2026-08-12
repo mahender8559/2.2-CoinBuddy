@@ -16,6 +16,7 @@ import { calculateFinancialRunway, projectDebtPayoff } from '../utils/metrics';
 import { buildSankeySplitLabel } from '../utils/sankeyLabels';
 import { recomputeAllAccountBalances } from '../utils/balanceManager';
 import { getCycleRange, shiftCycle } from '../utils/cycles';
+import { AffordabilityPlanner } from './AffordabilityPlanner';
 
 export function Insights() {
   const { 
@@ -50,7 +51,7 @@ export function Insights() {
     transactions.filter(t => {
       if (t.isOpeningBalance || t.is_verified === 0 || !isCashFlowTransaction(t) || t.type !== 'expense' || !isDateInCurrentCycle(t.date)) return false;
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
-      return catObj?.group !== 'Savings';
+      return catObj?.affordabilityClass !== 'SAVINGS' && catObj?.group !== 'Savings';
     }).forEach(tx => {
       totals[tx.category] = (totals[tx.category] || 0) + Math.abs(tx.amount);
       if (!titlesByCategory[tx.category]) {
@@ -367,6 +368,8 @@ const monthlyTrends = useMemo(() => {
           <span className="text-xs font-medium text-on-surface-variant">Data stored securely on this device</span>
         </div>
       </div>
+
+      <AffordabilityPlanner />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">

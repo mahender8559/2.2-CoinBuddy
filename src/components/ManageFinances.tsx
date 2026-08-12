@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { X, Trash2, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Edit2, ShieldCheck, Plus, Search, GraduationCap, Target, Heart, Plane, Code, Smartphone, Coffee, Music, Film, Book, Camera, Droplet, Sun, Moon, Map, Activity, Gift, Crosshair, MapPin } from 'lucide-react';
-import { Category } from '../types';
+import { AffordabilityClass, Category } from '../types';
 import { icons } from '../icons';
 import { Cards } from './Cards';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -30,6 +30,7 @@ export function ManageFinances() {
       setEditName('');
       setEditIcon('ShoppingBag');
       setEditType('expense');
+      setEditAffordabilityClass('NORMAL');
       setEditBudget(0);
       setEditIsRollover(false);
       setEditRolloverAccountId(undefined);
@@ -39,7 +40,6 @@ export function ManageFinances() {
     return () => document.removeEventListener('openAddCategoryModal', handleOpenModal);
   }, []);
   const [activeTab, setActiveTab] = useState<'Categories' | 'Savings Goals'>('Categories');
-  const [filterGroup, setFilterGroup] = useState<'All' | 'Essential' | 'Leisure'>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
@@ -47,22 +47,23 @@ export function ManageFinances() {
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState<keyof typeof icons>('ShoppingBag');
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
+  const [editAffordabilityClass, setEditAffordabilityClass] = useState<AffordabilityClass>('NORMAL');
   const [editBudget, setEditBudget] = useState(0);
   const [editIsRollover, setEditIsRollover] = useState(false);
   const [editRolloverAccountId, setEditRolloverAccountId] = useState<string | undefined>(undefined);
   const [filterType, setFilterType] = useState<'All' | 'expense' | 'income'>('All');
 
   const totalMonthlyBudget = categories
-    .filter(c => c.type !== 'income' && c.group !== 'Savings')
+    .filter(c => c.type !== 'income' && c.affordabilityClass !== 'SAVINGS' && c.group !== 'Savings')
     .reduce((acc, c) => acc + (c.budget || 0), 0);
 
   const displayedItems = categories.filter(c => {
+    const isSavings = c.affordabilityClass === 'SAVINGS' || c.group === 'Savings';
     if (activeTab === 'Categories') {
-      if (c.group === 'Savings') return false;
-      if (filterGroup !== 'All' && c.group !== filterGroup) return false;
+      if (isSavings) return false;
       if (filterType !== 'All' && (c.type || 'expense') !== filterType) return false;
     } else {
-      if (c.group !== 'Savings') return false;
+      if (!isSavings) return false;
     }
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -85,6 +86,7 @@ export function ManageFinances() {
     setEditName(c.name);
     setEditIcon(c.icon as keyof typeof icons);
     setEditType(c.type || 'expense');
+    setEditAffordabilityClass(c.affordabilityClass ?? (c.group === 'Savings' ? 'SAVINGS' : c.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL'));
     setEditBudget(c.budget || 0);
     setEditIsRollover(Boolean(c.isRollover));
     setEditRolloverAccountId(c.rolloverAccountId);
@@ -96,10 +98,12 @@ export function ManageFinances() {
     const categoryType = activeTab === 'Savings Goals' ? 'expense' : editType;
     const finalBudget = categoryType === 'income' ? 0 : editBudget;
     
+    const affordabilityClass: AffordabilityClass = activeTab === 'Savings Goals' ? 'SAVINGS' : categoryType === 'income' ? 'NORMAL' : editAffordabilityClass;
     if (editingId) {
-      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined });
+      const existing = categories.find(category => category.id === editingId);
+      updateCategory(editingId, { name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, tags: existing?.tags, affordabilityClass });
     } else {
-      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, group: activeTab === 'Savings Goals' ? 'Savings' : 'Essential' });
+      addCategory({ name: editName, icon: editIcon, type: categoryType, budget: finalBudget, isRollover: categoryType === 'expense' && editIsRollover, rolloverAccountId: editIsRollover ? editRolloverAccountId : undefined, affordabilityClass });
     }
     setIsEditingModalOpen(false);
     setEditRolloverAccountId(undefined);
@@ -140,6 +144,8 @@ export function ManageFinances() {
                 setEditingId(null);
                 setEditName('');
                 setEditIcon('ShoppingBag');
+                setEditType('expense');
+                setEditAffordabilityClass(activeTab === 'Savings Goals' ? 'SAVINGS' : 'NORMAL');
                 setEditBudget(0);
                 setEditIsRollover(false);
                 setEditRolloverAccountId(undefined);
@@ -203,17 +209,6 @@ export function ManageFinances() {
             ))}
           </div>
 
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-            {(['All', 'Essential', 'Leisure'] as const).map(group => (
-              <button
-                key={group}
-                onClick={() => setFilterGroup(group)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${filterGroup === group ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-variant'}`}
-              >
-                {group}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
@@ -242,6 +237,7 @@ export function ManageFinances() {
                       )}
                     </div>
                     {c.tags && c.tags.length > 0 && <p className="text-xs text-on-surface-variant font-mono">{c.tags.join(' ')}</p>}
+                    {c.type !== 'income' && <span className="inline-flex mt-1 text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full">{(c.affordabilityClass ?? (c.group === 'Savings' ? 'SAVINGS' : c.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL')).toLowerCase().replace('_', ' ')}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -291,6 +287,7 @@ export function ManageFinances() {
             setEditName('');
             setEditIcon('ShoppingBag');
             setEditType('expense');
+            setEditAffordabilityClass(activeTab === 'Savings Goals' ? 'SAVINGS' : 'NORMAL');
             setEditBudget(0);
             setEditIsRollover(false);
             setEditRolloverAccountId(undefined);
@@ -354,6 +351,20 @@ export function ManageFinances() {
                   placeholder={activeTab === 'Savings Goals' ? 'e.g. Vacation Fund' : (editType === 'income' ? 'e.g. Freelance Income' : 'e.g. Groceries')}
                 />
               </div>
+
+              {activeTab === 'Categories' && editType === 'expense' && (
+                <div>
+                  <label className="block text-sm font-semibold text-on-surface-variant mb-1">Financial behavior</label>
+                  <select value={editAffordabilityClass} onChange={event => setEditAffordabilityClass(event.target.value as AffordabilityClass)} className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary/50">
+                    <option value="COMMITTED">Committed — known obligations</option>
+                    <option value="NORMAL">Normal spending — regular living costs</option>
+                    <option value="FLEXIBLE">Flexible — can usually be reduced</option>
+                    <option value="IRREGULAR">Irregular — unpredictable / unexpected</option>
+                    <option value="SAVINGS">Savings — intentional saving or investing</option>
+                  </select>
+                  <p className="mt-1 text-xs text-on-surface-variant">Used by Can I Afford It? to distinguish commitments, flexible spending and unexpected costs.</p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-on-surface-variant mb-1">Icon</label>
