@@ -127,12 +127,19 @@ export function AffordabilityPlanner() {
             <div className="col-span-2 sm:col-span-1 min-w-0 rounded-2xl bg-surface-container border border-outline-variant/20 p-3.5 sm:p-4"><span className="text-xs text-on-surface-variant">Against safe limit</span><strong className={`mt-1 block text-lg min-[390px]:text-xl font-numeric tabular-nums break-words ${safeDifference <= 0 ? 'text-emerald-500' : 'text-amber-500'}`}>{safeDifference <= 0 ? `${formatCurrency(Math.abs(safeDifference))} spare` : `${formatCurrency(safeDifference)} over`}</strong></div>
           </div>
 
-          <div className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4">
+              <p className="text-sm font-semibold text-on-surface">Normal living-expense forecast</p>
+              <p className="text-xs text-on-surface-variant mt-1">{result.normalLivingSpending.estimateUsable ? `${formatCurrency(result.normalLivingSpending.medianNormalSpend)} typical · ${result.normalLivingSpending.confidence} confidence · ${result.normalLivingSpending.observedCycleCount} completed cycle${result.normalLivingSpending.observedCycleCount === 1 ? '' : 's'}` : 'Waiting for at least one completed financial cycle with usable activity'}</p>
+              {result.normalLivingSpending.estimateUsable && <p className="mt-2 text-xs text-on-surface-variant">CoinBuddy adds only the portion not already represented by scheduled NORMAL expenses.</p>}
+            </div>
+            <div className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-on-surface">Unexpected-spending estimate</p>
               <p className="text-xs text-on-surface-variant mt-1">{result.irregularSpending.contingencySource === 'FIXED' ? `Fixed buffer · ${formatCurrency(result.irregularSpending.recommendedBuffer)}` : result.irregularSpending.contingencySource === 'HISTORICAL' ? `${result.irregularSpending.confidence} confidence · ${result.irregularSpending.observedCycleCount} observed completed cycle${result.irregularSpending.observedCycleCount === 1 ? '' : 's'}` : 'Automatic estimate unavailable'}</p>
             </div>
             {result.irregularSpending.requiresCategoryReview ? <button type="button" onClick={() => setShowCategories(true)} className="text-sm font-bold text-primary">Review irregular categories</button> : result.irregularSpending.requiresUserInput ? <button type="button" onClick={() => setShowSettings(true)} className="text-sm font-bold text-primary">Use a fixed buffer</button> : null}
+            </div>
           </div>
 
           <button type="button" onClick={() => setShowBreakdown(value => !value)} className="w-full min-h-11 rounded-xl border border-outline-variant/30 text-sm font-semibold text-on-surface flex items-center justify-center gap-2 hover:bg-surface-container-high">{showBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />} How did we calculate this?</button>
@@ -142,14 +149,16 @@ export function AffordabilityPlanner() {
               {[
                 ['Liquid cash now', result.projection.openingCash, '+'],
                 ['Expected income', result.projection.expectedIncome + result.projection.otherCashInflows, '+'],
-                ['Known scheduled expenses', result.projection.expectedExpenses, '-'],
+                ['Known scheduled expenses', Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), '-'],
+                ['Credit-card outstanding still to cover', result.projection.creditCardOutstandingReserve, '-'],
+                ['Additional normal living expenses (history)', result.projection.normalLivingExpenseForecast, '-'],
                 ['Scheduled savings', result.projection.scheduledSavings, '-'],
                 ['Additional savings target to protect', additionalSavingsTarget, '-'],
                 ['Unexpected-spending buffer', result.projection.contingencyBuffer, '-'],
                 ['Protected cash reserve', result.projection.protectedCashReserve, '-'],
               ].map(([label, raw, sign]) => <div key={String(label)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="min-w-0 text-on-surface-variant leading-snug">{label}</span><span className="whitespace-nowrap font-numeric font-semibold tabular-nums text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
               <div className="px-4 py-3 border-t border-outline-variant/15 bg-surface-container-low text-xs leading-relaxed text-on-surface-variant">
-                <p><strong className="text-on-surface">Known projected expenses</strong> are concrete future obligations CoinBuddy can see, such as scheduled recurring entries, card dues and EMIs. Category behavior labels describe how spending is treated; they do not create a forecast amount by themselves. Recurring card charges count as expenses, while transfers into investments/savings appear under Scheduled savings.</p>
+                <p><strong className="text-on-surface">Known scheduled expenses</strong> are concrete future obligations CoinBuddy can see, such as recurring entries and EMIs. <strong className="text-on-surface">Credit-card outstanding</strong> separately protects today's revolving card debt even when it is still unbilled or the current due amount is zero. <strong className="text-on-surface">Normal living expenses</strong> use the median NORMAL-category spend from completed cycles and only add the portion not already scheduled.</p>
                 {result.projection.expectedExpenses === 0 && <p className="mt-2">No concrete expense is currently scheduled in this horizon. Spending already logged in your current cycle is already reflected in today&apos;s balances and is not counted a second time.</p>}
               </div>
               <div className="flex items-center justify-between gap-4 px-4 py-4 bg-primary/10"><strong className="text-on-surface">Safe purchase capacity</strong><strong className="font-numeric text-primary text-lg">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>

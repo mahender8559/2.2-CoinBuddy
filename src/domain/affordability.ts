@@ -18,6 +18,8 @@ export interface AffordabilityProjectionSettings {
   contingencyBuffer: number;
   /** Liquid cash the user does not want the planner to consume. */
   protectedCashReserve: number;
+  /** Additional NORMAL living-spend allowance inferred from completed history. */
+  normalLivingExpenseForecast?: number;
 }
 
 export interface AffordabilityInput {
@@ -45,6 +47,8 @@ export interface AffordabilityResult {
   plannedSavings: number;
   contingencyBuffer: number;
   protectedCashReserve: number;
+  normalLivingExpenseForecast: number;
+  creditCardOutstandingReserve: number;
   projectedCashBeforeSafety: number;
   safePurchaseCapacity: number;
   riskyPurchaseCapacity: number;
@@ -399,20 +403,27 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
 
   // A card record is only authoritative while its backing liability account
   // is active. This prevents stale/archived card metadata from reducing capacity.
+  // Credit cards are revolving debt, so affordability protects the full current
+  // outstanding balance even when the statement dueAmount is still zero/unbilled.
   const creditCards = (input.creditCards ?? []).filter(card => accountsById.has(card.id));
   const creditCardIds = new Set(creditCards.map(card => card.id));
+  let creditCardOutstandingReserve = 0;
   for (const card of creditCards) {
-    if (
-      nonNegative(card.dueAmount) > 0 &&
-      card.dueDate &&
-      dateKey(card.dueDate) <= input.endDate
-    ) {
-      // Explicit bank -> card payments are already counted as committed cash
-      // outflows. Only add the unpaid remainder of the card obligation.
-      const explicitPayments = totalLiabilityPayments(accumulator, card.id);
-      const remainingDue = Math.max(0, nonNegative(card.dueAmount) - explicitPayments);
-      addCommittedFallbackExpense(accumulator, remainingDue);
-    }
+    const backingAccount = accountsById.get(card.id);
+    const currentOutstanding = Math.max(
+      nonNegative(card.balance),
+      nonNegative(card.dueAmount),
+      nonNegative(backingAccount?.balance),
+    );
+    if (currentOutstanding <= 0) continue;
+
+    // Explicit bank -> card payments are already counted as committed cash
+    // outflows. Protect only the portion of today's card balance that is not
+    // already covered by those scheduled payments.
+    const explicitPayments = totalLiabilityPayments(accumulator, card.id);
+    const remainingOutstanding = Math.max(0, currentOutstanding - explicitPayments);
+    creditCardOutstandingReserve += remainingOutstanding;
+    addCommittedFallbackExpense(accumulator, remainingOutstanding);
   }
 
   projectLoanFallbacks(
@@ -427,11 +438,15 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
   const plannedSavings = Math.max(plannedSavingsTarget, accumulator.scheduledSavings);
   const contingencyBuffer = nonNegative(input.settings.contingencyBuffer);
   const protectedCashReserve = nonNegative(input.settings.protectedCashReserve);
+  const normalLivingExpenseForecast = nonNegative(input.settings.normalLivingExpenseForecast);
   const purchaseAmount = nonNegative(input.purchaseAmount);
 
   const projectedCashBeforeSafety = Math.max(
     0,
-    openingCash + accumulator.expectedIncome + accumulator.otherCashInflows - accumulator.expectedExpenses - plannedSavings,
+    openingCash + accumulator.expectedIncome + accumulator.otherCashInflows
+      - accumulator.expectedExpenses
+      - normalLivingExpenseForecast
+      - plannedSavings,
   );
   const safePurchaseCapacity = Math.max(0, projectedCashBeforeSafety - contingencyBuffer - protectedCashReserve);
   const riskyPurchaseCapacity = Math.max(0, projectedCashBeforeSafety - protectedCashReserve);
@@ -467,6 +482,8 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
     plannedSavings,
     contingencyBuffer,
     protectedCashReserve,
+    normalLivingExpenseForecast,
+    creditCardOutstandingReserve,
     projectedCashBeforeSafety,
     safePurchaseCapacity,
     riskyPurchaseCapacity,

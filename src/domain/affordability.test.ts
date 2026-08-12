@@ -112,12 +112,13 @@ describe('projectAffordability', () => {
     expect(result.expectedExpenses).toBe(5000);
   });
 
-  it('includes a credit-card due as a committed future cash obligation', () => {
+  it('protects the full credit-card outstanding even when only part is currently due', () => {
     const cardAccount = liability('cc', 12000, { group: 'Credit Card' });
     const card: CreditCardInfo = { id: 'cc', name: 'Card', balance: 12000, dueAmount: 8000, dueDate: '2026-09-10', billingCycleDay: 10, limit: 100000 };
     const result = run({ accounts: [bank('bank', 40000), cardAccount], creditCards: [card] });
-    expect(result.expectedExpenses).toBe(8000);
-    expect(result.expensesByClass.COMMITTED).toBe(8000);
+    expect(result.expectedExpenses).toBe(12000);
+    expect(result.creditCardOutstandingReserve).toBe(12000);
+    expect(result.expensesByClass.COMMITTED).toBe(12000);
   });
 
   it('uses loan EMI metadata as a fallback obligation when no explicit payment covers it', () => {

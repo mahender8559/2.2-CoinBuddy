@@ -63,6 +63,27 @@ describe('affordability Phase 3 de-duplication and ledger edge cases', () => {
     expect(result.expensesByClass.COMMITTED).toBe(12000);
   });
 
+  it('protects unbilled credit-card outstanding even when due amount is zero', () => {
+    const cc = liability('cc', 6000, { group: 'Credit Card' });
+    const card: CreditCardInfo = { id: 'cc', name: 'Card', balance: 6000, dueAmount: 0, dueDate: '2026-10-10', billingCycleDay: 10, limit: 100000 };
+    const result = run({ accounts: [bank('bank', 50000), cc], creditCards: [card] });
+    expect(result.creditCardOutstandingReserve).toBe(6000);
+    expect(result.expectedExpenses).toBe(6000);
+    expect(result.safePurchaseCapacity).toBe(44000);
+  });
+
+  it('subtracts scheduled card payments from the outstanding reserve instead of double counting them', () => {
+    const cc = liability('cc', 6000, { group: 'Credit Card' });
+    const card: CreditCardInfo = { id: 'cc', name: 'Card', balance: 6000, dueAmount: 0, dueDate: '2026-10-10', billingCycleDay: 10, limit: 100000 };
+    const result = run({
+      accounts: [bank('bank', 50000), cc],
+      creditCards: [card],
+      transactions: [tx({ id: 'scheduled-card-payment', amount: 2000, date: '2026-09-10T12:00:00', type: 'transfer', transaction_type: 'TRANSFER', fromAccountId: 'bank', toAccountId: 'cc' })],
+    });
+    expect(result.creditCardOutstandingReserve).toBe(4000);
+    expect(result.expectedExpenses).toBe(6000);
+  });
+
   it('tops up only the unpaid remainder when an explicit card payment is smaller than the amount due', () => {
     const cc = liability('cc', 12000, { group: 'Credit Card' });
     const card: CreditCardInfo = { id: 'cc', name: 'Card', balance: 12000, dueAmount: 12000, dueDate: '2026-09-10', billingCycleDay: 10, limit: 100000 };

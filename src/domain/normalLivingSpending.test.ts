@@ -5,8 +5,8 @@ import { estimateNormalLivingSpending } from './normalLivingSpending';
 const categories: Category[] = [
   { id: 'normal', name: 'Groceries', icon: 'ShoppingBag', type: 'expense', affordabilityClass: 'NORMAL' },
   { id: 'flex', name: 'Dining', icon: 'Utensils', type: 'expense', affordabilityClass: 'FLEXIBLE' },
-  { id: 'irregular', name: 'Repairs', icon: 'Wrench', type: 'expense', affordabilityClass: 'IRREGULAR' },
-  { id: 'income', name: 'Salary', icon: 'WalletCards', type: 'income', affordabilityClass: 'NORMAL' },
+  { id: 'irregular', name: 'Repairs', icon: 'Home', type: 'expense', affordabilityClass: 'IRREGULAR' },
+  { id: 'income', name: 'Salary', icon: 'Target', type: 'income', affordabilityClass: 'NORMAL' },
 ];
 
 function tx(id: string, date: string, amount: number, category: string, type: 'expense' | 'income' = 'expense'): Transaction {

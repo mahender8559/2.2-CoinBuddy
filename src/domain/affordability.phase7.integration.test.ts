@@ -73,19 +73,19 @@ describe('affordability phase 7 realistic integration', () => {
     expect(result.status).toBe('SAFE');
     expect(result.openingCash).toBe(125000); // investment value must not be treated as spendable cash
     expect(result.expectedIncome).toBe(80000);
-    expect(result.expectedExpenses).toBe(62000);
+    expect(result.expectedExpenses).toBe(72000);
     expect(result.scheduledSavings).toBe(10000);
     expect(result.plannedSavings).toBe(20000);
-    expect(result.expensesByClass.COMMITTED).toBe(60000);
+    expect(result.expensesByClass.COMMITTED).toBe(70000);
     expect(result.expensesByClass.NORMAL).toBe(2000);
     expect(result.projectedOccurrenceCount).toBe(8);
-    expect(result.projectedCashBeforeSafety).toBe(123000);
-    expect(result.safePurchaseCapacity).toBe(78000);
-    expect(result.riskyPurchaseCapacity).toBe(93000);
+    expect(result.projectedCashBeforeSafety).toBe(113000);
+    expect(result.safePurchaseCapacity).toBe(68000);
+    expect(result.riskyPurchaseCapacity).toBe(83000);
   });
 
   it('uses the contingency band for a risky purchase without touching the protected reserve', () => {
-    const result = plan(85000).projection;
+    const result = plan(75000).projection;
     expect(result.status).toBe('RISKY');
     expect(result.contingencyUsedByPurchase).toBe(7000);
     expect(result.remainingContingency).toBe(8000);
@@ -93,7 +93,7 @@ describe('affordability phase 7 realistic integration', () => {
   });
 
   it('rejects a purchase that would spend through the protected cash reserve', () => {
-    const result = plan(100000).projection;
+    const result = plan(90000).projection;
     expect(result.status).toBe('NOT_AFFORDABLE');
     expect(result.contingencyUsedByPurchase).toBe(15000);
     expect(result.remainingContingency).toBe(0);
