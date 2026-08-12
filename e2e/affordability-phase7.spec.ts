@@ -36,7 +36,7 @@ test('clean-ledger affordability setup survives reload and does not silently dem
     localStorage.setItem('coinbuddy_onboarding_seen', 'true');
     localStorage.setItem('hasCompletedButtonTour', 'true');
   });
-  await page.reload();
+  await page.goto('/?tab=dashboard');
   await expect(page.getByText('Net Worth', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('HDFC Salary Account', { exact: true })).toHaveCount(0);
 
@@ -153,7 +153,7 @@ test('investment SIP setup creates a recurring transfer rule', async ({ page }) 
   await page.getByLabel('Monthly SIP Amount').fill('10000');
   await page.getByLabel('Next SIP Date').fill('2026-09-01');
   await page.getByLabel('SIP Funding Account').selectOption('acc_sbi_01');
-  await page.getByRole('button', { name: 'Save Account' }).click();
+  await page.locator('form').getByRole('button', { name: 'Add Asset', exact: true }).click();
 
   await openTab(page, 'Settings');
   await expect(page.getByText('SIP: Emergency Fund', { exact: true })).toBeVisible();
