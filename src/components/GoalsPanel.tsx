@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import type { SavingsGoal, SavingsGoalType } from '../types';
 import { CurrencyInput } from './CurrencyInput';
 import { getGoalCurrentAmount, getGoalProgressPercent, getRequiredMonthlyContribution } from '../domain/savingsGoals';
+import { isLiquidCashAccount } from '../domain/affordability';
 
 const GOAL_TYPE_LABELS: Record<SavingsGoalType, string> = {
   EMERGENCY_FUND: 'Emergency fund',
@@ -46,6 +47,8 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
   const monthlyTotal = activeGoals.reduce((sum, goal) => sum + goal.monthlyContribution, 0);
   const filteredGoals = savingsGoals.filter(goal => goal.name.toLowerCase().includes(searchQuery.trim().toLowerCase()));
   const assetAccounts = accounts.filter(account => account.type === 'asset' && account.is_archived !== 1);
+  const selectedLinkedAccount = draft.linkedAccountId ? assetAccounts.find(account => account.id === draft.linkedAccountId) : undefined;
+  const selectedLinkedIsLiquid = selectedLinkedAccount ? isLiquidCashAccount(selectedLinkedAccount) : false;
 
   const openNew = () => {
     setEditing(null);
@@ -103,6 +106,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
           const percent = getGoalProgressPercent(goal, accounts, transactions);
           const required = getRequiredMonthlyContribution(goal, accounts, transactions);
           const linked = goal.linkedAccountId ? accounts.find(account => account.id === goal.linkedAccountId) : undefined;
+          const linkedIsLiquid = linked ? isLiquidCashAccount(linked) : false;
           return (
             <article key={goal.id} aria-label={`Goal ${goal.name}`} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-5">
               <div className="flex items-start justify-between gap-4">
@@ -128,7 +132,8 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                 <span className="text-xs font-bold text-on-surface-variant">{Math.round(percent)}%</span>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-highest"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} /></div>
-              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}
+              {linked && !linkedIsLiquid && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{linked.name} tracks this Goal's progress, but as a {linked.group ?? 'non-liquid asset'} its balance stays excluded from affordability liquid cash and protected reserves.</span></div>}
+              {goal.protectLinkedBalance && linkedIsLiquid && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve in affordability.</span></div>}
             </article>
           );
         })
@@ -150,9 +155,9 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                 <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Target date</span><input type="date" value={draft.targetDate ?? ''} onChange={event => setDraft(current => ({ ...current, targetDate: event.target.value || undefined }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none" /></label>
                 <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Monthly contribution</span><CurrencyInput value={draft.monthlyContribution || ''} onValueChange={value => setDraft(current => ({ ...current, monthlyContribution: Number(value) || 0 }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 font-numeric text-on-surface outline-none" /></label>
               </div>
-              <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Track progress from account</span><select value={draft.linkedAccountId ?? ''} onChange={event => setDraft(current => ({ ...current, linkedAccountId: event.target.value || undefined }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none"><option value="">No linked account</option>{assetAccounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.group ?? 'Asset'})</option>)}</select></label>
+              <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Track progress from account</span><select value={draft.linkedAccountId ?? ''} onChange={event => { const linkedAccountId = event.target.value || undefined; const linkedAccount = linkedAccountId ? assetAccounts.find(account => account.id === linkedAccountId) : undefined; setDraft(current => ({ ...current, linkedAccountId, protectLinkedBalance: linkedAccount && isLiquidCashAccount(linkedAccount) ? current.protectLinkedBalance : false })); }} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none"><option value="">No linked account</option>{assetAccounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.group ?? 'Asset'})</option>)}</select>{selectedLinkedAccount && !selectedLinkedIsLiquid && <span className="mt-2 block text-xs leading-relaxed text-on-surface-variant">Valid for Goal progress. This {selectedLinkedAccount.group ?? 'asset'} balance is intentionally excluded from Can I Afford It? liquid cash and protected reserve calculations.</span>}</label>
               {!draft.linkedAccountId && <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Already saved</span><CurrencyInput value={draft.manualSavedAmount || ''} onValueChange={value => setDraft(current => ({ ...current, manualSavedAmount: Number(value) || 0 }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 font-numeric text-on-surface outline-none" /></label>}
-              <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span><span className="block text-sm font-semibold text-on-surface">Protect linked cash balance</span><span className="mt-0.5 block text-xs text-on-surface-variant">Useful for an emergency fund. If the linked account is liquid, its current balance becomes a protected reserve in affordability.</span></span><input type="checkbox" checked={draft.protectLinkedBalance} disabled={!draft.linkedAccountId} onChange={event => setDraft(current => ({ ...current, protectLinkedBalance: event.target.checked }))} className="mt-1 h-5 w-5 accent-primary" /></label>
+              <label className={`flex items-start justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 ${selectedLinkedIsLiquid ? 'cursor-pointer' : 'opacity-70'}`}><span><span className="block text-sm font-semibold text-on-surface">Protect linked liquid cash balance</span><span className="mt-0.5 block text-xs text-on-surface-variant">{selectedLinkedAccount && !selectedLinkedIsLiquid ? 'Not applicable to Investment or Physical Asset links. They can track Goal progress without becoming spendable cash.' : 'Useful for an emergency fund held in Bank, Savings, Cash or Wallet accounts. The balance becomes a protected affordability reserve.'}</span></span><input type="checkbox" checked={draft.protectLinkedBalance} disabled={!draft.linkedAccountId || !selectedLinkedIsLiquid} onChange={event => setDraft(current => ({ ...current, protectLinkedBalance: event.target.checked }))} className="mt-1 h-5 w-5 accent-primary" /></label>
               <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span className="text-sm font-semibold text-on-surface">Active goal</span><input type="checkbox" checked={draft.isActive} onChange={event => setDraft(current => ({ ...current, isActive: event.target.checked }))} className="h-5 w-5 accent-primary" /></label>
               {saveError && <p role="alert" className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{saveError}</p>}
               <button type="button" disabled={isSaving} onClick={() => { void save(); }} className="w-full rounded-xl bg-primary py-3.5 font-bold text-on-primary active:scale-[0.98] transition-transform disabled:opacity-60">{isSaving ? 'Saving…' : 'Save goal'}</button>

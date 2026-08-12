@@ -30,6 +30,12 @@ describe('savings goals', () => {
     expect(getProtectedGoalReserve(goals, [bank, investment])).toBe(60000);
   });
 
+  it('allows an emergency Goal to track an Investment without making it affordability cash', () => {
+    const investmentGoal = goal({ linkedAccountId: 'invest', protectLinkedBalance: true });
+    expect(getGoalCurrentAmount(investmentGoal, [bank, investment])).toBe(120000);
+    expect(getProtectedGoalReserve([investmentGoal], [bank, investment])).toBe(0);
+  });
+
   it('does not double count the same protected account across goals', () => {
     expect(getProtectedGoalReserve([goal(), goal({ id: 'goal-2' })], [bank])).toBe(60000);
   });

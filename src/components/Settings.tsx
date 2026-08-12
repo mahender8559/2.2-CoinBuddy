@@ -11,7 +11,7 @@ import type { DataIntegrityAuditResult } from '../db/sqliteSchema';
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, verifyDataIntegrity, repairDataIntegrityIssues, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, resetToDemoData, verifyDataIntegrity, repairDataIntegrityIssues, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
@@ -482,6 +482,11 @@ export function Settings() {
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+          </button>
+        </div>
+        <div className="mt-3 flex justify-center">
+          <button type="button" onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.3 sample covering accounts, cards, loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary" title="Replace this device's ledger with sample CoinBuddy data">
+            <RefreshCw className="h-3.5 w-3.5" /> Load demo data
           </button>
         </div>
       </section>

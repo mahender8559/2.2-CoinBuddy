@@ -10,6 +10,7 @@ import {
   markClearStoragePending,
   loadStateFromDatabase,
   seedDemoData,
+  loadDemoDataFromJson,
   insertAccountRow,
   insertCreditCardAccount,
   updateAccountRow,
@@ -480,7 +481,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const repairDataIntegrityIssues = async (issues: DataIntegrityIssue[]): Promise<DataIntegrityAuditResult> => {
     if (!dbDriver) throw new Error('Database is not ready yet.');
-    const repairable = new Set(['CATEGORY_AFFORDABILITY', 'RECURRING_ARCHIVED_ACCOUNT', 'RECURRING_SOURCE', 'RECURRING_DESTINATION', 'RECURRING_SELF_TRANSFER', 'RECURRING_DATE', 'CREDIT_CARD_DUE', 'GOAL_ACCOUNT', 'GOAL_PROTECTED_ACCOUNT', 'GOAL_TRANSACTION_LINK', 'GOAL_RECURRING_LINK']);
+    const repairable = new Set(['CATEGORY_AFFORDABILITY', 'RECURRING_ARCHIVED_ACCOUNT', 'RECURRING_SOURCE', 'RECURRING_DESTINATION', 'RECURRING_SELF_TRANSFER', 'RECURRING_DATE', 'CREDIT_CARD_DUE', 'GOAL_ACCOUNT', 'GOAL_TRANSACTION_LINK', 'GOAL_RECURRING_LINK']);
     const selected = issues.filter(issue => repairable.has(issue.code));
     if (!selected.length) return verifyDataIntegrity();
 
@@ -500,7 +501,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       throw error;
     }
 
-    const goalIssueIds = new Set(selected.filter(issue => issue.code === 'GOAL_ACCOUNT' || issue.code === 'GOAL_PROTECTED_ACCOUNT').map(issue => issue.entityId).filter(Boolean));
+    const goalIssueIds = new Set(selected.filter(issue => issue.code === 'GOAL_ACCOUNT').map(issue => issue.entityId).filter(Boolean));
     if (goalIssueIds.size) {
       const nextGoals = savingsGoalsRef.current.map(goal => goalIssueIds.has(goal.id) ? { ...goal, linkedAccountId: undefined, protectLinkedBalance: false } : goal);
       await setStoredSetting(SAVINGS_GOALS_KEY, nextGoals);
@@ -1592,7 +1593,20 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
   });
 
   const resetToDemoData = () => {
-    void deletePersistedDatabase().finally(() => window.location.reload());
+    if (!dbDriver) {
+      window.alert('The local ledger is still loading. Please try again in a moment.');
+      return;
+    }
+    void (async () => {
+      try {
+        await loadDemoDataFromJson(dbDriver);
+        await persistDatabase(dbDriver);
+        window.location.reload();
+      } catch (error) {
+        console.error('Unable to load CoinBuddy demo data:', error);
+        window.alert(`Demo data could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    })();
   };
 
   return (
