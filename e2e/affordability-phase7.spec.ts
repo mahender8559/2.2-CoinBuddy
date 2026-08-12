@@ -32,9 +32,13 @@ test('clean-ledger affordability setup survives reload and does not silently dem
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByText('Storage Cleared', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await page.evaluate(() => {
+    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
+    localStorage.setItem('hasCompletedButtonTour', 'true');
+  });
   await page.reload();
   await expect(page.getByText('Net Worth', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('SBI', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('HDFC Salary Account', { exact: true })).toHaveCount(0);
 
   await openTab(page, 'Insights');
   await page.getByLabel('Amount', { exact: true }).fill('1000');
@@ -131,7 +135,7 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
   const goalProtection = page.getByText('Goals protection:', { exact: true }).locator('..');
-  await expect(goalProtection).toContainText(/5,000/);
+  await expect(goalProtection).toContainText(/24,000/);
   await assertNoDocumentOverflow(page);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
@@ -140,10 +144,12 @@ test('investment SIP setup creates a recurring transfer rule', async ({ page }) 
   const errors = await prepare(page, false);
   await openTab(page, 'Manage');
   await page.getByRole('button', { name: 'Add Asset' }).click();
-  await page.getByLabel('Account Name').fill('Emergency Fund');
-  await page.getByLabel('Asset Group').selectOption('Investment');
-  await page.getByLabel('Current Balance').fill('25000');
-  await page.getByLabel('Investment Method').selectOption('SIP');
+  await expect(page.getByRole('heading', { name: 'Add Asset', exact: true })).toBeVisible();
+  await page.getByPlaceholder('e.g. Primary Checking').fill('Emergency Fund');
+  await page.getByRole('button', { name: 'Investment', exact: true }).click();
+  await page.getByLabel('Total Invested Amount').fill('25000');
+  await page.getByLabel('Current Market Value').fill('25000');
+  await page.getByRole('button', { name: 'SIP', exact: true }).click();
   await page.getByLabel('Monthly SIP Amount').fill('10000');
   await page.getByLabel('Next SIP Date').fill('2026-09-01');
   await page.getByLabel('SIP Funding Account').selectOption('acc_sbi_01');
