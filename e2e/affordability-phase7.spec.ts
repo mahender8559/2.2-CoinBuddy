@@ -157,6 +157,6 @@ test('investment SIP setup creates a recurring transfer rule', async ({ page }) 
 
   await openTab(page, 'Settings');
   await expect(page.getByText('SIP: Emergency Fund', { exact: true })).toBeVisible();
-  await expect(page.getByText('Investment SIP', { exact: true })).toBeVisible();
+  await expect(page.getByText('Investment SIP', { exact: true }).first()).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
