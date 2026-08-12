@@ -57,8 +57,8 @@ jobs:
           if old_card not in s:
               raise SystemExit('GoalsPanel card anchor not found')
           s = s.replace(old_card, new_card, 1)
-          old_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </div>;'
-          new_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </article>;'
+          old_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </div>\n          );'
+          new_close = '              {goal.protectLinkedBalance && linked && <div className="mt-3 flex items-start gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>The current liquid balance of this linked account is protected as a cash reserve when applicable.</span></div>}\n            </article>\n          );'
           if old_close not in s:
               raise SystemExit('GoalsPanel card close anchor not found')
           p.write_text(s.replace(old_close, new_close, 1))
