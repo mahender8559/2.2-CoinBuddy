@@ -105,7 +105,7 @@ interface AppContextType {
   addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<{ success: boolean; error?: string }>;
   updateTransaction: (id: string, tx: Omit<Transaction, 'id'>) => { success: boolean; error?: string };
   deleteTransaction: (id: string) => void;
-  approveTransaction: (id: string, date?: string) => void;
+  approveTransaction: (id: string, date?: string) => { success: boolean; error?: string };
   rejectTransaction: (id: string) => void;
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
@@ -620,7 +620,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
     const effectiveAccounts = recomputeAllAccountBalances(currentAccounts, nextTxs);
 
-    if (tx.type === 'expense') {
+    if (tx.is_verified !== 0 && tx.type === 'expense') {
       const sourceId = tx.fromAccountId || tx.account || 'cash';
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
@@ -650,7 +650,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           }
         }
       }
-    } else if (tx.type === 'transfer') {
+    } else if (tx.is_verified !== 0 && tx.type === 'transfer') {
       const sourceId = tx.fromAccountId;
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
@@ -834,11 +834,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const approveTransaction = (id: string, userSelectedDate?: string) => {
+  const approveTransaction = (id: string, userSelectedDate?: string): { success: boolean; error?: string } => {
     const tx = transactions.find(t => t.id === id);
-    if (!tx || tx.is_verified !== 0) return;
-    
-    updateTransaction(id, {
+    if (!tx) return { success: false, error: 'Scheduled transaction could not be found.' };
+    if (tx.is_verified !== 0) return { success: true };
+
+    // Confirmation is the point where a scheduled transaction becomes real,
+    // so normal balance/credit-limit validation is intentionally enforced here.
+    return updateTransaction(id, {
       ...tx,
       date: userSelectedDate || tx.date,
       is_verified: 1

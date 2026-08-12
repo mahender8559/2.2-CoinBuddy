@@ -59,6 +59,7 @@ export function AffordabilityPlanner() {
   const copy = result ? statusCopy(result.projection.status) : null;
   const amount = Number(purchaseAmount) || 0;
   const safeDifference = result ? amount - result.projection.safePurchaseCapacity : 0;
+  const additionalSavingsTarget = result ? Math.max(0, result.projection.plannedSavings - result.projection.scheduledSavings) : 0;
 
   return (
     <section className="rounded-3xl border border-primary/25 bg-surface-container-low overflow-hidden shadow-sm">
@@ -140,12 +141,16 @@ export function AffordabilityPlanner() {
               {[
                 ['Liquid cash now', result.projection.openingCash, '+'],
                 ['Expected income', result.projection.expectedIncome + result.projection.otherCashInflows, '+'],
-                ['Known projected expenses', result.projection.expectedExpenses, '-'],
+                ['Known projected expenses (scheduled)', result.projection.expectedExpenses, '-'],
                 ['Scheduled savings', result.projection.scheduledSavings, '-'],
-                ['Savings target still to protect', result.projection.plannedSavings, '-'],
+                ['Additional savings target to protect', additionalSavingsTarget, '-'],
                 ['Unexpected-spending buffer', result.projection.contingencyBuffer, '-'],
                 ['Protected cash reserve', result.projection.protectedCashReserve, '-'],
               ].map(([label, raw, sign]) => <div key={String(label)} className="flex items-center justify-between gap-4 px-4 py-3 border-b last:border-b-0 border-outline-variant/15 bg-surface-container"><span className="text-on-surface-variant">{label}</span><span className="font-numeric font-semibold text-on-surface">{sign}{formatCurrency(Number(raw))}</span></div>)}
+              <div className="px-4 py-3 border-t border-outline-variant/15 bg-surface-container-low text-xs leading-relaxed text-on-surface-variant">
+                <p><strong className="text-on-surface">Known projected expenses</strong> are concrete future obligations CoinBuddy can see, such as scheduled recurring entries, card dues and EMIs. Category behavior labels describe how spending is treated; they do not create a forecast amount by themselves.</p>
+                {result.projection.expectedExpenses === 0 && <p className="mt-2">No concrete expense is currently scheduled in this horizon. Spending already logged in your current cycle is already reflected in today&apos;s balances and is not counted a second time.</p>}
+              </div>
               <div className="flex items-center justify-between gap-4 px-4 py-4 bg-primary/10"><strong className="text-on-surface">Safe purchase capacity</strong><strong className="font-numeric text-primary text-lg">{formatCurrency(result.projection.safePurchaseCapacity)}</strong></div>
             </div>
           )}

@@ -118,6 +118,13 @@ export function AddTransactionModal() {
       return;
     }
 
+    // Future transactions and newly-created recurring schedules stay pending
+    // until confirmation, so today's balance must not prevent planning them.
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isFuture = date > todayStr;
+    const shouldRemainPending = isFuture || editingTransaction?.is_verified === 0 || (!editingTransaction && isRecurring);
+
     if (type === 'income') {
       const selectedAcc = accounts.find(a => a.id === account);
       if (selectedAcc && selectedAcc.type === 'liability') {
@@ -127,7 +134,7 @@ export function AddTransactionModal() {
     }
 
     // Validate available funds for expenses and transfers from asset accounts
-    if (type === 'expense') {
+    if (!shouldRemainPending && type === 'expense') {
       const targetAccId = account || 'cash';
       const selectedAcc = accounts.find(a => a.id === targetAccId);
       
@@ -141,7 +148,7 @@ export function AddTransactionModal() {
           return;
         }
       }
-    } else if (type === 'transfer') {
+    } else if (!shouldRemainPending && type === 'transfer') {
       const sourceAcc = accounts.find(a => a.id === fromAccountId);
       if (sourceAcc && sourceAcc.type === 'asset') {
         let availableBalance = sourceAcc.balance;
@@ -176,11 +183,6 @@ export function AddTransactionModal() {
       categoryName.toLowerCase().includes('interest') ||
       finalTitle.toLowerCase().includes('interest payment');
 
-    // Compare just the YYYY-MM-DD parts to see if it's strictly in the future
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const isFuture = date > todayStr;
-
     const eventName = groupId.trim();
     const eventId = eventName
       ? (events.find(event => event.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
@@ -205,7 +207,7 @@ export function AddTransactionModal() {
       recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
-      is_verified: isFuture ? 0 : 1
+      is_verified: shouldRemainPending ? 0 : 1
     };
 
     let res: { success: boolean; error?: string };

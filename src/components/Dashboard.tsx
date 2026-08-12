@@ -19,6 +19,7 @@ export function Dashboard() {
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
+  const [pendingConfirmError, setPendingConfirmError] = useState<string>('');
   const totalAssets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
   const totalLiabilities = useMemo(() => accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
   
@@ -395,10 +396,16 @@ export function Dashboard() {
               />
             </div>
 
+            {pendingConfirmError && (
+              <div role="alert" className="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm font-medium text-error">
+                {pendingConfirmError} The scheduled item is still pending; add funds or choose another confirmation date and try again.
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setPendingConfirmTx(null)}
+                onClick={() => { setPendingConfirmTx(null); setPendingConfirmError(''); }}
                 className="bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold py-3 px-4 rounded-2xl text-sm transition-colors cursor-pointer"
               >
                 Not yet
@@ -408,6 +415,7 @@ export function Dashboard() {
                 onClick={() => {
                   rejectTransaction(pendingConfirmTx.id);
                   setPendingConfirmTx(null);
+                  setPendingConfirmError('');
                 }}
                 className="flex-1 bg-error/10 hover:bg-error/20 text-error font-semibold py-3 px-4 rounded-2xl text-sm transition-colors cursor-pointer"
               >
@@ -416,8 +424,13 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  approveTransaction(pendingConfirmTx.id, pendingConfirmDate);
-                  setPendingConfirmTx(null);
+                  const outcome = approveTransaction(pendingConfirmTx.id, pendingConfirmDate);
+                  if (outcome.success) {
+                    setPendingConfirmTx(null);
+                    setPendingConfirmError('');
+                  } else {
+                    setPendingConfirmError(outcome.error || 'This scheduled transaction cannot be confirmed yet.');
+                  }
                 }}
                 className="flex-1 bg-primary hover:bg-primary/90 text-primary-contrast font-semibold py-3 px-4 rounded-2xl text-sm transition-colors shadow-md cursor-pointer"
               >

@@ -79,3 +79,27 @@ test('category financial behavior can be changed and persists after reload', asy
   await assertNoDocumentOverflow(page);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
+
+
+test('recurring transfer can be scheduled above today\'s balance but confirmation enforces funds', async ({ page }) => {
+  const errors = await prepare(page, false);
+
+  const addButton = page.getByRole('button', { name: /add transaction/i }).first();
+  await addButton.click();
+  await page.getByRole('button', { name: 'Transfer', exact: true }).first().click();
+  await page.locator('input[type="number"]').first().fill('999999');
+  await page.locator('label').filter({ has: page.locator('input[name="fromAccount"][value="acc_sbi_01"]') }).click();
+  await page.locator('label').filter({ has: page.locator('input[name="toAccount"][value="acc_cash_01"]') }).click();
+  await page.getByRole('button', { name: 'Toggle recurring transaction' }).click();
+  await page.getByRole('button', { name: 'Save Transaction' }).click();
+
+  await expect(page.getByRole('button', { name: 'Save Transaction' })).toHaveCount(0);
+  await openTab(page, 'Activity');
+  const pending = page.getByText(/Transfer: SBI to Hand Cash/).first();
+  await expect(pending).toBeVisible();
+  await page.getByRole('button', { name: 'Transferred ✓' }).first().click();
+  await expect(page.getByRole('alert')).toContainText(/Insufficient funds in SBI/i);
+  await expect(pending).toBeVisible();
+
+  expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
+});
