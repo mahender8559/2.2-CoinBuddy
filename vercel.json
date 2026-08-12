@@ -3,7 +3,9 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
-      "*": false,
+      "**": false,
+      "feature/*": false,
+      "fix/*": false,
       "main": true,
       "staging": true
     }
