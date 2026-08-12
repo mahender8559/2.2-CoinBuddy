@@ -38,6 +38,8 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
   const [editing, setEditing] = useState<SavingsGoal | null>(null);
   const [draft, setDraft] = useState<Omit<SavingsGoal, 'id' | 'createdAt'>>({ ...EMPTY_GOAL });
   const [modalOpen, setModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const activeGoals = useMemo(() => savingsGoals.filter(goal => goal.isActive), [savingsGoals]);
   const monthlyTotal = activeGoals.reduce((sum, goal) => sum + goal.monthlyContribution, 0);
@@ -47,6 +49,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
   const openNew = () => {
     setEditing(null);
     setDraft({ ...EMPTY_GOAL });
+    setSaveError('');
     setModalOpen(true);
   };
 
@@ -54,14 +57,21 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
     setEditing(goal);
     const { id: _id, createdAt: _createdAt, ...rest } = goal;
     setDraft(rest);
+    setSaveError('');
     setModalOpen(true);
   };
 
-  const save = () => {
-    if (!draft.name.trim() || draft.targetAmount <= 0) return;
+  const save = async () => {
+    if (isSaving || !draft.name.trim() || draft.targetAmount <= 0) return;
+    setIsSaving(true);
+    setSaveError('');
     const payload = { ...draft, name: draft.name.trim() };
-    if (editing) updateSavingsGoal(editing.id, payload);
-    else addSavingsGoal(payload);
+    const saved = editing ? await updateSavingsGoal(editing.id, payload) : await addSavingsGoal(payload);
+    setIsSaving(false);
+    if (!saved) {
+      setSaveError('Could not save this goal. No changes were persisted.');
+      return;
+    }
     setModalOpen(false);
   };
 
@@ -105,7 +115,7 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button type="button" aria-label={`Edit ${goal.name}`} onClick={() => openEdit(goal)} className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button>
-                  <button type="button" aria-label={`Delete ${goal.name}`} onClick={() => deleteSavingsGoal(goal.id)} className="rounded-lg p-2 text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" aria-label={`Delete ${goal.name}`} onClick={() => { void deleteSavingsGoal(goal.id); }} className="rounded-lg p-2 text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
 
@@ -143,7 +153,8 @@ export function GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
               {!draft.linkedAccountId && <label className="block"><span className="text-sm font-semibold text-on-surface-variant">Already saved</span><CurrencyInput value={draft.manualSavedAmount || ''} onValueChange={value => setDraft(current => ({ ...current, manualSavedAmount: Number(value) || 0 }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 font-numeric text-on-surface outline-none" /></label>}
               <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span><span className="block text-sm font-semibold text-on-surface">Protect linked cash balance</span><span className="mt-0.5 block text-xs text-on-surface-variant">Useful for an emergency fund. If the linked account is liquid, its current balance becomes a protected reserve in affordability.</span></span><input type="checkbox" checked={draft.protectLinkedBalance} disabled={!draft.linkedAccountId} onChange={event => setDraft(current => ({ ...current, protectLinkedBalance: event.target.checked }))} className="mt-1 h-5 w-5 accent-primary" /></label>
               <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span className="text-sm font-semibold text-on-surface">Active goal</span><input type="checkbox" checked={draft.isActive} onChange={event => setDraft(current => ({ ...current, isActive: event.target.checked }))} className="h-5 w-5 accent-primary" /></label>
-              <button type="button" onClick={save} className="w-full rounded-xl bg-primary py-3.5 font-bold text-on-primary active:scale-[0.98] transition-transform">Save goal</button>
+              {saveError && <p role="alert" className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{saveError}</p>}
+              <button type="button" disabled={isSaving} onClick={() => { void save(); }} className="w-full rounded-xl bg-primary py-3.5 font-bold text-on-primary active:scale-[0.98] transition-transform disabled:opacity-60">{isSaving ? 'Saving…' : 'Save goal'}</button>
             </div>
           </div>
         </div>

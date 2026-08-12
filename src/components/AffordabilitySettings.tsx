@@ -12,6 +12,8 @@ interface Props {
 export function AffordabilitySettings({ onClose }: Props) {
   const { affordabilitySettings, setAffordabilitySettings, formatCurrency, showToast } = useAppContext();
   const [draft, setDraft] = useState<AffordabilitySettingsType>(() => ({ ...affordabilitySettings }));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => setDraft({ ...affordabilitySettings }), [affordabilitySettings]);
 
@@ -19,9 +21,17 @@ export function AffordabilitySettings({ onClose }: Props) {
     setDraft(current => ({ ...current, [key]: value }));
   };
 
-  const save = () => {
+  const save = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError('');
     const normalized = normalizeAffordabilitySettings({ ...draft, setupCompleted: true });
-    setAffordabilitySettings(normalized);
+    const saved = await setAffordabilitySettings(normalized);
+    setIsSaving(false);
+    if (!saved) {
+      setSaveError('Could not save safety preferences. Your previous settings are still in use.');
+      return;
+    }
     showToast('Affordability safety preferences saved');
     onClose();
   };
@@ -103,7 +113,8 @@ export function AffordabilitySettings({ onClose }: Props) {
             Current protection: {formatCurrency(draft.monthlySavingsTarget)} savings target + {formatCurrency(draft.protectedCashReserve)} cash reserve{draft.contingencyMode === 'FIXED' ? ` + ${formatCurrency(draft.fixedContingencyAmount)} fixed contingency` : ' + automatic contingency when enough history exists'}.
           </div>
 
-          <button type="button" onClick={save} className="w-full min-h-12 rounded-xl bg-primary text-on-primary font-bold active:scale-[0.98] transition-transform">Save safety preferences</button>
+          {saveError && <p role="alert" className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{saveError}</p>}
+          <button type="button" disabled={isSaving} onClick={() => { void save(); }} className="w-full min-h-12 rounded-xl bg-primary text-on-primary font-bold active:scale-[0.98] transition-transform disabled:opacity-60">{isSaving ? 'Saving…' : 'Save safety preferences'}</button>
         </div>
       </div>
     </div>

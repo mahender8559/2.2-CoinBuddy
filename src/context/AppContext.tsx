@@ -114,11 +114,11 @@ interface AppContextType {
   setEditingTransaction: (tx: Transaction | null) => void;
   recurringRules: RecurringRule[];
   affordabilitySettings: AffordabilitySettings;
-  setAffordabilitySettings: (settings: AffordabilitySettings) => void;
+  setAffordabilitySettings: (settings: AffordabilitySettings) => Promise<boolean>;
   savingsGoals: SavingsGoal[];
-  addSavingsGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => void;
-  updateSavingsGoal: (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => void;
-  deleteSavingsGoal: (id: string) => void;
+  addSavingsGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
+  updateSavingsGoal: (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
+  deleteSavingsGoal: (id: string) => Promise<boolean>;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -415,10 +415,21 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const savingsGoalsRef = useRef<SavingsGoal[]>([]);
+  useEffect(() => { savingsGoalsRef.current = savingsGoals; }, [savingsGoals]);
   const [affordabilitySettings, setAffordabilitySettingsState] = useState<AffordabilitySettings>(() => ({ ...DEFAULT_AFFORDABILITY_SETTINGS }));
-  const setAffordabilitySettings = useCallback((settings: AffordabilitySettings) => {
-    setAffordabilitySettingsState(normalizeAffordabilitySettings(settings));
-  }, []);
+  const setAffordabilitySettings = useCallback(async (settings: AffordabilitySettings): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const normalized = normalizeAffordabilitySettings(settings);
+    try {
+      await setStoredSetting(AFFORDABILITY_SETTINGS_KEY, normalized);
+      setAffordabilitySettingsState(normalized);
+      return true;
+    } catch (error) {
+      console.error('Failed to save affordability settings:', error);
+      return false;
+    }
+  }, [dbDriver, setStoredSetting]);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
@@ -544,12 +555,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         persistAppSetting('biometric', biometric),
         persistAppSetting('passcode', passcode),
         persistAppSetting('profile', profile),
-        persistAppSetting(AFFORDABILITY_SETTINGS_KEY, affordabilitySettings),
-        persistAppSetting(SAVINGS_GOALS_KEY, savingsGoals),
       ]);
       void persistDbAction(() => upsertUserConfig(dbDriver!, { currency, monthCycleDay }));
     }
-  }, [theme, colorPalette, currency, biometric, passcode, monthCycleDay, profile, affordabilitySettings, savingsGoals, dbReady, dbDriver]);
+  }, [theme, colorPalette, currency, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
 
   useEffect(() => {
     localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
@@ -1307,18 +1316,38 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     showToast('Credit card removed', 'Undo', () => setCreditCardRecords(cards => cards.some(item => item.id === card.id) ? cards : [card, ...cards]));
   };
 
-  const addSavingsGoal = (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
-    setSavingsGoals(previous => [normalizeSavingsGoal({ ...goal, id: crypto.randomUUID(), createdAt: new Date().toISOString() }), ...previous]);
+  const persistSavingsGoals = useCallback(async (nextGoals: SavingsGoal[]): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const normalized = normalizeSavingsGoals(nextGoals);
+    try {
+      await setStoredSetting(SAVINGS_GOALS_KEY, normalized);
+      savingsGoalsRef.current = normalized;
+      setSavingsGoals(normalized);
+      return true;
+    } catch (error) {
+      console.error('Failed to save Goals:', error);
+      return false;
+    }
+  }, [dbDriver, setStoredSetting]);
+
+  const addSavingsGoal = async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<boolean> => {
+    const created = normalizeSavingsGoal({ ...goal, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
+    return persistSavingsGoals([created, ...savingsGoalsRef.current]);
   };
 
-  const updateSavingsGoal = (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
-    setSavingsGoals(previous => previous.map(item => item.id === id ? normalizeSavingsGoal({ ...item, ...goal, id }) : item));
+  const updateSavingsGoal = async (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<boolean> => {
+    const next = savingsGoalsRef.current.map(item => item.id === id ? normalizeSavingsGoal({ ...item, ...goal, id }) : item);
+    return persistSavingsGoals(next);
   };
 
-  const deleteSavingsGoal = (id: string) => {
-    const removed = savingsGoals.find(goal => goal.id === id);
-    setSavingsGoals(previous => previous.filter(goal => goal.id !== id));
-    if (removed) showToast('Goal deleted', 'Undo', () => setSavingsGoals(previous => previous.some(goal => goal.id === removed.id) ? previous : [removed, ...previous]));
+  const deleteSavingsGoal = async (id: string): Promise<boolean> => {
+    const removed = savingsGoalsRef.current.find(goal => goal.id === id);
+    const ok = await persistSavingsGoals(savingsGoalsRef.current.filter(goal => goal.id !== id));
+    if (ok && removed) showToast('Goal deleted', 'Undo', () => {
+      const restored = savingsGoalsRef.current.some(goal => goal.id === removed.id) ? savingsGoalsRef.current : [removed, ...savingsGoalsRef.current];
+      void persistSavingsGoals(restored);
+    });
+    return ok;
   };
 
   const addCategory = (category: Omit<Category, 'id'>) => {
