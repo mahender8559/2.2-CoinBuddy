@@ -3,6 +3,7 @@ import initSqlJs from 'sql.js';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from '../db/sqliteSchema';
 import { importLedgerToDatabase, loadAppSettings, loadStateFromDatabase, type SqlJsDatabaseDriver } from '../db/dbClient';
 import { AFFORDABILITY_SETTINGS_KEY } from '../domain/affordabilitySettings';
+import { SAVINGS_GOALS_KEY } from '../domain/savingsGoals';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
 
 async function createDriver(): Promise<SqlJsDatabaseDriver> {
@@ -31,7 +32,7 @@ async function createDriver(): Promise<SqlJsDatabaseDriver> {
 }
 
 describe('affordability phase 7 backup restore', () => {
-  it('restores planner settings, category behavior and recurring schedule together', async () => {
+  it('restores planner settings, goals, category behavior and recurring schedule together', async () => {
     const driver = await createDriver();
     const backup = {
       schemaVersion: 'coinbuddy-ledger-v3',
@@ -59,6 +60,13 @@ describe('affordability phase 7 backup restore', () => {
         historicalMonths: 12,
         safetyLevel: 'CONSERVATIVE',
       },
+      savingsGoals: [
+        {
+          id: 'goal-emergency', name: 'Emergency Fund', type: 'EMERGENCY_FUND', targetAmount: 300000,
+          monthlyContribution: 10000, manualSavedAmount: 50000, protectLinkedBalance: false,
+          priority: 'HIGH', isActive: true, createdAt: '2026-08-12T00:00:00.000Z',
+        },
+      ],
       currency: 'INR',
     };
 
@@ -71,5 +79,6 @@ describe('affordability phase 7 backup restore', () => {
     expect(state.recurringRules).toHaveLength(1);
     expect(state.recurringRules[0]).toMatchObject({ id: 'rent-rule', frequency: 'MONTHLY', nextDueDate: '2026-09-03', anchorDay: 3 });
     expect(settings[AFFORDABILITY_SETTINGS_KEY]).toEqual(backup.affordabilitySettings);
+    expect(settings[SAVINGS_GOALS_KEY]).toEqual(backup.savingsGoals);
   });
 });
