@@ -1,18 +1,25 @@
-import type { AffordabilitySettings } from '../types';
+import type { AffordabilitySettings, SavingsGoal } from '../types';
 import type { AffordabilityInput, AffordabilityResult } from './affordability';
 import { projectAffordability } from './affordability';
 import { estimateIrregularSpending, type IrregularSpendingEstimate } from './irregularSpending';
 import { estimateNormalLivingSpending, type NormalLivingSpendingEstimate } from './normalLivingSpending';
+import { getActiveGoalMonthlyContribution, getProtectedGoalReserve } from './savingsGoals';
 
 export interface AffordabilityPlannerInput extends Omit<AffordabilityInput, 'settings'> {
   affordabilitySettings: AffordabilitySettings;
   monthCycleDay: number;
+  savingsGoals?: SavingsGoal[];
 }
 
 export interface AffordabilityPlannerResult {
   projection: AffordabilityResult;
   irregularSpending: IrregularSpendingEstimate;
   normalLivingSpending: NormalLivingSpendingEstimate;
+  goalSummary: {
+    activeGoalCount: number;
+    monthlyContributionTarget: number;
+    protectedReserve: number;
+  };
   planningWarnings: string[];
 }
 
@@ -34,10 +41,17 @@ export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput
     historicalMonths: input.affordabilitySettings.historicalMonths,
   });
 
+  const savingsGoals = input.savingsGoals ?? [];
+  const activeGoalCount = savingsGoals.filter(goal => goal.isActive).length;
+  const monthlyContributionTarget = getActiveGoalMonthlyContribution(savingsGoals);
+  const protectedReserve = getProtectedGoalReserve(savingsGoals, input.accounts);
+  const effectiveSavingsTarget = Math.max(input.affordabilitySettings.monthlySavingsTarget, monthlyContributionTarget);
+  const effectiveProtectedReserve = Math.max(input.affordabilitySettings.protectedCashReserve, protectedReserve);
+
   const baseSettings = {
-    plannedSavingsTarget: input.affordabilitySettings.monthlySavingsTarget,
+    plannedSavingsTarget: effectiveSavingsTarget,
     contingencyBuffer: irregularSpending.recommendedBuffer,
-    protectedCashReserve: input.affordabilitySettings.protectedCashReserve,
+    protectedCashReserve: effectiveProtectedReserve,
     normalLivingExpenseForecast: 0,
   };
 
@@ -96,5 +110,11 @@ export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput
     planningWarnings.push('Affordability safety preferences have not been reviewed yet.');
   }
 
-  return { projection, irregularSpending, normalLivingSpending, planningWarnings };
+  return {
+    projection,
+    irregularSpending,
+    normalLivingSpending,
+    goalSummary: { activeGoalCount, monthlyContributionTarget, protectedReserve },
+    planningWarnings,
+  };
 }
