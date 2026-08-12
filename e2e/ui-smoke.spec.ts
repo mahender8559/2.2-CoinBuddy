@@ -12,7 +12,7 @@ async function prepareApp(page: Page) {
     localStorage.setItem('hasCompletedButtonTour', 'true');
   });
   await page.goto('/');
-  await expect(page.getByText('Total Balance', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('Net Worth', { exact: true }).first()).toBeVisible();
   return runtimeErrors;
 }
 
@@ -105,8 +105,9 @@ test('first tour spotlight and description match the add transaction button', as
   const spotlight = page.locator('div[style*="box-shadow"]').first();
 
   await expect(target).toBeVisible();
-  await expect(tooltip).toContainText('quickly log income, expenses, or transfers');
+  await expect(tooltip).toContainText('Dashboard, Activity, or Insights to log income, expenses, or transfers');
   await expect(spotlight).toBeVisible();
+  await page.waitForTimeout(900);
 
   const [targetBounds, tooltipBounds, spotlightBounds, viewport] = await Promise.all([
     target.boundingBox(),
@@ -128,13 +129,14 @@ test('first tour spotlight and description match the add transaction button', as
   expect(tooltipBounds!.y + tooltipBounds!.height).toBeLessThanOrEqual(viewport.height + 1);
 });
 
-test('first-use setup runs walkthrough, password step, then spotlight tour once', async ({ page }) => {
-  await page.addInitScript(() => {
+test('first-use setup runs walkthrough then spotlight tour once', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
     localStorage.removeItem('coinbuddy_backup_config');
   });
-  await page.goto('/');
+  await page.reload();
 
   await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
   for (let step = 0; step < 4; step += 1) {
@@ -142,8 +144,6 @@ test('first-use setup runs walkthrough, password step, then spotlight tour once'
   }
   await page.getByRole('button', { name: 'Get Started' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Set Backup Password' })).toBeVisible();
-  await page.getByRole('button', { name: 'Skip For Now' }).click();
   await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Skip Tour' }).click();

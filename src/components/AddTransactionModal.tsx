@@ -1,5 +1,6 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { CurrencyInput } from './CurrencyInput';
 import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { icons } from '../icons';
 import type { Transaction } from '../types';
@@ -118,6 +119,13 @@ export function AddTransactionModal() {
       return;
     }
 
+    // Future transactions and newly-created recurring schedules stay pending
+    // until confirmation, so today's balance must not prevent planning them.
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isFuture = date > todayStr;
+    const shouldRemainPending = isFuture || editingTransaction?.is_verified === 0 || (!editingTransaction && isRecurring);
+
     if (type === 'income') {
       const selectedAcc = accounts.find(a => a.id === account);
       if (selectedAcc && selectedAcc.type === 'liability') {
@@ -127,7 +135,7 @@ export function AddTransactionModal() {
     }
 
     // Validate available funds for expenses and transfers from asset accounts
-    if (type === 'expense') {
+    if (!shouldRemainPending && type === 'expense') {
       const targetAccId = account || 'cash';
       const selectedAcc = accounts.find(a => a.id === targetAccId);
       
@@ -141,7 +149,7 @@ export function AddTransactionModal() {
           return;
         }
       }
-    } else if (type === 'transfer') {
+    } else if (!shouldRemainPending && type === 'transfer') {
       const sourceAcc = accounts.find(a => a.id === fromAccountId);
       if (sourceAcc && sourceAcc.type === 'asset') {
         let availableBalance = sourceAcc.balance;
@@ -176,11 +184,6 @@ export function AddTransactionModal() {
       categoryName.toLowerCase().includes('interest') ||
       finalTitle.toLowerCase().includes('interest payment');
 
-    // Compare just the YYYY-MM-DD parts to see if it's strictly in the future
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const isFuture = date > todayStr;
-
     const eventName = groupId.trim();
     const eventId = eventName
       ? (events.find(event => event.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
@@ -205,7 +208,7 @@ export function AddTransactionModal() {
       recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
-      is_verified: isFuture ? 0 : 1
+      is_verified: shouldRemainPending ? 0 : 1
     };
 
     let res: { success: boolean; error?: string };
@@ -321,15 +324,11 @@ export function AddTransactionModal() {
             <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">AMOUNT</span>
             <div className="flex items-center justify-center gap-2 sm:gap-3 w-full px-2">
               <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary shrink-0">{getCurrencySymbol()}</span>
-              <input 
-                type="number"
-                step="0.01"
+              <CurrencyInput
+                aria-label="Transaction amount"
                 required
                 value={amount}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setAmount(isNaN(val) ? '' : e.target.value);
-                }}
+                onValueChange={setAmount}
                 className={`bg-transparent font-numeric font-bold text-on-surface focus:outline-none min-w-[140px] max-w-[280px] sm:max-w-[360px] w-full text-center placeholder:text-on-surface-variant/30 transition-all ${
                   amount.length > 12 
                     ? 'text-2xl sm:text-3xl' 

@@ -34,6 +34,7 @@ export function Activity() {
   const [isEventPickerOpen, setEventPickerOpen] = useState(false);
   const [eventName, setEventName] = useState('');
   const [approvalDates, setApprovalDates] = useState<Record<string, string>>({});
+  const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
   const pendingTransactions = useMemo(() => transactions.filter(tx => tx.is_verified === 0), [transactions]);
 
   const toggleSelection = (id: string) => {
@@ -182,7 +183,7 @@ const unassignSelectedEvents = () => {
     .filter(t => {
       if (t.isOpeningBalance) return false;
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
-      return catObj?.group === 'Savings';
+      return catObj?.affordabilityClass === 'SAVINGS' || catObj?.group === 'Savings';
     })
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
 
@@ -211,8 +212,12 @@ const unassignSelectedEvents = () => {
               <div key={tx.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface p-3 dark:bg-surface-container-low">
                 <span className="min-w-32 flex-1 text-sm font-medium">{tx.title} · {formatCurrency(tx.amount)}</span>
                 <input aria-label={`Confirmation date for ${tx.title}`} type="date" value={approvalDates[tx.id] ?? tx.date.slice(0, 10)} onChange={e => setApprovalDates(prev => ({ ...prev, [tx.id]: e.target.value }))} />
-                <button className="rounded-lg bg-primary px-3 text-sm font-medium text-on-primary" onClick={() => approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10))}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
-                <button className="rounded-lg border border-outline px-3 text-sm" onClick={() => rejectTransaction(tx.id)}>Skip</button>
+                <button className="rounded-lg bg-primary px-3 text-sm font-medium text-on-primary" onClick={() => {
+                  const outcome = approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10));
+                  setApprovalErrors(previous => ({ ...previous, [tx.id]: outcome.success ? '' : (outcome.error || 'This scheduled transaction cannot be confirmed yet.') }));
+                }}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
+                <button className="rounded-lg border border-outline px-3 text-sm" onClick={() => { rejectTransaction(tx.id); setApprovalErrors(previous => ({ ...previous, [tx.id]: '' })); }}>Skip</button>
+                {approvalErrors[tx.id] && <span role="alert" className="basis-full text-xs font-medium text-error">{approvalErrors[tx.id]} The item remains pending until it can be confirmed.</span>}
               </div>
             ))}
           </div>
@@ -285,8 +290,8 @@ const unassignSelectedEvents = () => {
               <option value="date-asc">Date (Oldest)</option>
               <option value="amount-desc">Amount (Highest)</option>
               <option value="amount-asc">Amount (Lowest)</option>
-              <option value="notes-asc">Notes (A to Z)</option>
-              <option value="notes-desc">Notes (Z to A)</option>
+              <option value="notes-asc">Title (A to Z)</option>
+              <option value="notes-desc">Title (Z to A)</option>
             </select>
           </div>
           <div className="relative flex-1 md:flex-none min-w-[150px]">
@@ -611,18 +616,6 @@ return (
         </div>
         {!isSelectionMode && (
           <div className="flex gap-1 shrink-0 hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity">
-            {onEdit && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-                className="p-1.5 hover:bg-surface-variant text-on-surface-variant rounded-lg transition-all"
-                title="Edit Transaction"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-              </button>
-            )}
             {onDelete && (
               <button
                 onClick={(e) => {
@@ -641,18 +634,6 @@ return (
       {/* Mobile visible delete and edit */}
       {!isSelectionMode && (
         <div className="flex flex-col gap-1 md:hidden">
-          {onEdit && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              className="p-1.5 text-on-surface-variant bg-surface-variant rounded-lg shrink-0"
-              title="Edit Transaction"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-            </button>
-          )}
           {onDelete && (
             <button
               onClick={(e) => {

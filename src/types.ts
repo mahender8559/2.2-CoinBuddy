@@ -40,6 +40,50 @@ export interface Account {
   gracePeriodDays?: number;
 }
 
+export type AffordabilityClass = 'COMMITTED' | 'NORMAL' | 'FLEXIBLE' | 'IRREGULAR' | 'SAVINGS';
+
+export type AffordabilityContingencyMode = 'AUTO' | 'FIXED';
+export type AffordabilitySafetyLevel = 'FLEXIBLE' | 'BALANCED' | 'CONSERVATIVE';
+
+export interface AffordabilitySettings {
+  version: 1;
+  /** Whether the user has explicitly reviewed the planner safety setup. */
+  setupCompleted: boolean;
+  /** Amount the user wants to protect as savings over a normal monthly financial cycle. */
+  monthlySavingsTarget: number;
+  /** Liquid cash floor that the affordability planner must not recommend spending through. */
+  protectedCashReserve: number;
+  contingencyMode: AffordabilityContingencyMode;
+  /** Used only when contingencyMode is FIXED. */
+  fixedContingencyAmount: number;
+  /** Number of completed financial cycles considered by the automatic irregular-spending estimator. */
+  historicalMonths: number;
+  safetyLevel: AffordabilitySafetyLevel;
+}
+
+export type SavingsGoalType = 'EMERGENCY_FUND' | 'PURCHASE' | 'TRAVEL' | 'EDUCATION' | 'HOME' | 'OTHER';
+export type SavingsGoalPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** A real planning goal, separate from transaction/category semantics. */
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  type: SavingsGoalType;
+  targetAmount: number;
+  targetDate?: string;
+  /** Explicit amount the user intends to contribute in a normal financial cycle. */
+  monthlyContribution: number;
+  /** Optional asset account whose current balance represents goal progress. */
+  linkedAccountId?: string;
+  /** Used only when no account is linked. */
+  manualSavedAmount: number;
+  /** When linked to liquid cash, protect that account balance in affordability. */
+  protectLinkedBalance: boolean;
+  priority: SavingsGoalPriority;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export type Category = {
   id: string;
   name: string;
@@ -48,7 +92,10 @@ export type Category = {
   isRollover?: boolean;
   rolloverAccountId?: string;
   tags?: string[];
+  /** @deprecated Legacy presentation grouping kept only for old backups/UI compatibility. */
   group?: 'Essential' | 'Leisure' | 'Savings';
+  /** Financial behavior used by planning/projection features. */
+  affordabilityClass?: AffordabilityClass;
   type?: 'expense' | 'income';
 };
 

@@ -327,19 +327,16 @@ export default function App() {
         </div>
       </main>
       
-      {activeTab !== 'settings' && (
+      {activeTab !== 'settings' && activeTab !== 'manage' && (
         <button 
           data-tour-id="tour-add-transaction"
           onClick={() => {
-             if (activeTab === 'manage') {
-               document.dispatchEvent(new CustomEvent('openAddCategoryModal'));
-             } else {
-               setEditingTransaction(null);
-               setAddModalOpen(true);
-             }
+            setEditingTransaction(null);
+            setAddModalOpen(true);
           }}
           className="fixed bottom-24 right-6 md:bottom-8 md:right-8 w-14 h-14 bg-primary hover:bg-primary/90 text-on-primary rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40"
-          title={activeTab === 'manage' ? "Add Category/Goal" : "Add Transaction"}
+          title="Add Transaction"
+          aria-label="Add Transaction"
         >
           <Plus className="w-7 h-7" />
         </button>

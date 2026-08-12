@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -41,14 +41,18 @@ import {
   skipRecurringRuleOccurrence,
   generateDueRecurringTransactions,
   repairLegacyRecurringConfirmationState,
+  syncInvestmentSipRecurringRule,
   SqlJsDatabaseDriver,
 } from '../db/dbClient';
-import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance } from '../db/sqliteSchema';
+import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance, type DataIntegrityAuditResult } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
 import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
 import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
+import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
+import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
+import { SAVINGS_GOALS_KEY, normalizeSavingsGoal, normalizeSavingsGoals } from '../domain/savingsGoals';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -67,6 +71,8 @@ type LedgerImportData = {
   widgets?: Widget[];
   loanRevisions?: LoanRevision[];
   recurringRules?: RecurringRule[];
+  affordabilitySettings?: AffordabilitySettings;
+  savingsGoals?: SavingsGoal[];
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -89,8 +95,8 @@ interface AppContextType {
   getAccountBalance: (accountId: string) => number;
   accounts: Account[];
   calculateEmiSplit?: (balance: number, annualRate: number, emi: number) => { interestAmount: number; principalAmount: number };
-  addAccount: (account: Omit<Account, 'id'>) => void;
-  updateAccount: (id: string, account: Omit<Account, 'id'>) => void;
+  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
+  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
   deleteAccount: (id: string) => void;
   editingAccount: Account | null;
   setEditingAccount: (account: Account | null) => void;
@@ -102,13 +108,17 @@ interface AppContextType {
   addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<{ success: boolean; error?: string }>;
   updateTransaction: (id: string, tx: Omit<Transaction, 'id'>) => { success: boolean; error?: string };
   deleteTransaction: (id: string) => void;
-  approveTransaction: (id: string, date?: string) => void;
+  approveTransaction: (id: string, date?: string) => { success: boolean; error?: string };
   rejectTransaction: (id: string) => void;
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
-  autoRecur: boolean;
-  setAutoRecur: (val: boolean) => void;
   recurringRules: RecurringRule[];
+  affordabilitySettings: AffordabilitySettings;
+  setAffordabilitySettings: (settings: AffordabilitySettings) => Promise<boolean>;
+  savingsGoals: SavingsGoal[];
+  addSavingsGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
+  updateSavingsGoal: (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
+  deleteSavingsGoal: (id: string) => Promise<boolean>;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -166,7 +176,7 @@ interface AppContextType {
   resetToDemoData: () => void;
   integrityWarning: string | null;
   dismissIntegrityWarning: () => void;
-  verifyDataIntegrity: () => Promise<boolean>;
+  verifyDataIntegrity: () => Promise<DataIntegrityAuditResult>;
   getStoredSetting: (key: string) => Promise<unknown>;
   setStoredSetting: (key: string, value: unknown) => Promise<void>;
   toast: { message: string; actionLabel?: string; onAction?: () => void } | null;
@@ -210,7 +220,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [colorPalette, setColorPalette] = useState('blue');
   const [currency, setCurrency] = useState('INR');
   const [balancesVisible, setBalancesVisible] = useState(() => localStorage.getItem('coinbuddy_balances_visible') !== 'false');
-  const [autoRecur, setAutoRecur] = useState(true);
   const [biometric, setBiometric] = useState(false);
   const [passcode, setPasscodeHash] = useState<string | null>(null);
   const setPasscode = (value: string | null) => {
@@ -405,6 +414,22 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const [loanRevisions, setLoanRevisions] = useState<LoanRevision[]>([]);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const savingsGoalsRef = useRef<SavingsGoal[]>([]);
+  useEffect(() => { savingsGoalsRef.current = savingsGoals; }, [savingsGoals]);
+  const [affordabilitySettings, setAffordabilitySettingsState] = useState<AffordabilitySettings>(() => ({ ...DEFAULT_AFFORDABILITY_SETTINGS }));
+  const setAffordabilitySettings = useCallback(async (settings: AffordabilitySettings): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const normalized = normalizeAffordabilitySettings(settings);
+    try {
+      await setStoredSetting(AFFORDABILITY_SETTINGS_KEY, normalized);
+      setAffordabilitySettingsState(normalized);
+      return true;
+    } catch (error) {
+      console.error('Failed to save affordability settings:', error);
+      return false;
+    }
+  }, [dbDriver, setStoredSetting]);
 
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [monthCycleDay, setMonthCycleDay] = useState(25);
@@ -442,14 +467,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     setStateFromDbState(state);
   };
 
-  const verifyDataIntegrity = async (): Promise<boolean> => {
-    if (!dbDriver) return false;
+  const verifyDataIntegrity = async (): Promise<DataIntegrityAuditResult> => {
+    if (!dbDriver) throw new Error('Database is not ready yet.');
     const result = await auditDatabaseIntegrity(dbDriver);
-    const message = result.mismatches.length || !result.isNetWorthAccurate
-      ? 'Ledger integrity warning: one or more balances do not match the transaction ledger.'
-      : null;
-    setIntegrityWarning(message);
-    return !message;
+    const criticalCount = result.issues.filter(issue => issue.severity === 'error').length;
+    setIntegrityWarning(criticalCount > 0
+      ? `Data integrity warning: ${criticalCount} critical issue${criticalCount === 1 ? '' : 's'} detected. Open Settings → Verify Data Integrity for details.`
+      : null);
+    return result;
   };
 
   const persistAppSetting = async (key: string, value: unknown) => {
@@ -486,17 +511,16 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setDbDriver(driver);
         // Seed only a genuinely new database. An intentionally empty persisted
         // ledger must remain empty after refresh.
-        if (driver.isNewDatabase && localStorage.getItem('coinbuddy_skip_demo_seed') !== 'true') {
+        if (driver.isNewDatabase && !driver.skipDemoSeed) {
           await seedDemoData(driver);
           await persistDatabase(driver);
         }
         await refreshStateFromDatabase(driver);
         const integrity = await auditDatabaseIntegrity(driver);
-        if (integrity.mismatches.length || !integrity.isNetWorthAccurate) setIntegrityWarning('Ledger integrity warning: one or more balances do not match the transaction ledger.');
+        if (integrity.hasCriticalIssues) setIntegrityWarning(`Data integrity warning: ${integrity.issues.filter(issue => issue.severity === 'error').length} critical issue(s) detected. Open Settings → Verify Data Integrity for details.`);
         const settings = await loadAppSettings(driver);
         if (settings.theme === 'light' || settings.theme === 'dark') setTheme(settings.theme);
         if (typeof settings.colorPalette === 'string') setColorPalette(settings.colorPalette);
-        if (typeof settings.autoRecur === 'boolean') setAutoRecur(settings.autoRecur);
         if (typeof settings.biometric === 'boolean') setBiometric(settings.biometric);
         if (typeof settings.passcode === 'string' || settings.passcode === null) {
           const storedPasscode = settings.passcode as string | null;
@@ -507,6 +531,8 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setCurrency(userConfig.currency);
         setMonthCycleDay(userConfig.monthCycleDay);
         if (settings.profile && typeof settings.profile === 'object') setProfile(settings.profile as typeof profile);
+        setAffordabilitySettingsState(normalizeAffordabilitySettings(settings[AFFORDABILITY_SETTINGS_KEY]));
+        setSavingsGoals(normalizeSavingsGoals(settings[SAVINGS_GOALS_KEY]));
         setDbReady(true);
       })
       .catch((err) => {
@@ -526,14 +552,13 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       void Promise.all([
         persistAppSetting('theme', theme),
         persistAppSetting('colorPalette', colorPalette),
-        persistAppSetting('autoRecur', autoRecur),
         persistAppSetting('biometric', biometric),
         persistAppSetting('passcode', passcode),
         persistAppSetting('profile', profile),
       ]);
       void persistDbAction(() => upsertUserConfig(dbDriver!, { currency, monthCycleDay }));
     }
-  }, [theme, colorPalette, currency, autoRecur, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
+  }, [theme, colorPalette, currency, biometric, passcode, monthCycleDay, profile, dbReady, dbDriver]);
 
   useEffect(() => {
     localStorage.setItem('coinbuddy_balances_visible', String(balancesVisible));
@@ -561,11 +586,12 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         await repairLegacyRecurringConfirmationState(dbDriver);
         localStorage.setItem(migrationKey, 'true');
       }
-      if (autoRecur) {
-        await generateDueRecurringTransactions(dbDriver, false);
-      }
+      // Due schedules always become pending ledger entries. They never change
+      // balances until the user confirms them, so a separate auto-create toggle
+      // only made schedules silently disappear when disabled.
+      await generateDueRecurringTransactions(dbDriver, false);
     });
-  }, [dbDriver, dbReady, autoRecur]);
+  }, [dbDriver, dbReady]);
 
   const validateTransaction = (
     tx: Omit<Transaction, 'id'>, 
@@ -609,7 +635,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
     const effectiveAccounts = recomputeAllAccountBalances(currentAccounts, nextTxs);
 
-    if (tx.type === 'expense') {
+    if (tx.is_verified !== 0 && tx.type === 'expense') {
       const sourceId = tx.fromAccountId || tx.account || 'cash';
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
@@ -639,7 +665,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           }
         }
       }
-    } else if (tx.type === 'transfer') {
+    } else if (tx.is_verified !== 0 && tx.type === 'transfer') {
       const sourceId = tx.fromAccountId;
       const sourceAcc = effectiveAccounts.find(a => a.id === sourceId);
       if (sourceAcc) {
@@ -823,11 +849,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const approveTransaction = (id: string, userSelectedDate?: string) => {
+  const approveTransaction = (id: string, userSelectedDate?: string): { success: boolean; error?: string } => {
     const tx = transactions.find(t => t.id === id);
-    if (!tx || tx.is_verified !== 0) return;
-    
-    updateTransaction(id, {
+    if (!tx) return { success: false, error: 'Scheduled transaction could not be found.' };
+    if (tx.is_verified !== 0) return { success: true };
+
+    // Confirmation is the point where a scheduled transaction becomes real,
+    // so normal balance/credit-limit validation is intentionally enforced here.
+    return updateTransaction(id, {
       ...tx,
       date: userSelectedDate || tx.date,
       is_verified: 1
@@ -996,7 +1025,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const addAccount = (account: Omit<Account, 'id'>) => {
+  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
     const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
@@ -1053,12 +1082,20 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
     if (dbDriver) {
       persistDbAction(async () => {
-        await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id);
+        await dbDriver.execute('BEGIN TRANSACTION');
+        try {
+          await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
+          await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
+          await dbDriver.execute('COMMIT');
+        } catch (error) {
+          await dbDriver.execute('ROLLBACK');
+          throw error;
+        }
       });
     }
   };
 
-  const updateAccount = (id: string, account: Omit<Account, 'id'>) => {
+  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
 
@@ -1099,6 +1136,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         persistDbAction(async () => {
           await updateAccountRow(dbDriver, mergedAccount);
           await updateOpeningBalance(dbDriver, id, account.balance);
+          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
         });
       }
     } else {
@@ -1139,6 +1177,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           if (newOpeningTx) {
             await insertTransactionRow(dbDriver, newOpeningTx);
           }
+          await syncInvestmentSipRecurringRule(dbDriver, id, { ...account, id }, options.sipSourceAccountId);
         });
       }
     }
@@ -1277,8 +1316,42 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     showToast('Credit card removed', 'Undo', () => setCreditCardRecords(cards => cards.some(item => item.id === card.id) ? cards : [card, ...cards]));
   };
 
+  const persistSavingsGoals = useCallback(async (nextGoals: SavingsGoal[]): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const normalized = normalizeSavingsGoals(nextGoals);
+    try {
+      await setStoredSetting(SAVINGS_GOALS_KEY, normalized);
+      savingsGoalsRef.current = normalized;
+      setSavingsGoals(normalized);
+      return true;
+    } catch (error) {
+      console.error('Failed to save Goals:', error);
+      return false;
+    }
+  }, [dbDriver, setStoredSetting]);
+
+  const addSavingsGoal = async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<boolean> => {
+    const created = normalizeSavingsGoal({ ...goal, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
+    return persistSavingsGoals([created, ...savingsGoalsRef.current]);
+  };
+
+  const updateSavingsGoal = async (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<boolean> => {
+    const next = savingsGoalsRef.current.map(item => item.id === id ? normalizeSavingsGoal({ ...item, ...goal, id }) : item);
+    return persistSavingsGoals(next);
+  };
+
+  const deleteSavingsGoal = async (id: string): Promise<boolean> => {
+    const removed = savingsGoalsRef.current.find(goal => goal.id === id);
+    const ok = await persistSavingsGoals(savingsGoalsRef.current.filter(goal => goal.id !== id));
+    if (ok && removed) showToast('Goal deleted', 'Undo', () => {
+      const restored = savingsGoalsRef.current.some(goal => goal.id === removed.id) ? savingsGoalsRef.current : [removed, ...savingsGoalsRef.current];
+      void persistSavingsGoals(restored);
+    });
+    return ok;
+  };
+
   const addCategory = (category: Omit<Category, 'id'>) => {
-    const newCategory = { ...category, id: crypto.randomUUID() };
+    const newCategory: Category = ensureCategoryAffordabilityClass({ ...category, id: crypto.randomUUID() });
     setCategories(prev => [newCategory, ...prev]);
     if (dbDriver) {
       persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
@@ -1286,9 +1359,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   };
 
   const updateCategory = (id: string, category: Omit<Category, 'id'>) => {
-    setCategories(cats => cats.map(c => c.id === id ? { ...c, ...category } : c));
+    const normalizedCategory: Category = ensureCategoryAffordabilityClass({ ...category, id });
+    setCategories(cats => cats.map(c => c.id === id ? { ...c, ...normalizedCategory } : c));
     if (dbDriver) {
-      persistDbAction(() => updateCategoryRow(dbDriver, id, category as Category));
+      persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
     }
   };
 
@@ -1410,6 +1484,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     setEvents([]);
     setLoanRevisions([]);
     setRecurringRules([]);
+    setSavingsGoals([]);
+    setAffordabilitySettingsState({ ...DEFAULT_AFFORDABILITY_SETTINGS });
     setIntegrityWarning(null);
     clearStacks();
     setLastUpdated(new Date().toISOString());
@@ -1434,6 +1510,9 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
       setRecurringRules(refreshed.recurringRules);
+      const restoredAppSettings = await loadAppSettings(dbDriver);
+      setAffordabilitySettingsState(normalizeAffordabilitySettings(restoredAppSettings[AFFORDABILITY_SETTINGS_KEY]));
+      setSavingsGoals(normalizeSavingsGoals(restoredAppSettings[SAVINGS_GOALS_KEY]));
       const integrity = await auditDatabaseIntegrity(dbDriver);
       if (integrity.mismatches.length > 0) {
         setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
@@ -1449,6 +1528,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
       if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
       if (data.recurringRules && Array.isArray(data.recurringRules)) setRecurringRules(data.recurringRules);
+      setAffordabilitySettingsState(normalizeAffordabilitySettings(data.affordabilitySettings));
+      setSavingsGoals(normalizeSavingsGoals(data.savingsGoals));
     }
 
     if (data.currency) setCurrency(data.currency);
@@ -1470,6 +1551,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     widgets,
     loanRevisions,
     recurringRules,
+    affordabilitySettings,
+    savingsGoals,
     currency,
   });
 
@@ -1486,7 +1569,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
-      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, autoRecur, setAutoRecur, recurringRules, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
+      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,

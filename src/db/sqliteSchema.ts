@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS categories (
   is_rollover INTEGER NOT NULL DEFAULT 0,
   rollover_account_id TEXT,
   tags_json TEXT,
-  group_name TEXT
+  group_name TEXT,
+  affordability_class TEXT CHECK(affordability_class IN ('COMMITTED', 'NORMAL', 'FLEXIBLE', 'IRREGULAR', 'SAVINGS'))
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -311,6 +312,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE categories ADD COLUMN rollover_account_id TEXT;`,
   `ALTER TABLE recurring_rules ADD COLUMN event_id TEXT REFERENCES events(event_id) ON DELETE SET NULL;`,
   `ALTER TABLE recurring_rules ADD COLUMN anchor_day INTEGER;`,
+  `ALTER TABLE categories ADD COLUMN affordability_class TEXT;`,
+  `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -385,6 +388,7 @@ export interface CategoryRow {
   icon_name?: string | null;
   is_rollover: number;
   rollover_account_id?: string | null;
+  affordability_class?: string | null;
 }
 
 export interface TransactionRow {
@@ -603,45 +607,73 @@ export async function updateOpeningBalance(
   }
 }
 
+export type IntegrityIssueSeverity = 'error' | 'warning';
+
+export interface DataIntegrityIssue {
+  code: string;
+  severity: IntegrityIssueSeverity;
+  message: string;
+  entityId?: string;
+}
+
+export interface DataIntegrityAuditResult {
+  mismatches: { accountId: string; expectedBalance: number; actualBalance: number }[];
+  isNetWorthAccurate: boolean;
+  totalAssets: number;
+  totalLiabilities: number;
+  issues: DataIntegrityIssue[];
+  isHealthy: boolean;
+  hasCriticalIssues: boolean;
+}
+
 /**
- * Audits the database integrity by comparing computed view balances with transaction ledger summation.
+ * Full data-health audit. The balance audit remains the financial source of
+ * truth, while the additional checks cover the planner/recurring/Goals models
+ * that are not protected by SQLite foreign keys alone.
  */
 export async function auditDatabaseIntegrity(
   db: SQLiteDatabaseDriver & {
     query?: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
   }
-): Promise<{ 
-  mismatches: { accountId: string; expectedBalance: number; actualBalance: number }[];
-  isNetWorthAccurate: boolean;
-  totalAssets: number;
-  totalLiabilities: number;
-}> {
-  if (!db.query) {
-    throw new Error('Database query method is not available on driver.');
+): Promise<DataIntegrityAuditResult> {
+  if (!db.query) throw new Error('Database query method is not available on driver.');
+
+  const issues: DataIntegrityIssue[] = [];
+  const addIssue = (code: string, severity: IntegrityIssueSeverity, message: string, entityId?: string) => {
+    issues.push({ code, severity, message, entityId });
+  };
+
+  // SQLite file/index health and declared foreign keys.
+  const integrityRows = await db.query('PRAGMA integrity_check;');
+  const integrityMessages = integrityRows.map(row => String(Object.values(row)[0] ?? '')).filter(Boolean);
+  if (integrityMessages.length !== 1 || integrityMessages[0].toLowerCase() !== 'ok') {
+    addIssue('SQLITE_INTEGRITY', 'error', `SQLite integrity check failed: ${integrityMessages.join('; ') || 'unknown error'}.`);
+  }
+  const foreignKeyRows = await db.query('PRAGMA foreign_key_check;');
+  for (const row of foreignKeyRows) {
+    addIssue('FOREIGN_KEY', 'error', `Broken database reference in ${String(row.table ?? 'unknown table')} (row ${String(row.rowid ?? '?')}).`);
   }
 
+  const accountMetadata = await db.query(`SELECT id, name, type, subtype, is_archived, investment_method, monthly_sip_amount, next_sip_date FROM accounts`);
+  const accountMap = new Map(accountMetadata.map(account => [String(account.id), account]));
   const accounts = await db.query(`SELECT id, type, cached_balance FROM account_balances_view`);
-  
   const mismatches: { accountId: string; expectedBalance: number; actualBalance: number }[] = [];
   let expectedTotalAssets = 0;
   let expectedTotalLiabilities = 0;
   let actualTotalAssets = 0;
   let actualTotalLiabilities = 0;
-  
+
   for (const account of accounts) {
-    const accountId = account.id;
-    const actualBalance = account.cached_balance;
-    const accountType = account.type;
-    
+    const accountId = String(account.id);
+    const actualBalance = Number(account.cached_balance ?? 0);
+    const accountType = String(account.type);
     let expectedBalance = 0;
-    
     const txRows = await db.query(
-      `SELECT transaction_type, amount, from_account_id, to_account_id, is_verified, is_interest_only 
-       FROM transactions 
-       WHERE from_account_id = ? OR to_account_id = ?`, 
-      [accountId, accountId]
+      `SELECT transaction_type, amount, from_account_id, to_account_id, is_verified, is_interest_only
+         FROM transactions
+        WHERE from_account_id = ? OR to_account_id = ?`,
+      [accountId, accountId],
     );
-    
     for (const tx of txRows) {
       expectedBalance += applyTransactionEffect({
         ...tx,
@@ -653,18 +685,12 @@ export async function auditDatabaseIntegrity(
         is_verified: Number(tx.is_verified ?? 1),
       } as any, { id: accountId, type: accountType === 'LIABILITY' ? 'liability' : 'asset' });
     }
-    
     const roundedExpected = Math.round(expectedBalance * 100) / 100;
     const roundedActual = Math.round(actualBalance * 100) / 100;
-    
     if (roundedExpected !== roundedActual) {
-      mismatches.push({
-        accountId,
-        expectedBalance: roundedExpected,
-        actualBalance: roundedActual
-      });
+      mismatches.push({ accountId, expectedBalance: roundedExpected, actualBalance: roundedActual });
+      addIssue('BALANCE_MISMATCH', 'error', `Account ${accountMetadata.find(item => String(item.id) === accountId)?.name ?? accountId} does not match its transaction ledger.`, accountId);
     }
-    
     if (accountType === 'ASSET') {
       expectedTotalAssets += roundedExpected;
       actualTotalAssets += roundedActual;
@@ -673,14 +699,112 @@ export async function auditDatabaseIntegrity(
       actualTotalLiabilities += roundedActual;
     }
   }
-  
+
   const expectedNetWorth = expectedTotalAssets - expectedTotalLiabilities;
   const actualNetWorth = actualTotalAssets - actualTotalLiabilities;
-  
+  const isNetWorthAccurate = Math.round(expectedNetWorth * 100) === Math.round(actualNetWorth * 100);
+  if (!isNetWorthAccurate) addIssue('NET_WORTH_MISMATCH', 'error', 'Net worth does not reconcile to the account ledger.');
+
+  // Credit-card metadata must point to a liability account.
+  const cardRows = await db.query(`
+    SELECT cc.id, cc.account_id, cc.due_amount, a.id AS linked_id, a.type AS linked_type
+      FROM credit_cards cc
+      LEFT JOIN accounts a ON a.id = cc.account_id
+  `);
+  for (const card of cardRows) {
+    if (!card.linked_id) addIssue('CREDIT_CARD_LINK', 'error', `Credit card ${String(card.id)} is not linked to an existing account.`, String(card.id));
+    else if (card.linked_type !== 'LIABILITY') addIssue('CREDIT_CARD_LINK', 'error', `Credit card ${String(card.id)} is linked to a non-liability account.`, String(card.id));
+    if (!Number.isFinite(Number(card.due_amount)) || Number(card.due_amount) < 0) addIssue('CREDIT_CARD_DUE', 'warning', `Credit card ${String(card.id)} has an invalid due amount.`, String(card.id));
+  }
+
+  // Active recurring schedules must resolve to live accounts. Recurring-rule
+  // account columns are intentionally not foreign-key constrained because old
+  // ledger entries survive schedule deletion, so validate them explicitly.
+  const recurringRows = await db.query(`SELECT * FROM recurring_rules`);
+  const recurringMap = new Map(recurringRows.map(rule => [String(rule.id), rule]));
+  for (const rule of recurringRows) {
+    if (Number(rule.is_active ?? 1) !== 1) continue;
+    const id = String(rule.id);
+    const type = String(rule.transaction_type);
+    const sourceId = rule.from_account_id ?? (type === 'EXPENSE' ? rule.account : null);
+    const destinationId = rule.to_account_id ?? (type === 'INCOME' ? rule.account : null);
+    const source = sourceId ? accountMap.get(String(sourceId)) : undefined;
+    const destination = destinationId ? accountMap.get(String(destinationId)) : undefined;
+    if ((type === 'EXPENSE' || type === 'TRANSFER') && !sourceId) addIssue('RECURRING_SOURCE', 'error', `Recurring schedule “${String(rule.title)}” has no source account.`, id);
+    else if (sourceId && !source) addIssue('RECURRING_SOURCE', 'error', `Recurring schedule “${String(rule.title)}” points to a missing source account.`, id);
+    else if (source && Number(source.is_archived) === 1) addIssue('RECURRING_ARCHIVED_ACCOUNT', 'warning', `Recurring schedule “${String(rule.title)}” uses archived source account ${String(source.name)}.`, id);
+    if ((type === 'INCOME' || type === 'TRANSFER') && !destinationId) addIssue('RECURRING_DESTINATION', 'error', `Recurring schedule “${String(rule.title)}” has no destination account.`, id);
+    else if (destinationId && !destination) addIssue('RECURRING_DESTINATION', 'error', `Recurring schedule “${String(rule.title)}” points to a missing destination account.`, id);
+    else if (destination && Number(destination.is_archived) === 1) addIssue('RECURRING_ARCHIVED_ACCOUNT', 'warning', `Recurring schedule “${String(rule.title)}” uses archived destination account ${String(destination.name)}.`, id);
+    if (type === 'TRANSFER' && sourceId && destinationId && String(sourceId) === String(destinationId)) addIssue('RECURRING_SELF_TRANSFER', 'error', `Recurring schedule “${String(rule.title)}” transfers to the same account.`, id);
+    const due = String(rule.next_due_date ?? '');
+    const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(due) ? new Date(`${due}T12:00:00`) : null;
+    if (!dueDate || Number.isNaN(dueDate.getTime())) addIssue('RECURRING_DATE', 'error', `Recurring schedule “${String(rule.title)}” has an invalid next due date.`, id);
+  }
+
+  // Investment SIP metadata should own a synchronized recurring transfer rule.
+  for (const account of accountMetadata) {
+    const subtype = String(account.subtype ?? '').trim().toLowerCase();
+    const isSip = account.type === 'ASSET' && subtype === 'investment' && account.investment_method === 'SIP' && Number(account.monthly_sip_amount ?? 0) > 0 && Boolean(account.next_sip_date);
+    if (!isSip || Number(account.is_archived) === 1) continue;
+    const accountId = String(account.id);
+    const rule = recurringMap.get(`investment-sip:${accountId}`);
+    if (!rule) {
+      addIssue('SIP_RECURRING_SYNC', 'warning', `Investment ${String(account.name)} has SIP metadata but no managed recurring transfer. Edit the Investment once to choose its funding account.`, accountId);
+      continue;
+    }
+    if (String(rule.transaction_type) !== 'TRANSFER' || String(rule.to_account_id ?? '') !== accountId || Math.abs(Number(rule.amount) - Number(account.monthly_sip_amount)) > 0.005 || Number(rule.is_active ?? 1) !== 1) {
+      addIssue('SIP_RECURRING_SYNC', 'warning', `Investment ${String(account.name)} SIP metadata does not match its managed recurring transfer.`, accountId);
+    }
+  }
+
+  // Every expense category needs a current affordability classification.
+  const validAffordability = new Set(['COMMITTED', 'NORMAL', 'FLEXIBLE', 'IRREGULAR', 'SAVINGS']);
+  const categoryRows = await db.query(`SELECT id, name, type, affordability_class FROM categories`);
+  for (const category of categoryRows) {
+    if (category.type === 'EXPENSE' && !validAffordability.has(String(category.affordability_class ?? ''))) {
+      addIssue('CATEGORY_AFFORDABILITY', 'warning', `Expense category ${String(category.name)} is missing a valid affordability classification.`, String(category.id));
+    }
+  }
+
+  // All settings must remain valid JSON. Goals also carry account references in
+  // JSON rather than SQL columns, so validate those references explicitly.
+  const settingRows = await db.query(`SELECT key, value_json FROM app_settings`);
+  let goals: any[] = [];
+  for (const setting of settingRows) {
+    try {
+      const value = JSON.parse(String(setting.value_json));
+      if (String(setting.key) === 'savings_goals_v1') goals = Array.isArray(value) ? value : [];
+    } catch {
+      addIssue('APP_SETTING_JSON', 'error', `Stored setting ${String(setting.key)} contains invalid JSON.`, String(setting.key));
+    }
+  }
+  const goalIds = new Set<string>();
+  for (const goal of goals) {
+    const id = String(goal?.id ?? '');
+    if (!id) { addIssue('GOAL_ID', 'warning', 'A Goal is missing its identifier.'); continue; }
+    if (goalIds.has(id)) addIssue('GOAL_ID', 'warning', `Goal ${String(goal?.name ?? id)} has a duplicate identifier.`, id);
+    goalIds.add(id);
+    if (!Number.isFinite(Number(goal?.targetAmount)) || Number(goal.targetAmount) <= 0) addIssue('GOAL_TARGET', 'warning', `Goal ${String(goal?.name ?? id)} has an invalid target amount.`, id);
+    if (goal?.linkedAccountId) {
+      const linked = accountMap.get(String(goal.linkedAccountId));
+      if (!linked) addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} points to a missing account.`, id);
+      else if (Number(linked.is_archived) === 1) addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} points to archived account ${String(linked.name)}.`, id);
+      else if (linked.type !== 'ASSET') addIssue('GOAL_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} is linked to a liability instead of an asset.`, id);
+      if (goal?.protectLinkedBalance && linked) {
+        const group = String(linked.subtype ?? '').trim().toLowerCase();
+        if (group === 'investment' || group === 'physical asset') addIssue('GOAL_PROTECTED_ACCOUNT', 'warning', `Goal ${String(goal?.name ?? id)} cannot protect a non-liquid ${String(linked.subtype)} balance as cash reserve.`, id);
+      }
+    }
+  }
+
   return {
     mismatches,
-    isNetWorthAccurate: Math.round(expectedNetWorth * 100) === Math.round(actualNetWorth * 100),
+    isNetWorthAccurate,
     totalAssets: actualTotalAssets,
-    totalLiabilities: actualTotalLiabilities
+    totalLiabilities: actualTotalLiabilities,
+    issues,
+    isHealthy: issues.length === 0,
+    hasCriticalIssues: issues.some(issue => issue.severity === 'error'),
   };
 }

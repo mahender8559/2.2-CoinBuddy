@@ -7,6 +7,10 @@ import { calculateEmiSplit } from '../utils/emi';
 import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
 import { advanceRecurringDate, toLocalDateKey } from '../domain/recurring';
+import { normalizeAffordabilityClass } from '../domain/categoryAffordability';
+import { AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
+import { SAVINGS_GOALS_KEY, normalizeSavingsGoals } from '../domain/savingsGoals';
+import { buildInvestmentSipRule, investmentSipRuleId, isInvestmentSipAccount } from '../domain/investmentSip';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -52,6 +56,8 @@ export interface SqlJsDatabaseDriver {
   rawDb: any;
   /** True only when startup found no previously persisted database snapshot. */
   isNewDatabase?: boolean;
+  /** One-shot startup decision used after destructive clear so a fresh empty ledger stays empty. */
+  skipDemoSeed?: boolean;
   execute: (sql: string, params?: (string | number | null | undefined)[]) => Promise<void>;
   query: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
   exportToBase64: () => string;
@@ -114,10 +120,11 @@ async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
   return true;
 }
 
-function createDriver(db: any, isNewDatabase = false): SqlJsDatabaseDriver {
+function createDriver(db: any, isNewDatabase = false, skipDemoSeed = false): SqlJsDatabaseDriver {
   return {
     rawDb: db,
     isNewDatabase,
+    skipDemoSeed,
     async execute(sql, params = []) {
       if (params.length === 0) {
         db.exec(sql);
@@ -185,7 +192,7 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     localStorage.removeItem(SKIP_DEMO_SEED_KEY);
   }
 
-  return createDriver(db, isNewDatabase);
+  return createDriver(db, isNewDatabase, shouldSkipDemoSeed);
 }
 
 export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
@@ -376,8 +383,8 @@ export async function loadDemoDataFromJson(driver: SqlJsDatabaseDriver): Promise
   const categories = Array.isArray(data.categories) ? data.categories : [];
   for (const category of categories) {
     await driver.execute(
-      `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-      [category.id, category.name, normalizeDemoCategoryType(category.type), category.icon ?? category.icon_name ?? 'Tag', Number(category.budget ?? 0), category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+      `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [category.id, category.name, normalizeDemoCategoryType(category.type), category.icon ?? category.icon_name ?? 'Tag', Number(category.budget ?? 0), category.isRollover ? 1 : 0, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]
     );
   }
 
@@ -493,15 +500,15 @@ export async function updateAccountRow(driver: SqlJsDatabaseDriver, account: Acc
 
 export async function insertCategoryRow(driver: SqlJsDatabaseDriver, category: Category): Promise<void> {
   await driver.execute(
-    `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]
+    `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]
   );
 }
 
 export async function updateCategoryRow(driver: SqlJsDatabaseDriver, id: string, category: Category): Promise<void> {
   await driver.execute(
-    `UPDATE categories SET name = ?, type = ?, icon_name = ?, budget = ?, is_rollover = ?, rollover_account_id = ?, tags_json = ?, group_name = ? WHERE id = ?;`,
-    [category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, id]
+    `UPDATE categories SET name = ?, type = ?, icon_name = ?, budget = ?, is_rollover = ?, rollover_account_id = ?, tags_json = ?, group_name = ?, affordability_class = ? WHERE id = ?;`,
+    [category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type), id]
   );
 }
 
@@ -619,6 +626,47 @@ export async function updateRecurringRuleRow(driver: SqlJsDatabaseDriver, rule: 
 
 export async function deleteRecurringRuleRow(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
   await driver.execute(`DELETE FROM recurring_rules WHERE id = ?;`, [id]);
+}
+
+/** Keep Investment-account SIP metadata and the recurring scheduler in sync. */
+export async function syncInvestmentSipRecurringRule(
+  driver: SqlJsDatabaseDriver,
+  accountId: string,
+  account: Account,
+  sourceAccountId?: string,
+): Promise<void> {
+  const ruleId = investmentSipRuleId(accountId);
+  const existing = await driver.query(`SELECT id FROM recurring_rules WHERE id = ?`, [ruleId]);
+
+  if (!isInvestmentSipAccount(account)) {
+    if (existing.length) await deleteRecurringRuleRow(driver, ruleId);
+    return;
+  }
+  if (!sourceAccountId) throw new Error('Choose the account that funds this SIP.');
+
+  const rule = buildInvestmentSipRule(accountId, account, sourceAccountId);
+  if (existing.length) {
+    await updateRecurringRuleRow(driver, rule);
+  } else {
+    await createRecurringRule(driver, {
+      title: rule.title,
+      subtitle: rule.subtitle ?? '',
+      amount: rule.amount,
+      date: `${rule.nextDueDate}T12:00:00`,
+      category: rule.category ?? '#investment',
+      icon: rule.icon ?? 'Target',
+      type: 'transfer',
+      fromAccountId: rule.fromAccountId,
+      toAccountId: rule.toAccountId,
+      transaction_type: 'TRANSFER',
+      isRecurring: true,
+      recurrenceFrequency: 'MONTHLY',
+      notes: rule.notes,
+    }, { id: rule.id, nextDueDate: rule.nextDueDate });
+  }
+
+  // If the first SIP is already due, create it as Needs confirmation now.
+  await generateDueRecurringTransactions(driver, false);
 }
 
 export async function skipRecurringRuleOccurrence(driver: SqlJsDatabaseDriver, id: string): Promise<void> {
@@ -771,7 +819,7 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     const recurringRules: RecurringRule[] = Array.isArray(data.recurringRules) ? data.recurringRules : [];
     const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
-    executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null]));
+    executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]));
     executePreparedRows(driver, `INSERT INTO accounts (id, name, type, subtype, credit_limit, overdraft_limit, interest_rate, monthly_emi, interest_calculation_type, payment_frequency, tenure_months, loan_start_date, original_principal, next_emi_date, monthly_interest_rate, next_interest_due_date, investment_method, invested_amount, monthly_sip_amount, next_sip_date, is_archived, late_fee_fixed_amount, late_fee_interest_rate, grace_period_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, accounts.map(account => [account.id, account.name, account.type === 'liability' ? 'LIABILITY' : 'ASSET', account.group ?? null, account.limit ?? null, Math.max(0, account.overdraftLimit ?? 0), account.interestRate ?? null, account.monthlyEMI ?? null, account.interestCalculationType ?? null, account.paymentFrequency ?? null, account.tenureMonths ?? null, account.loanStartDate ?? null, account.originalPrincipal ?? null, account.nextEMIDate ?? null, account.monthlyInterestRate ?? null, account.nextInterestDueDate ?? null, account.investmentMethod ?? null, account.investedAmount ?? null, account.monthlySIPAmount ?? null, account.nextSIPDate ?? null, account.is_archived ?? 0, account.lateFeeFixedAmount ?? null, account.lateFeeInterestRate ?? null, account.gracePeriodDays ?? null]));
     executePreparedRows(driver, `INSERT INTO events (event_id, name, created_at) VALUES (?, ?, ?);`, events.map(event => [event.id, event.name, event.createdAt]));
     executePreparedRows(driver, `INSERT INTO recurring_rules (id, title, subtitle, amount, transaction_type, account, from_account_id, to_account_id, category, icon, notes, is_interest_only, frequency, next_due_date, is_active, event_id, anchor_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, recurringRules.map(rule => [rule.id, rule.title, rule.subtitle ?? null, Math.abs(Number(rule.amount)), rule.transactionType, rule.account ?? null, rule.fromAccountId ?? null, rule.toAccountId ?? null, rule.category ?? null, rule.icon ?? null, rule.notes ?? null, rule.isInterestOnly ? 1 : 0, rule.frequency ?? 'MONTHLY', rule.nextDueDate, rule.isActive === false ? 0 : 1, rule.eventId ?? null, rule.anchorDay ?? Number(String(rule.nextDueDate).slice(8, 10))]));
@@ -791,6 +839,8 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
         monthCycleDay: Number(userConfig.month_cycle_day ?? 25),
       });
     }
+    await upsertAppSetting(driver, AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings(data.affordabilitySettings));
+    await upsertAppSetting(driver, SAVINGS_GOALS_KEY, normalizeSavingsGoals(data.savingsGoals));
     await driver.execute('COMMIT');
   } catch (error) {
     await driver.execute('ROLLBACK');
@@ -815,6 +865,7 @@ export function normalizeCategoryRow(row: any): Category {
     rolloverAccountId: row.rollover_account_id ?? undefined,
     tags,
     group: row.group_name ?? undefined,
+    affordabilityClass: normalizeAffordabilityClass(row.affordability_class, row.group_name, row.type),
     type: row.type?.toLowerCase() === 'income' ? 'income' : 'expense',
   };
 }

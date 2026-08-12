@@ -5,14 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 
 export function WalletSummaryModal() {
-  const { isWalletModalOpen, setWalletModalOpen, formatCurrency, accounts, creditCards } = useAppContext();
+  const { isWalletModalOpen, setWalletModalOpen, formatCurrency, accounts } = useAppContext();
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   if (!isWalletModalOpen) return null;
 
-  // Classify accounts
-  const cashAccounts = accounts.filter(a => !a.is_archived && a.type === 'asset' && (a.id === 'cash' || a.name.toLowerCase().includes('cash') || a.group?.toLowerCase().includes('cash')));
-  const bankAccounts = accounts.filter(a => !a.is_archived && a.type === 'asset' && !(a.id === 'cash' || a.name.toLowerCase().includes('cash') || a.group?.toLowerCase().includes('cash')));
+  // Wallet Summary is intentionally liquid-only: investments and physical
+  // assets belong in net worth, not in the cash/bank amount available today.
+  const activeAssets = accounts.filter(a => !a.is_archived && a.type === 'asset');
+  const accountKind = (value?: string) => (value ?? '').trim().toLowerCase();
+  const cashAccounts = activeAssets.filter(a => {
+    const kind = accountKind(a.group);
+    return a.id === 'cash' || kind === 'cash' || kind === 'cash wallet' || kind === 'wallet';
+  });
+  const bankAccounts = activeAssets.filter(a => {
+    const kind = accountKind(a.group);
+    return kind === 'bank' || kind === 'bank account';
+  });
   const liabilityAccounts = accounts.filter(a => !a.is_archived && a.type === 'liability');
 
   const cashBalance = Math.max(0, cashAccounts.reduce((acc, a) => acc + Math.max(0, a.balance), 0));
@@ -172,11 +181,6 @@ export function WalletSummaryModal() {
                 )}
               </AnimatePresence>
             </div>
-          </div>
-
-          <div className="flex items-center justify-center gap-2 pt-3 border-t border-outline-variant/10 opacity-60 text-xs shrink-0">
-            <ShieldCheck className="w-4 h-4 text-primary" />
-            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Local Secure Vault</span>
           </div>
         </motion.div>
       </div>

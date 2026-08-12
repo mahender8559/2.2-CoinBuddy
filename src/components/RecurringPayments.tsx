@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X } from 'lucide-react';
+import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X, LockKeyhole } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import type { RecurringRule } from '../types';
+import { CurrencyInput } from './CurrencyInput';
 
 export function RecurringPayments() {
   const { recurringRules, events, formatCurrency, updateRecurringRule, deleteRecurringRule, skipRecurringRule } = useAppContext();
@@ -51,42 +52,51 @@ export function RecurringPayments() {
       <div className="overflow-hidden rounded-2xl border border-outline-variant/30 bg-surface-container">
         {recurringRules.length === 0 ? (
           <div className="p-5 text-sm text-on-surface-variant">
-            No recurring schedules yet. Turn on Recurring while creating a transaction to add one.
+            No recurring schedules yet. Turn on Recurring while creating a transaction, or configure an SIP on an Investment account.
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/20">
             {recurringRules.map(rule => {
               const eventName = events.find(event => event.id === rule.eventId)?.name;
               const isBusy = busyId === rule.id;
+              const isManagedSip = rule.id.startsWith('investment-sip:');
               return (
                 <div key={rule.id} className="p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="truncate font-semibold text-on-surface">{rule.title}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${rule.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
                           {rule.isActive ? 'Active' : 'Paused'}
                         </span>
+                        {isManagedSip && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                            <LockKeyhole className="h-3 w-3" /> Investment SIP
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-xs text-on-surface-variant">
                         {formatCurrency(rule.amount)} · {rule.frequency.toLowerCase()} · Next {rule.nextDueDate}
                         {eventName ? ` · ${eventName}` : ''}
                       </p>
+                      {isManagedSip && <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>}
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Edit ${rule.title}`}>
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
-                        {rule.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      </button>
-                      <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Skip next ${rule.title}`}>
-                        <SkipForward className="h-4 w-4" />
-                      </button>
-                      <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="rounded-lg border border-error/30 p-2 text-error hover:bg-error/10 disabled:opacity-50" aria-label={`Delete recurring schedule ${rule.title}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    {!isManagedSip && (
+                      <div className="flex flex-wrap gap-2 sm:shrink-0">
+                        <button type="button" disabled={isBusy} onClick={() => setEditing({ ...rule })} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Edit ${rule.title}`}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button type="button" disabled={isBusy} onClick={() => void run(rule.id, () => updateRecurringRule({ ...rule, isActive: !rule.isActive }))} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={rule.isActive ? `Pause ${rule.title}` : `Resume ${rule.title}`}>
+                          {rule.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </button>
+                        <button type="button" disabled={isBusy || !rule.isActive} onClick={() => { if (window.confirm(`Skip the next ${rule.title} occurrence? Existing ledger entries will not be changed.`)) void run(rule.id, () => skipRecurringRule(rule.id)); }} className="rounded-lg border border-outline-variant/40 p-2 text-on-surface-variant hover:text-primary disabled:opacity-50" aria-label={`Skip next ${rule.title}`}>
+                          <SkipForward className="h-4 w-4" />
+                        </button>
+                        <button type="button" disabled={isBusy} onClick={() => { if (window.confirm(`Delete the recurring schedule "${rule.title}"? Existing transactions will remain in the ledger.`)) void run(rule.id, () => deleteRecurringRule(rule.id)); }} className="rounded-lg border border-error/30 p-2 text-error hover:bg-error/10 disabled:opacity-50" aria-label={`Delete recurring schedule ${rule.title}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -100,13 +110,13 @@ export function RecurringPayments() {
           <div className="w-full max-w-md space-y-4 rounded-3xl border border-outline-variant/30 bg-surface-container p-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <h4 className="text-lg font-bold text-on-surface">Edit recurring series</h4>
-              <button type="button" onClick={() => setEditing(null)} className="rounded-full p-2 hover:bg-surface-container-high"><X className="h-5 w-5" /></button>
+              <button type="button" aria-label="Close recurring editor" onClick={() => setEditing(null)} className="rounded-full p-2 hover:bg-surface-container-high"><X className="h-5 w-5" /></button>
             </div>
             <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Title
               <input value={editing.title} onChange={event => setEditing({ ...editing, title: event.target.value })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
             </label>
             <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Amount
-              <input type="number" min="0.01" step="0.01" value={editing.amount} onChange={event => setEditing({ ...editing, amount: Number(event.target.value) })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
+              <CurrencyInput value={editing.amount || ''} onValueChange={value => setEditing({ ...editing, amount: Number(value) || 0 })} className="mt-2 w-full rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-medium normal-case text-on-surface outline-none focus:border-primary" />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">Frequency

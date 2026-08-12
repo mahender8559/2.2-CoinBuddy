@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Account } from '../types';
 import { useAppContext } from '../context/AppContext';
+import { CurrencyInput } from './CurrencyInput';
 
 type AdjustmentKind = 'BALANCE_ADJUSTMENT' | 'MARKET_ADJUSTMENT';
 
@@ -48,7 +49,7 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
     <div className="w-full max-w-md rounded-3xl bg-surface-container p-6 shadow-2xl border border-outline-variant/30">
       <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold text-on-surface">{label}</h2><p className="mt-1 text-sm text-on-surface-variant">{account.name} · Ledger balance {formatCurrency(account.balance)}</p></div><button onClick={onClose} className="p-2 rounded-full hover:bg-surface-container-high"><X className="w-5 h-5" /></button></div>
       <label className="block mt-6 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Current actual balance</label>
-      <input autoFocus inputMode="decimal" type="number" min="0" value={actualValue} onChange={event => setActualValue(event.target.value)} className="mt-2 w-full rounded-2xl bg-surface-container-high px-4 py-3 text-lg font-bold font-numeric text-on-surface outline-none focus:ring-2 focus:ring-primary" />
+      <CurrencyInput autoFocus aria-label="Current actual balance" value={actualValue} onValueChange={setActualValue} className="mt-2 w-full rounded-2xl bg-surface-container-high px-4 py-3 text-lg font-bold font-numeric text-on-surface outline-none focus:ring-2 focus:ring-primary" />
       <div className={`mt-4 rounded-2xl p-4 text-sm font-semibold ${difference === 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-primary/10 text-primary'}`}>{summary}</div>
       {reconciliationTooLarge && <p className="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-sm font-semibold text-rose-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{reconciliationWarning}</p>}
       {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}

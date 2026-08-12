@@ -16,6 +16,7 @@ import { calculateFinancialRunway, projectDebtPayoff } from '../utils/metrics';
 import { buildSankeySplitLabel } from '../utils/sankeyLabels';
 import { recomputeAllAccountBalances } from '../utils/balanceManager';
 import { getCycleRange, shiftCycle } from '../utils/cycles';
+import { AffordabilityPlanner } from './AffordabilityPlanner';
 
 export function Insights() {
   const { 
@@ -50,7 +51,7 @@ export function Insights() {
     transactions.filter(t => {
       if (t.isOpeningBalance || t.is_verified === 0 || !isCashFlowTransaction(t) || t.type !== 'expense' || !isDateInCurrentCycle(t.date)) return false;
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
-      return catObj?.group !== 'Savings';
+      return catObj?.affordabilityClass !== 'SAVINGS' && catObj?.group !== 'Savings';
     }).forEach(tx => {
       totals[tx.category] = (totals[tx.category] || 0) + Math.abs(tx.amount);
       if (!titlesByCategory[tx.category]) {
@@ -260,21 +261,7 @@ const monthlyTrends = useMemo(() => {
         title: 'Subscription Alert',
         desc: `Found ${recurringTxs.length} potential subscriptions, ${firstName}. Total: ${formatCurrency(recurringTxs.reduce((acc, t) => acc + Math.abs(t.amount), 0))}.`
       });
-    } else {
-      tips.push({
-        icon: Lightbulb,
-        color: 'secondary',
-        title: 'Review Recent Purchases',
-        desc: `Keeping an eye on smaller purchases can help reduce your overall monthly spending, ${firstName}.`
-      });
     }
-    
-    tips.push({
-      icon: PiggyBank,
-      color: 'tertiary',
-      title: 'Savings Potential',
-      desc: `Setting aside ${formatCurrency(20)}/week could fund an extra ${formatCurrency(80)} to your savings goal by next month, ${firstName}.`
-    });
 
     return tips;
   }, [topCategoryInfo, transactions, formatCurrency, categories, profile]);
@@ -362,11 +349,9 @@ const monthlyTrends = useMemo(() => {
           <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Financial Intelligence</p>
           <h2 className="text-2xl font-bold text-on-surface">Analytics & Category Trends</h2>
         </div>
-        <div className="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-xl border border-outline-variant/30">
-          <ShieldCheck className="w-4 h-4 text-primary" />
-          <span className="text-xs font-medium text-on-surface-variant">Data stored securely on this device</span>
-        </div>
       </div>
+
+      <AffordabilityPlanner />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
@@ -785,20 +770,15 @@ const monthlyTrends = useMemo(() => {
           </div>
         </div>
 
-        {/* Smart Tips */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          <h3 className="text-xl font-bold text-on-surface px-1">Smart Tips</h3>
-          
-          {smartTips.map((tip, i) => (
-            <TipCard 
-              key={i}
-              icon={tip.icon} 
-              color={tip.color} 
-              title={tip.title} 
-              desc={tip.desc} 
-            />
-          ))}
-        </div>
+        {/* Smart Tips are shown only when they come from actual ledger signals. */}
+        {smartTips.length > 0 && (
+          <div className="lg:col-span-4 flex flex-col gap-4">
+            <h3 className="text-xl font-bold text-on-surface px-1">Smart Tips</h3>
+            {smartTips.map((tip, i) => (
+              <TipCard key={i} icon={tip.icon} color={tip.color} title={tip.title} desc={tip.desc} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -828,7 +808,7 @@ function TipCard({ icon: Icon, color, title, desc }: { icon: ComponentType<SVGPr
   const c = colorMap[color] || colorMap.primary;
 
   return (
-    <div className={`bg-surface-container-low border-l-4 ${c.border} rounded-r-2xl p-4 flex gap-4 items-start shadow-sm hover:translate-x-1 transition-transform cursor-pointer border-y border-r border-outline-variant/20`}>
+    <div className={`bg-surface-container-low border-l-4 ${c.border} rounded-r-2xl p-4 flex gap-4 items-start shadow-sm border-y border-r border-outline-variant/20`}>
       <div className={`p-2.5 rounded-xl shrink-0 ${c.bg}`}>
         <Icon className={`w-5 h-5 ${c.icon}`} />
       </div>

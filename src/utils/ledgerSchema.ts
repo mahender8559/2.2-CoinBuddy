@@ -1,4 +1,6 @@
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './balanceManager';
+import { DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
+import { normalizeSavingsGoals } from '../domain/savingsGoals';
 
 export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v3';
 
@@ -10,6 +12,8 @@ export function validateLedgerSchema(data: unknown): string | null {
     if (!Array.isArray(ledger[key])) return `Backup field "${key}" must be an array.`;
   }
   if (ledger.recurringRules !== undefined && !Array.isArray(ledger.recurringRules)) return 'Backup field \"recurringRules\" must be an array when present.';
+  if (ledger.affordabilitySettings !== undefined && (!ledger.affordabilitySettings || typeof ledger.affordabilitySettings !== 'object' || Array.isArray(ledger.affordabilitySettings))) return 'Backup field \"affordabilitySettings\" must be an object when present.';
+  if (ledger.savingsGoals !== undefined && !Array.isArray(ledger.savingsGoals)) return 'Backup field \"savingsGoals\" must be an array when present.';
   if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
   if (!(ledger.transactions as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown; amount?: unknown }).id === 'string' && Number.isFinite(Number((value as { amount?: unknown }).amount)) && Number((value as { amount?: unknown }).amount) > 0)) return 'Every imported transaction must have an id and positive amount.';
   return null;
@@ -34,6 +38,8 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
       widgets: Array.isArray(data.widgets) ? data.widgets : [],
       loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [],
       recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [],
+      affordabilitySettings: normalizeAffordabilitySettings(data.affordabilitySettings),
+      savingsGoals: normalizeSavingsGoals(data.savingsGoals),
       currency: data.currency || 'INR',
     };
   }
@@ -66,6 +72,6 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
   return {
     schemaVersion: LEDGER_SCHEMA_VERSION, exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(), accounts: migratedAccounts, transactions, categories,
     creditCards: migratedCards, events: Array.isArray(data.events) ? data.events : [], widgets: Array.isArray(data.widgets) ? data.widgets : [],
-    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], currency: data.currency || '$', lastUpdated: new Date().toISOString(),
+    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], affordabilitySettings: { ...DEFAULT_AFFORDABILITY_SETTINGS }, savingsGoals: [], currency: data.currency || '$', lastUpdated: new Date().toISOString(),
   };
 }
