@@ -1,0 +1,46 @@
+name: Verify v3.4 sharing UI
+
+on:
+  push:
+    branches:
+      - feature/v3.4-shared-finances
+    paths:
+      - ci/run-v34-sharing-ui.txt
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v3.4-shared-finances
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply sharing UI integration
+        run: python3 scripts/apply_v34_sharing_ui.py
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Commit verified sharing slice
+        shell: bash
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add src/context/AppContext.tsx src/db/dbClient.ts src/components/ManageFinances.tsx src/components/SharingPanel.tsx src/db/sharedFinanceRepository.ts
+          if git diff --cached --quiet; then
+            echo "No product changes to commit"
+            exit 0
+          fi
+          git commit -m "Add v3.4 people and shared expense workflow"
+          git push origin HEAD:feature/v3.4-shared-finances
