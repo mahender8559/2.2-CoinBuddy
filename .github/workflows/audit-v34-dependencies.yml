@@ -18,21 +18,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Audit production dependencies
+      - name: Trace vulnerable packages
+        shell: bash
+        run: |
+          npm ls nanoid uuid --all || true
+      - name: Audit exact state
         shell: bash
         run: |
           set +e
           npm audit --omit=dev
           echo "PROD_AUDIT_EXIT=$?"
           exit 0
-      - name: Audit all dependencies
-        shell: bash
-        run: |
-          set +e
-          npm audit
-          echo "ALL_AUDIT_EXIT=$?"
-          exit 0
-      - name: Dependency tree for vulnerable utility packages
-        shell: bash
-        run: |
-          npm ls minimatch glob tar fstream rimraf uuid lodash.isequal inflight --all || true
