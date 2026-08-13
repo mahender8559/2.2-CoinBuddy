@@ -23,7 +23,9 @@ jobs:
           node-version: 20
           cache: npm
       - name: Apply shared-loan integration
-        run: python3 scripts/apply_v34_shared_loans.py
+        run: |
+          python3 scripts/prepare_v34_shared_loans_patch.py
+          python3 scripts/apply_v34_shared_loans.py
       - name: Install dependencies
         run: npm ci
       - name: TypeScript
