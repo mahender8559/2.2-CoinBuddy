@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution, RecurrenceFrequency } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -65,6 +65,10 @@ import {
   addSharedSettlement as addSharedSettlementRow,
   setLoanSharingRule as setLoanSharingRuleRow,
   replaceLoanContributionRules,
+  createSharedObligationTemplate as createSharedObligationTemplateRow,
+  generateDueSharedObligations,
+  addSharedSettlementWithBalanceAdjustment,
+  addExternalLoanContribution,
   type SharedFinanceState,
 } from '../db/sharedFinanceRepository';
 
@@ -95,6 +99,9 @@ type LedgerImportData = {
   sharedSettlements?: SharedSettlement[];
   loanSharingRules?: LoanSharingRule[];
   loanContributionRules?: LoanContributionRule[];
+  sharedObligationTemplates?: SharedObligationTemplate[];
+  sharedTemplateResponsibilities?: SharedTemplateResponsibility[];
+  externalLoanContributions?: ExternalLoanContribution[];
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -148,13 +155,18 @@ interface AppContextType {
   sharedSettlements: SharedSettlement[];
   loanSharingRules: LoanSharingRule[];
   loanContributionRules: LoanContributionRule[];
+  sharedObligationTemplates: SharedObligationTemplate[];
+  sharedTemplateResponsibilities: SharedTemplateResponsibility[];
+  externalLoanContributions: ExternalLoanContribution[];
   personalExpenseRecords: PersonalExpenseRecord[];
   addSharedPerson: (name: string, relationship?: string) => Promise<boolean>;
   archiveSharedPerson: (id: string) => Promise<boolean>;
-  createSharedExpense: (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }) => Promise<boolean>;
+  createSharedExpense: (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }>; repeatFrequency?: RecurrenceFrequency }) => Promise<boolean>;
   recordSharedPayment: (payment: Omit<SharedPayment, 'id'>) => Promise<boolean>;
   recordSharedSettlement: (settlement: Omit<SharedSettlement, 'id'>) => Promise<boolean>;
   configureLoanSharing: (accountId: string, personalResponsibilityPercent: number, contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>>) => Promise<boolean>;
+  settleSharedBalance: (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }) => Promise<boolean>;
+  recordExternalLoanPayment: (input: { accountId: string; personId: string; amount: number; paidAt: string }) => Promise<boolean>;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -410,7 +422,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const [accountRecords, setAccountRecords] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [creditCardRecords, setCreditCardRecords] = useState<CreditCardInfo[]>([]);
-  const EMPTY_SHARED_FINANCE: SharedFinanceState = { people: [], obligations: [], responsibilities: [], payments: [], settlements: [], loanSharingRules: [], loanContributionRules: [] };
+  const EMPTY_SHARED_FINANCE: SharedFinanceState = { people: [], obligations: [], responsibilities: [], payments: [], settlements: [], loanSharingRules: [], loanContributionRules: [], obligationTemplates: [], templateResponsibilities: [], externalLoanContributions: [] };
   const [sharedFinance, setSharedFinance] = useState<SharedFinanceState>(EMPTY_SHARED_FINANCE);
   const people = sharedFinance.people;
   const sharedObligations = sharedFinance.obligations;
@@ -419,6 +431,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const sharedSettlements = sharedFinance.settlements;
   const loanSharingRules = sharedFinance.loanSharingRules;
   const loanContributionRules = sharedFinance.loanContributionRules;
+  const sharedObligationTemplates = sharedFinance.obligationTemplates;
+  const sharedTemplateResponsibilities = sharedFinance.templateResponsibilities;
+  const externalLoanContributions = sharedFinance.externalLoanContributions;
   const personalExpenseRecords = useMemo(
     () => buildPersonalExpenseRecords(transactions, people, sharedObligations, sharedResponsibilities),
     [transactions, people, sharedObligations, sharedResponsibilities],
@@ -617,7 +632,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const archiveSharedPerson = async (id: string): Promise<boolean> =>
     persistSharedAction(() => archiveSharedPersonRow(dbDriver!, id));
 
-  const createSharedExpense = async (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }): Promise<boolean> => {
+  const createSharedExpense = async (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }>; repeatFrequency?: RecurrenceFrequency }): Promise<boolean> => {
     if (!dbDriver) return false;
     const me = people.find(person => person.isSelf && !person.isArchived);
     if (!me) return false;
@@ -625,10 +640,20 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const initialPayments: Array<Omit<SharedPayment, 'id' | 'obligationId'>> = [];
     if ((input.trackedPaymentAmount ?? 0) > 0) initialPayments.push({ personId: me.id, transactionId: input.transactionId, amount: input.trackedPaymentAmount!, source: 'TRACKED', paidAt: now });
     for (const payment of input.externalPayments ?? []) if (payment.amount > 0) initialPayments.push({ personId: payment.personId, amount: payment.amount, source: 'EXTERNAL', paidAt: now });
-    return persistSharedAction(() => createSharedObligationRow(dbDriver, {
-      title: input.title, kind: 'EXPENSE', totalAmount: input.totalAmount, categoryId: input.categoryId, dueDate: input.dueDate, transactionId: input.transactionId,
-      settlementMode: 'TRACK',
-    }, input.allocations, initialPayments));
+    return persistSharedAction(async () => {
+      await dbDriver.execute('BEGIN TRANSACTION');
+      try {
+        await createSharedObligationRow(dbDriver, { title: input.title, kind: 'EXPENSE', totalAmount: input.totalAmount, categoryId: input.categoryId, dueDate: input.dueDate, transactionId: input.transactionId, settlementMode: 'TRACK' }, input.allocations, initialPayments, false);
+        if (input.repeatFrequency) {
+          const baseDate = input.dueDate || toLocalDateKey(new Date());
+          await createSharedObligationTemplateRow(dbDriver, { title: input.title, totalAmount: input.totalAmount, categoryId: input.categoryId, frequency: input.repeatFrequency, nextDueDate: advanceRecurringDate(baseDate, input.repeatFrequency), settlementMode: 'TRACK' }, input.allocations, false);
+        }
+        await dbDriver.execute('COMMIT');
+      } catch (error) {
+        await dbDriver.execute('ROLLBACK');
+        throw error;
+      }
+    });
   };
 
   const recordSharedPayment = async (payment: Omit<SharedPayment, 'id'>): Promise<boolean> =>
@@ -642,6 +667,37 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       await setLoanSharingRuleRow(dbDriver!, { accountId, personalResponsibilityPercent, isShared: true });
       await replaceLoanContributionRules(dbDriver!, accountId, contributions);
     });
+
+
+  const settleSharedBalance = async (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await addSharedSettlementWithBalanceAdjustment(dbDriver, input);
+      await persistDatabase(dbDriver);
+      await refreshStateFromDatabase(dbDriver);
+      await refreshSharedFinance(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('Shared settlement failed:', error);
+      window.alert(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+  const recordExternalLoanPayment = async (input: { accountId: string; personId: string; amount: number; paidAt: string }): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await addExternalLoanContribution(dbDriver, input);
+      await persistDatabase(dbDriver);
+      await refreshStateFromDatabase(dbDriver);
+      await refreshSharedFinance(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('External loan contribution failed:', error);
+      window.alert(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -657,6 +713,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         }
         await refreshStateFromDatabase(driver);
         await ensureSelfPerson(driver, 'Me');
+        await generateDueSharedObligations(driver);
         await refreshSharedFinance(driver);
         const integrity = await auditDatabaseIntegrity(driver);
         if (integrity.hasCriticalIssues) setIntegrityWarning(`Data integrity warning: ${integrity.issues.filter(issue => issue.severity === 'error').length} critical issue(s) detected. Open Settings → Verify Data Integrity for details.`);
@@ -1719,6 +1776,9 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     sharedSettlements,
     loanSharingRules,
     loanContributionRules,
+    sharedObligationTemplates,
+    sharedTemplateResponsibilities,
+    externalLoanContributions,
     currency,
   });
 
@@ -1749,7 +1809,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
-      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing,
+      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment,
       updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,

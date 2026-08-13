@@ -7,6 +7,7 @@ import { getActiveGoalMonthlyContribution, getProtectedGoalReserve } from './sav
 
 export interface AffordabilityPlannerInput extends Omit<AffordabilityInput, 'settings'> {
   affordabilitySettings: AffordabilitySettings;
+  historicalSpendingTransactions?: AffordabilityInput['transactions'];
   monthCycleDay: number;
   savingsGoals?: SavingsGoal[];
 }
@@ -25,10 +26,11 @@ export interface AffordabilityPlannerResult {
 
 /** High-level bridge used by the affordability UI. */
 export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput): AffordabilityPlannerResult {
+  const historicalSpendingTransactions = input.historicalSpendingTransactions ?? input.transactions;
   const irregularSpending = estimateIrregularSpending({
     asOfDate: input.asOfDate,
     monthCycleDay: input.monthCycleDay,
-    transactions: input.transactions,
+    transactions: historicalSpendingTransactions,
     categories: input.categories,
     settings: input.affordabilitySettings,
   });
@@ -36,7 +38,7 @@ export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput
   const normalLivingSpending = estimateNormalLivingSpending({
     asOfDate: input.asOfDate,
     monthCycleDay: input.monthCycleDay,
-    transactions: input.transactions,
+    transactions: historicalSpendingTransactions,
     categories: input.categories,
     historicalMonths: input.affordabilitySettings.historicalMonths,
   });

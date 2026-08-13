@@ -1,5 +1,6 @@
 import type { SqlJsDatabaseDriver } from './dbClient';
 import type {
+  ExternalLoanContribution,
   LoanContributionRule,
   LoanSharingRule,
   Person,
@@ -7,8 +8,13 @@ import type {
   SharedPayment,
   SharedResponsibility,
   SharedSettlement,
+  SharedObligationTemplate,
+  SharedTemplateResponsibility,
+  RecurrenceFrequency,
 } from '../types';
 import { validateResponsibilitySplit } from '../domain/sharedFinances';
+import { advanceRecurringDate, toLocalDateKey } from '../domain/recurring';
+import { calculateEmiSplit } from '../utils/emi';
 
 function isoNow(): string { return new Date().toISOString(); }
 function positiveAmount(value: unknown, label = 'Amount'): number {
@@ -25,6 +31,9 @@ export interface SharedFinanceState {
   settlements: SharedSettlement[];
   loanSharingRules: LoanSharingRule[];
   loanContributionRules: LoanContributionRule[];
+  obligationTemplates: SharedObligationTemplate[];
+  templateResponsibilities: SharedTemplateResponsibility[];
+  externalLoanContributions: ExternalLoanContribution[];
 }
 
 function personFromRow(row: any): Person {
@@ -37,7 +46,7 @@ function obligationFromRow(row: any): SharedObligation {
   return {
     id: String(row.id), title: String(row.title ?? ''), kind: row.kind,
     totalAmount: Number(row.total_amount), categoryId: row.category_id ?? undefined, dueDate: row.due_date ?? undefined,
-    transactionId: row.transaction_id ?? undefined, liabilityAccountId: row.liability_account_id ?? undefined,
+    templateId: row.template_id ?? undefined, transactionId: row.transaction_id ?? undefined, liabilityAccountId: row.liability_account_id ?? undefined,
     recurringRuleId: row.recurring_rule_id ?? undefined, settlementMode: row.settlement_mode,
     status: row.status, createdAt: row.created_at,
   };
@@ -59,6 +68,16 @@ function settlementFromRow(row: any): SharedSettlement {
   };
 }
 
+function templateFromRow(row: any): SharedObligationTemplate {
+  return { id: String(row.id), title: String(row.title ?? ''), totalAmount: Number(row.total_amount), categoryId: row.category_id ?? undefined, frequency: row.frequency, nextDueDate: String(row.next_due_date), isActive: Number(row.is_active) === 1, settlementMode: row.settlement_mode, createdAt: String(row.created_at) };
+}
+function templateResponsibilityFromRow(row: any): SharedTemplateResponsibility {
+  return { id: String(row.id), templateId: String(row.template_id), personId: String(row.person_id), amount: Number(row.amount) };
+}
+function externalLoanContributionFromRow(row: any): ExternalLoanContribution {
+  return { id: String(row.id), accountId: String(row.account_id), personId: String(row.person_id), adjustmentTransactionId: row.adjustment_transaction_id ?? undefined, amount: Number(row.amount), principalAmount: Number(row.principal_amount), interestAmount: Number(row.interest_amount), paidAt: String(row.paid_at) };
+}
+
 export async function ensureSelfPerson(driver: SqlJsDatabaseDriver, displayName = 'Me'): Promise<Person> {
   const rows = await driver.query(`SELECT * FROM people WHERE is_self = 1 AND is_archived = 0 LIMIT 1`);
   if (rows[0]) return personFromRow(rows[0]);
@@ -71,7 +90,7 @@ export async function ensureSelfPerson(driver: SqlJsDatabaseDriver, displayName 
 }
 
 export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promise<SharedFinanceState> {
-  const [people, obligations, responsibilities, payments, settlements, loanSharing, loanContributions] = await Promise.all([
+  const [people, obligations, responsibilities, payments, settlements, loanSharing, loanContributions, templates, templateResponsibilities, externalLoanContributions] = await Promise.all([
     driver.query(`SELECT * FROM people ORDER BY is_self DESC, is_archived ASC, name ASC`),
     driver.query(`SELECT * FROM shared_obligations ORDER BY created_at DESC, id DESC`),
     driver.query(`SELECT * FROM shared_responsibilities ORDER BY obligation_id, id`),
@@ -79,6 +98,9 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
     driver.query(`SELECT * FROM shared_settlements ORDER BY settled_at DESC, id DESC`),
     driver.query(`SELECT * FROM loan_sharing_rules ORDER BY account_id`),
     driver.query(`SELECT * FROM loan_contribution_rules ORDER BY account_id, id`),
+    driver.query(`SELECT * FROM shared_obligation_templates ORDER BY is_active DESC, next_due_date, title`),
+    driver.query(`SELECT * FROM shared_template_responsibilities ORDER BY template_id, id`),
+    driver.query(`SELECT * FROM external_loan_contributions ORDER BY paid_at DESC, id DESC`),
   ]);
   return {
     people: people.map(personFromRow),
@@ -93,6 +115,9 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
       id: String(row.id), accountId: String(row.account_id), personId: String(row.person_id),
       mode: row.mode, value: Number(row.value), isActive: Number(row.is_active) === 1,
     })),
+    obligationTemplates: templates.map(templateFromRow),
+    templateResponsibilities: templateResponsibilities.map(templateResponsibilityFromRow),
+    externalLoanContributions: externalLoanContributions.map(externalLoanContributionFromRow),
   };
 }
 
@@ -119,6 +144,7 @@ export async function createSharedObligation(
   input: Omit<SharedObligation, 'id' | 'createdAt' | 'status'> & { id?: string; createdAt?: string; status?: SharedObligation['status'] },
   allocations: Array<{ personId: string; amount: number }>,
   initialPayments: Array<Omit<SharedPayment, 'id' | 'obligationId'> & { id?: string }> = [],
+  manageTransaction = true,
 ): Promise<SharedObligation> {
   const obligation: SharedObligation = {
     ...input,
@@ -134,11 +160,11 @@ export async function createSharedObligation(
   const splitError = validateResponsibilitySplit(obligation, responsibilities);
   if (splitError) throw new Error(splitError);
 
-  await driver.execute('BEGIN TRANSACTION');
+  if (manageTransaction) await driver.execute('BEGIN TRANSACTION');
   try {
     await driver.execute(
-      `INSERT INTO shared_obligations (id, title, kind, total_amount, category_id, due_date, transaction_id, liability_account_id, recurring_rule_id, settlement_mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [obligation.id, obligation.title.trim(), obligation.kind, obligation.totalAmount, obligation.categoryId ?? null, obligation.dueDate ?? null, obligation.transactionId ?? null, obligation.liabilityAccountId ?? null, obligation.recurringRuleId ?? null, obligation.settlementMode, obligation.status, obligation.createdAt],
+      `INSERT INTO shared_obligations (id, title, kind, total_amount, category_id, due_date, template_id, transaction_id, liability_account_id, recurring_rule_id, settlement_mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [obligation.id, obligation.title.trim(), obligation.kind, obligation.totalAmount, obligation.categoryId ?? null, obligation.dueDate ?? null, obligation.templateId ?? null, obligation.transactionId ?? null, obligation.liabilityAccountId ?? null, obligation.recurringRuleId ?? null, obligation.settlementMode, obligation.status, obligation.createdAt],
     );
     for (const allocation of responsibilities) {
       await driver.execute(`INSERT INTO shared_responsibilities (id, obligation_id, person_id, amount) VALUES (?, ?, ?, ?)`, [allocation.id, allocation.obligationId, allocation.personId, allocation.amount]);
@@ -150,10 +176,10 @@ export async function createSharedObligation(
         [payment.id ?? crypto.randomUUID(), obligation.id, payment.personId, payment.transactionId ?? null, positiveAmount(payment.amount, 'Payment amount'), payment.source, payment.paidAt],
       );
     }
-    await driver.execute('COMMIT');
+    if (manageTransaction) await driver.execute('COMMIT');
     return obligation;
   } catch (error) {
-    await driver.execute('ROLLBACK');
+    if (manageTransaction) await driver.execute('ROLLBACK');
     throw error;
   }
 }
@@ -176,6 +202,128 @@ export async function addSharedSettlement(driver: SqlJsDatabaseDriver, settlemen
     [row.id, row.obligationId ?? null, row.fromPersonId, row.toPersonId, row.transactionId ?? null, row.amount, row.settledAt],
   );
   return row;
+}
+
+export async function createSharedObligationTemplate(
+  driver: SqlJsDatabaseDriver,
+  input: { title: string; totalAmount: number; categoryId?: string; frequency: RecurrenceFrequency; nextDueDate: string; settlementMode?: 'TRACK' | 'IGNORE'; id?: string; createdAt?: string },
+  allocations: Array<{ personId: string; amount: number }>,
+  manageTransaction = true,
+): Promise<SharedObligationTemplate> {
+  const template: SharedObligationTemplate = {
+    id: input.id ?? crypto.randomUUID(), title: input.title.trim(), totalAmount: positiveAmount(input.totalAmount, 'Template total'),
+    categoryId: input.categoryId, frequency: input.frequency, nextDueDate: input.nextDueDate, isActive: true,
+    settlementMode: input.settlementMode ?? 'TRACK', createdAt: input.createdAt ?? isoNow(),
+  };
+  if (!template.title) throw new Error('Recurring shared obligation title is required.');
+  const pseudoObligation: SharedObligation = { id: template.id, title: template.title, kind: 'EXPENSE', totalAmount: template.totalAmount, settlementMode: template.settlementMode, status: 'OPEN', createdAt: template.createdAt };
+  const pseudoResponsibilities: SharedResponsibility[] = allocations.map(item => ({ id: crypto.randomUUID(), obligationId: template.id, personId: item.personId, amount: positiveAmount(item.amount, 'Template responsibility amount') }));
+  const splitError = validateResponsibilitySplit(pseudoObligation, pseudoResponsibilities);
+  if (splitError) throw new Error(splitError);
+  if (manageTransaction) await driver.execute('BEGIN TRANSACTION');
+  try {
+    await driver.execute(`INSERT INTO shared_obligation_templates (id, title, total_amount, category_id, frequency, next_due_date, is_active, settlement_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`, [template.id, template.title, template.totalAmount, template.categoryId ?? null, template.frequency, template.nextDueDate, template.settlementMode, template.createdAt]);
+    for (const row of pseudoResponsibilities) await driver.execute(`INSERT INTO shared_template_responsibilities (id, template_id, person_id, amount) VALUES (?, ?, ?, ?)`, [row.id, template.id, row.personId, row.amount]);
+    if (manageTransaction) await driver.execute('COMMIT');
+    return template;
+  } catch (error) {
+    if (manageTransaction) await driver.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function generateDueSharedObligations(driver: SqlJsDatabaseDriver, today = new Date()): Promise<number> {
+  const todayKey = toLocalDateKey(today);
+  const templates = await driver.query(`SELECT * FROM shared_obligation_templates WHERE is_active = 1 AND next_due_date <= ? ORDER BY next_due_date`, [todayKey]);
+  let generated = 0;
+  for (const template of templates) {
+    const allocations = await driver.query(`SELECT person_id, amount FROM shared_template_responsibilities WHERE template_id = ? ORDER BY id`, [template.id]);
+    let dueDate = String(template.next_due_date);
+    let guard = 0;
+    while (dueDate <= todayKey && guard++ < 240) {
+      const obligationId = `shared-template:${String(template.id)}:${dueDate}`;
+      const existing = await driver.query(`SELECT id FROM shared_obligations WHERE template_id = ? AND due_date = ? LIMIT 1`, [template.id, dueDate]);
+      if (!existing[0]) {
+        await createSharedObligation(driver, {
+          id: obligationId, title: String(template.title), kind: 'EXPENSE', totalAmount: Number(template.total_amount), categoryId: template.category_id ?? undefined,
+          dueDate, templateId: String(template.id), settlementMode: template.settlement_mode ?? 'TRACK', createdAt: `${dueDate}T12:00:00.000Z`,
+        }, allocations.map((row: any) => ({ personId: String(row.person_id), amount: Number(row.amount) })), [], false);
+        generated++;
+      }
+      dueDate = advanceRecurringDate(dueDate, template.frequency as RecurrenceFrequency);
+    }
+    await driver.execute(`UPDATE shared_obligation_templates SET next_due_date = ? WHERE id = ?`, [dueDate, template.id]);
+  }
+  return generated;
+}
+
+export async function addSharedSettlementWithBalanceAdjustment(
+  driver: SqlJsDatabaseDriver,
+  input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string },
+): Promise<SharedSettlement> {
+  const amount = positiveAmount(input.amount, 'Settlement amount');
+  if (input.fromPersonId === input.toPersonId) throw new Error('A settlement must be between two different people.');
+  const selfRows = await driver.query(`SELECT id FROM people WHERE is_self = 1 AND is_archived = 0 LIMIT 1`);
+  const selfId = selfRows[0] ? String(selfRows[0].id) : '';
+  if (!selfId) throw new Error('CoinBuddy could not identify the primary user.');
+  let transactionId: string | undefined;
+  await driver.execute('BEGIN TRANSACTION');
+  try {
+    if (input.accountId) {
+      const accountRows = await driver.query(`SELECT id, type, is_archived FROM accounts WHERE id = ?`, [input.accountId]);
+      const account = accountRows[0];
+      if (!account || String(account.type) !== 'ASSET' || Number(account.is_archived) === 1) throw new Error('Settlements can only move through an active asset account.');
+      const incoming = input.toPersonId === selfId;
+      const outgoing = input.fromPersonId === selfId;
+      if (!incoming && !outgoing) throw new Error('A tracked settlement must involve you.');
+      transactionId = crypto.randomUUID();
+      const dateMs = new Date(input.settledAt).getTime();
+      if (!Number.isFinite(dateMs)) throw new Error('Settlement date is invalid.');
+      await driver.execute(`INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only) VALUES (?, 'BALANCE_ADJUSTMENT', ?, ?, ?, ?, '#settlement', 'ArrowRightLeft', ?, ?, ?, ?, 1, 0, 0, 0)`, [transactionId, incoming ? 'Shared reimbursement received' : 'Shared reimbursement paid', 'Shared-finance settlement · not income/expense', amount, dateMs, input.accountId, outgoing ? input.accountId : null, incoming ? input.accountId : null, 'Generated by Shared Finances settlement']);
+    }
+    const settlement: SharedSettlement = { id: crypto.randomUUID(), obligationId: input.obligationId, fromPersonId: input.fromPersonId, toPersonId: input.toPersonId, transactionId, amount, settledAt: input.settledAt };
+    await driver.execute(`INSERT INTO shared_settlements (id, obligation_id, from_person_id, to_person_id, transaction_id, amount, settled_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [settlement.id, settlement.obligationId ?? null, settlement.fromPersonId, settlement.toPersonId, settlement.transactionId ?? null, settlement.amount, settlement.settledAt]);
+    await driver.execute('COMMIT');
+    return settlement;
+  } catch (error) {
+    await driver.execute('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function addExternalLoanContribution(
+  driver: SqlJsDatabaseDriver,
+  input: { accountId: string; personId: string; amount: number; paidAt: string },
+): Promise<ExternalLoanContribution> {
+  const amount = positiveAmount(input.amount, 'External loan contribution');
+  const people = await driver.query(`SELECT id, is_self, is_archived FROM people WHERE id = ?`, [input.personId]);
+  if (!people[0] || Number(people[0].is_archived) === 1) throw new Error('Contributor is missing or archived.');
+  if (Number(people[0].is_self) === 1) throw new Error('Use the normal loan payment flow for your own tracked payment.');
+  const accounts = await driver.query(`SELECT * FROM account_balances_view WHERE id = ? AND type = 'LIABILITY' AND is_archived = 0`, [input.accountId]);
+  const account = accounts[0];
+  if (!account) throw new Error('External contribution requires an active liability account.');
+  const balance = Math.max(0, Number(account.cached_balance ?? 0));
+  if (balance <= 0) throw new Error('This liability is already paid off.');
+  const split = calculateEmiSplit(balance, Number(account.interest_rate ?? 0), amount, account.interest_calculation_type ?? 'REDUCING');
+  const principalAmount = Math.min(balance, Math.max(0, Math.round(Number(split.principalAmount ?? 0) * 100) / 100));
+  const interestAmount = Math.max(0, Math.round((amount - principalAmount) * 100) / 100);
+  const paidAtMs = new Date(input.paidAt).getTime();
+  if (!Number.isFinite(paidAtMs)) throw new Error('External contribution date is invalid.');
+  let adjustmentTransactionId: string | undefined;
+  await driver.execute('BEGIN TRANSACTION');
+  try {
+    if (principalAmount > 0) {
+      adjustmentTransactionId = crypto.randomUUID();
+      await driver.execute(`INSERT INTO transactions (id, transaction_type, title, subtitle, amount, date, category, icon, account, from_account_id, to_account_id, notes, is_verified, is_recurring, is_opening_balance, is_interest_only) VALUES (?, 'BALANCE_ADJUSTMENT', ?, ?, ?, ?, '#external-loan', 'Landmark', ?, NULL, ?, ?, 1, 0, 0, 0)`, [adjustmentTransactionId, 'External principal payment', 'Paid directly to lender by a shared contributor', principalAmount, paidAtMs, input.accountId, input.accountId, `External family contribution; total ${amount.toFixed(2)}, interest ${interestAmount.toFixed(2)}`]);
+    }
+    const row: ExternalLoanContribution = { id: crypto.randomUUID(), accountId: input.accountId, personId: input.personId, adjustmentTransactionId, amount, principalAmount, interestAmount, paidAt: input.paidAt };
+    await driver.execute(`INSERT INTO external_loan_contributions (id, account_id, person_id, adjustment_transaction_id, amount, principal_amount, interest_amount, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [row.id, row.accountId, row.personId, row.adjustmentTransactionId ?? null, row.amount, row.principalAmount, row.interestAmount, row.paidAt]);
+    await driver.execute('COMMIT');
+    return row;
+  } catch (error) {
+    await driver.execute('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function setLoanSharingRule(driver: SqlJsDatabaseDriver, rule: LoanSharingRule): Promise<void> {

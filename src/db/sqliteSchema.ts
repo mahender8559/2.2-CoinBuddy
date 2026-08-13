@@ -168,6 +168,30 @@ CREATE TABLE IF NOT EXISTS people (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_self_person
   ON people(is_self) WHERE is_self = 1 AND is_archived = 0;
 
+-- Repeating household obligations are definitions, not ledger transactions.
+CREATE TABLE IF NOT EXISTS shared_obligation_templates (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  total_amount REAL NOT NULL CHECK(total_amount > 0),
+  category_id TEXT,
+  frequency TEXT NOT NULL CHECK(frequency IN ('MONTHLY', 'QUARTERLY', 'ANNUALLY')),
+  next_due_date TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+  settlement_mode TEXT NOT NULL DEFAULT 'TRACK' CHECK(settlement_mode IN ('TRACK', 'IGNORE')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS shared_template_responsibilities (
+  id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount > 0),
+  FOREIGN KEY (template_id) REFERENCES shared_obligation_templates(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  UNIQUE(template_id, person_id)
+);
+
 -- A shared obligation describes the family/household economic bill. It does NOT
 -- move money and therefore cannot accidentally alter account balances.
 CREATE TABLE IF NOT EXISTS shared_obligations (
@@ -177,6 +201,7 @@ CREATE TABLE IF NOT EXISTS shared_obligations (
   total_amount REAL NOT NULL CHECK(total_amount > 0),
   category_id TEXT,
   due_date TEXT,
+  template_id TEXT,
   transaction_id TEXT,
   liability_account_id TEXT,
   recurring_rule_id TEXT,
@@ -184,6 +209,7 @@ CREATE TABLE IF NOT EXISTS shared_obligations (
   status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN', 'SETTLED', 'CANCELLED')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  FOREIGN KEY (template_id) REFERENCES shared_obligation_templates(id) ON DELETE SET NULL,
   FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
   FOREIGN KEY (liability_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (recurring_rule_id) REFERENCES recurring_rules(id) ON DELETE SET NULL
@@ -254,6 +280,23 @@ CREATE TABLE IF NOT EXISTS loan_contribution_rules (
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
   FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
   UNIQUE(account_id, person_id)
+);
+
+
+-- Direct lender payments by family members reduce the real liability without
+-- inventing cash movement through one of the user's asset accounts.
+CREATE TABLE IF NOT EXISTS external_loan_contributions (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  adjustment_transaction_id TEXT,
+  amount REAL NOT NULL CHECK(amount > 0),
+  principal_amount REAL NOT NULL CHECK(principal_amount >= 0),
+  interest_amount REAL NOT NULL CHECK(interest_amount >= 0),
+  paid_at TEXT NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  FOREIGN KEY (adjustment_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction
@@ -440,6 +483,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE shared_obligations ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL;`,
   `CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction ON shared_obligations(transaction_id) WHERE transaction_id IS NOT NULL AND kind = 'EXPENSE';`,
   `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
+  `ALTER TABLE shared_obligations ADD COLUMN template_id TEXT;`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS one_shared_obligation_per_template_date ON shared_obligations(template_id, due_date) WHERE template_id IS NOT NULL;`,
 ];
 
 export const SOFT_DELETE_ACCOUNT_SQL = `
@@ -930,6 +975,42 @@ export async function auditDatabaseIntegrity(
   const recurringGoalLinks = await db.query(`SELECT id, title, goal_id FROM recurring_rules WHERE goal_id IS NOT NULL AND goal_id <> ''`);
   for (const row of recurringGoalLinks) {
     if (!goalIds.has(String(row.goal_id))) addIssue('GOAL_RECURRING_LINK', 'warning', `Recurring schedule “${String(row.title ?? row.id)}” points to a Goal that no longer exists.`, String(row.id));
+  }
+
+  // v3.4 shared-finance invariants. These checks intentionally derive totals
+  // from normalized rows instead of trusting cached responsibility/settlement values.
+  const sharedRows = await db.query(`
+    SELECT o.id, o.title, o.total_amount,
+      COALESCE((SELECT SUM(r.amount) FROM shared_responsibilities r WHERE r.obligation_id = o.id), 0) AS responsibility_total,
+      COALESCE((SELECT SUM(p.amount) FROM shared_payments p WHERE p.obligation_id = o.id), 0) AS funded_total
+    FROM shared_obligations o WHERE o.status <> 'CANCELLED'
+  `);
+  for (const row of sharedRows) {
+    if (Math.abs(Number(row.total_amount) - Number(row.responsibility_total)) > 0.01) addIssue('SHARED_RESPONSIBILITY_TOTAL', 'error', `Shared obligation “${String(row.title ?? row.id)}” responsibility rows do not add up to its total.`, String(row.id));
+    if (Number(row.funded_total) > Number(row.total_amount) + 0.01) addIssue('SHARED_OVERFUNDED', 'error', `Shared obligation “${String(row.title ?? row.id)}” has payments above its household total.`, String(row.id));
+  }
+  const templateRows = await db.query(`
+    SELECT t.id, t.title, t.total_amount,
+      COALESCE((SELECT SUM(r.amount) FROM shared_template_responsibilities r WHERE r.template_id = t.id), 0) AS responsibility_total
+    FROM shared_obligation_templates t WHERE t.is_active = 1
+  `);
+  for (const row of templateRows) {
+    if (Math.abs(Number(row.total_amount) - Number(row.responsibility_total)) > 0.01) addIssue('SHARED_TEMPLATE_TOTAL', 'error', `Recurring shared obligation “${String(row.title ?? row.id)}” responsibility rows do not add up to its total.`, String(row.id));
+  }
+  const loanRuleRows = await db.query(`SELECT account_id, personal_responsibility_percent FROM loan_sharing_rules WHERE is_shared = 1`);
+  for (const row of loanRuleRows) {
+    if (!accountMap.has(String(row.account_id))) addIssue('SHARED_LOAN_ACCOUNT', 'error', 'A shared-loan rule points to a missing account.', String(row.account_id));
+    if (Number(row.personal_responsibility_percent) < 0 || Number(row.personal_responsibility_percent) > 100) addIssue('SHARED_LOAN_PERCENT', 'error', 'A shared-loan responsibility percentage is outside 0–100%.', String(row.account_id));
+  }
+  const externalLoanRows = await db.query(`
+    SELECT e.id, e.account_id, e.principal_amount, e.interest_amount, e.amount, e.adjustment_transaction_id,
+           t.transaction_type, t.to_account_id, t.amount AS adjustment_amount
+      FROM external_loan_contributions e
+      LEFT JOIN transactions t ON t.id = e.adjustment_transaction_id
+  `);
+  for (const row of externalLoanRows) {
+    if (Math.abs(Number(row.amount) - Number(row.principal_amount) - Number(row.interest_amount)) > 0.01) addIssue('EXTERNAL_LOAN_SPLIT', 'error', 'An external loan contribution principal/interest split does not equal its payment total.', String(row.id));
+    if (Number(row.principal_amount) > 0 && (!row.adjustment_transaction_id || row.transaction_type !== 'BALANCE_ADJUSTMENT' || String(row.to_account_id) !== String(row.account_id) || Math.abs(Number(row.adjustment_amount) - Number(row.principal_amount)) > 0.01)) addIssue('EXTERNAL_LOAN_ADJUSTMENT', 'error', 'An external loan contribution is not reconciled to its principal-only liability adjustment.', String(row.id));
   }
 
   return {

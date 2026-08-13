@@ -106,6 +106,20 @@ export function getTrackedCashPaid(obligationId: string, payments: SharedPayment
     .reduce((sum, item) => sum + money(item.amount), 0));
 }
 
+/** Positive means the person should receive money; negative means they still owe. */
+export function getPersonNetClaim(
+  obligationId: string,
+  personId: string,
+  responsibilities: SharedResponsibility[],
+  payments: SharedPayment[],
+  settlements: SharedSettlement[],
+): number {
+  const base = getPersonPayments(obligationId, personId, payments) - getPersonResponsibility(obligationId, personId, responsibilities);
+  const outgoing = settlements.filter(item => item.obligationId === obligationId && item.fromPersonId === personId).reduce((sum, item) => sum + money(item.amount), 0);
+  const incoming = settlements.filter(item => item.obligationId === obligationId && item.toPersonId === personId).reduce((sum, item) => sum + money(item.amount), 0);
+  return Math.round((base + outgoing - incoming) * 100) / 100;
+}
+
 export function isObligationFunded(obligation: SharedObligation, payments: SharedPayment[]): boolean {
   const funded = payments
     .filter(item => item.obligationId === obligation.id)

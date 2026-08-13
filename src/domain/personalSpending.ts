@@ -116,3 +116,20 @@ export function personalExpenseForTransaction(transactionId: string, records: Pe
     .filter(record => record.transactionId === transactionId)
     .reduce((sum, record) => sum + record.amount, 0);
 }
+
+
+/** Adapter for historical estimators that still consume ledger-shaped expense rows. */
+export function personalExpenseRecordsToTransactions(records: PersonalExpenseRecord[]): Transaction[] {
+  return records.filter(record => record.amount > 0).map(record => ({
+    id: `personal-history:${record.id}`,
+    title: record.title,
+    subtitle: 'Personal economic spending',
+    amount: record.amount,
+    date: record.date,
+    category: record.category,
+    icon: 'ShoppingBag',
+    type: 'expense',
+    transaction_type: 'EXPENSE',
+    is_verified: 1,
+  }));
+}

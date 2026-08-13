@@ -175,6 +175,7 @@ export interface SharedObligation {
   totalAmount: number;
   categoryId?: string;
   dueDate?: string;
+  templateId?: string;
   transactionId?: string;
   liabilityAccountId?: string;
   recurringRuleId?: string;
@@ -227,6 +228,39 @@ export interface LoanContributionRule {
   mode: 'PERCENT' | 'FIXED';
   value: number;
   isActive: boolean;
+}
+
+
+/** Recurring household obligation definition. Generated obligations are immutable occurrences. */
+export interface SharedObligationTemplate {
+  id: string;
+  title: string;
+  totalAmount: number;
+  categoryId?: string;
+  frequency: RecurrenceFrequency;
+  nextDueDate: string;
+  isActive: boolean;
+  settlementMode: SharedSettlementMode;
+  createdAt: string;
+}
+
+export interface SharedTemplateResponsibility {
+  id: string;
+  templateId: string;
+  personId: string;
+  amount: number;
+}
+
+/** A payment made directly to a lender by somebody outside the tracked ledger. */
+export interface ExternalLoanContribution {
+  id: string;
+  accountId: string;
+  personId: string;
+  adjustmentTransactionId?: string;
+  amount: number;
+  principalAmount: number;
+  interestAmount: number;
+  paidAt: string;
 }
 
 export interface Event {

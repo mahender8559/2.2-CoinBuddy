@@ -15,7 +15,7 @@ export function validateLedgerSchema(data: unknown): string | null {
   if (ledger.recurringRules !== undefined && !Array.isArray(ledger.recurringRules)) return 'Backup field \"recurringRules\" must be an array when present.';
   if (ledger.affordabilitySettings !== undefined && (!ledger.affordabilitySettings || typeof ledger.affordabilitySettings !== 'object' || Array.isArray(ledger.affordabilitySettings))) return 'Backup field \"affordabilitySettings\" must be an object when present.';
   if (ledger.savingsGoals !== undefined && !Array.isArray(ledger.savingsGoals)) return 'Backup field \"savingsGoals\" must be an array when present.';
-  for (const key of ['people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements', 'loanSharingRules', 'loanContributionRules']) {
+  for (const key of ['people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements', 'loanSharingRules', 'loanContributionRules', 'sharedObligationTemplates', 'sharedTemplateResponsibilities', 'externalLoanContributions']) {
     if (ledger[key] !== undefined && !Array.isArray(ledger[key])) return `Backup field "${key}" must be an array when present.`;
   }
   if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
@@ -52,6 +52,9 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
       sharedSettlements: Array.isArray(data.sharedSettlements) ? data.sharedSettlements : [],
       loanSharingRules: Array.isArray(data.loanSharingRules) ? data.loanSharingRules : [],
       loanContributionRules: Array.isArray(data.loanContributionRules) ? data.loanContributionRules : [],
+      sharedObligationTemplates: Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : [],
+      sharedTemplateResponsibilities: Array.isArray(data.sharedTemplateResponsibilities) ? data.sharedTemplateResponsibilities : [],
+      externalLoanContributions: Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : [],
       currency: data.currency || 'INR',
     };
   }
@@ -85,7 +88,7 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
     schemaVersion: LEDGER_SCHEMA_VERSION, exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(), accounts: migratedAccounts, transactions, categories,
     creditCards: migratedCards, events: Array.isArray(data.events) ? data.events : [], widgets: Array.isArray(data.widgets) ? data.widgets : [],
     loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], affordabilitySettings: { ...DEFAULT_AFFORDABILITY_SETTINGS }, savingsGoals: [],
-    people: [], sharedObligations: [], sharedResponsibilities: [], sharedPayments: [], sharedSettlements: [], loanSharingRules: [], loanContributionRules: [],
+    people: [], sharedObligations: [], sharedResponsibilities: [], sharedPayments: [], sharedSettlements: [], loanSharingRules: [], loanContributionRules: [], sharedObligationTemplates: [], sharedTemplateResponsibilities: [], externalLoanContributions: [],
     currency: data.currency || '$', lastUpdated: new Date().toISOString(),
   };
 }
