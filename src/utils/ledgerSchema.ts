@@ -2,18 +2,22 @@ import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './bala
 import { DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { normalizeSavingsGoals } from '../domain/savingsGoals';
 
-export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v3';
+export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v4';
+export const PREVIOUS_LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v3';
 
 export function validateLedgerSchema(data: unknown): string | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Backup must be a JSON object.';
   const ledger = data as Record<string, unknown>;
-  if (ledger.schemaVersion !== LEDGER_SCHEMA_VERSION) return 'This backup is not a supported CoinBuddy ledger export.';
+  if (ledger.schemaVersion !== LEDGER_SCHEMA_VERSION && ledger.schemaVersion !== PREVIOUS_LEDGER_SCHEMA_VERSION) return 'This backup is not a supported CoinBuddy ledger export.';
   for (const key of ['accounts', 'transactions', 'categories', 'creditCards', 'widgets', 'loanRevisions']) {
     if (!Array.isArray(ledger[key])) return `Backup field "${key}" must be an array.`;
   }
   if (ledger.recurringRules !== undefined && !Array.isArray(ledger.recurringRules)) return 'Backup field \"recurringRules\" must be an array when present.';
   if (ledger.affordabilitySettings !== undefined && (!ledger.affordabilitySettings || typeof ledger.affordabilitySettings !== 'object' || Array.isArray(ledger.affordabilitySettings))) return 'Backup field \"affordabilitySettings\" must be an object when present.';
   if (ledger.savingsGoals !== undefined && !Array.isArray(ledger.savingsGoals)) return 'Backup field \"savingsGoals\" must be an array when present.';
+  for (const key of ['people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements', 'loanSharingRules', 'loanContributionRules']) {
+    if (ledger[key] !== undefined && !Array.isArray(ledger[key])) return `Backup field "${key}" must be an array when present.`;
+  }
   if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
   if (!(ledger.transactions as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown; amount?: unknown }).id === 'string' && Number.isFinite(Number((value as { amount?: unknown }).amount)) && Number((value as { amount?: unknown }).amount) > 0)) return 'Every imported transaction must have an id and positive amount.';
   return null;
@@ -28,9 +32,10 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
   }
   if (data.data && typeof data.data === 'object') data = data.data;
 
-  if (data.schemaVersion === LEDGER_SCHEMA_VERSION) {
+  if (data.schemaVersion === LEDGER_SCHEMA_VERSION || data.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION) {
     return {
       ...data,
+      schemaVersion: LEDGER_SCHEMA_VERSION,
       accounts: Array.isArray(data.accounts) ? data.accounts : [],
       transactions: Array.isArray(data.transactions) ? data.transactions : [],
       categories: Array.isArray(data.categories) ? data.categories : [],
@@ -40,6 +45,13 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
       recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [],
       affordabilitySettings: normalizeAffordabilitySettings(data.affordabilitySettings),
       savingsGoals: normalizeSavingsGoals(data.savingsGoals),
+      people: Array.isArray(data.people) ? data.people : [],
+      sharedObligations: Array.isArray(data.sharedObligations) ? data.sharedObligations : [],
+      sharedResponsibilities: Array.isArray(data.sharedResponsibilities) ? data.sharedResponsibilities : [],
+      sharedPayments: Array.isArray(data.sharedPayments) ? data.sharedPayments : [],
+      sharedSettlements: Array.isArray(data.sharedSettlements) ? data.sharedSettlements : [],
+      loanSharingRules: Array.isArray(data.loanSharingRules) ? data.loanSharingRules : [],
+      loanContributionRules: Array.isArray(data.loanContributionRules) ? data.loanContributionRules : [],
       currency: data.currency || 'INR',
     };
   }
@@ -72,6 +84,8 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
   return {
     schemaVersion: LEDGER_SCHEMA_VERSION, exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(), accounts: migratedAccounts, transactions, categories,
     creditCards: migratedCards, events: Array.isArray(data.events) ? data.events : [], widgets: Array.isArray(data.widgets) ? data.widgets : [],
-    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], affordabilitySettings: { ...DEFAULT_AFFORDABILITY_SETTINGS }, savingsGoals: [], currency: data.currency || '$', lastUpdated: new Date().toISOString(),
+    loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], affordabilitySettings: { ...DEFAULT_AFFORDABILITY_SETTINGS }, savingsGoals: [],
+    people: [], sharedObligations: [], sharedResponsibilities: [], sharedPayments: [], sharedSettlements: [], loanSharingRules: [], loanContributionRules: [],
+    currency: data.currency || '$', lastUpdated: new Date().toISOString(),
   };
 }
