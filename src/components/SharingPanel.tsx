@@ -8,7 +8,7 @@ export function SharingPanel() {
   const {
     people, sharedObligations, sharedResponsibilities, sharedPayments,
     addSharedPerson, archiveSharedPerson, createSharedExpense,
-    transactions, formatCurrency,
+    transactions, categories, formatCurrency,
   } = useAppContext();
   const activePeople = people.filter(person => !person.isArchived);
   const me = activePeople.find(person => person.isSelf);
@@ -20,6 +20,8 @@ export function SharingPanel() {
   const linkedTransaction = expenseTransactions.find(tx => tx.id === linkedTransactionId);
   const [title, setTitle] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [obligationDate, setObligationDate] = useState(new Date().toISOString().slice(0, 10));
   const [shares, setShares] = useState<Record<string, string>>({});
   const [externalPaid, setExternalPaid] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -35,6 +37,9 @@ export function SharingPanel() {
     setTitle(tx.title);
     const amount = Math.abs(Number(tx.amount));
     setTotalAmount(String(amount));
+    const matchedCategory = categories.find(category => category.id === tx.category || `#${category.name.toLowerCase().replace(/\s+/g, '')}` === tx.category);
+    setCategoryId(matchedCategory?.id || '');
+    setObligationDate(new Date(tx.date).toISOString().slice(0, 10));
     if (me) setShares(current => ({ ...current, [me.id]: String(amount) }));
   };
 
@@ -55,6 +60,8 @@ export function SharingPanel() {
     setError('');
     if (!me) { setError('CoinBuddy could not identify the primary user.'); return; }
     if (!title.trim() || !selectedTotal || selectedTotal <= 0) { setError('Enter a title and total household amount.'); return; }
+    if (!categoryId) { setError('Choose an expense category so personal-spending reports stay accurate.'); return; }
+    if (!obligationDate) { setError('Choose the date this shared expense belongs to.'); return; }
     if (Math.abs(allocatedTotal - selectedTotal) > 0.01) { setError('Responsibility shares must add up to the household total.'); return; }
     const allocations = activePeople
       .map(person => ({ personId: person.id, amount: Number(shares[person.id] || 0) }))
@@ -70,13 +77,13 @@ export function SharingPanel() {
     }
     setSaving(true);
     const ok = await createSharedExpense({
-      title: title.trim(), totalAmount: selectedTotal,
+      title: title.trim(), totalAmount: selectedTotal, categoryId, dueDate: obligationDate,
       transactionId: linkedTransactionId || undefined,
       allocations, trackedPaymentAmount, externalPayments,
     });
     setSaving(false);
     if (!ok) return;
-    setLinkedTransactionId(''); setTitle(''); setTotalAmount(''); setShares({}); setExternalPaid({});
+    setLinkedTransactionId(''); setTitle(''); setTotalAmount(''); setCategoryId(''); setObligationDate(new Date().toISOString().slice(0, 10)); setShares({}); setExternalPaid({});
   };
 
   return (
@@ -93,6 +100,8 @@ export function SharingPanel() {
           <label className="block sm:col-span-2"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Link tracked expense (optional)</span><select value={linkedTransactionId} onChange={event => selectTransaction(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface"><option value="">No tracked transaction</option>{expenseTransactions.slice(0, 80).map(tx => <option key={tx.id} value={tx.id}>{tx.title} · {formatCurrency(Math.abs(tx.amount))}</option>)}</select></label>
           <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Household expense</span><input value={title} onChange={event => setTitle(event.target.value)} placeholder="Rent" className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface" /></label>
           <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Household total</span><div className="mt-1.5"><CurrencyInput value={totalAmount} onValueChange={setTotalAmount} /></div></label>
+          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Expense category</span><select value={categoryId} onChange={event => setCategoryId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface"><option value="">Choose category</option>{categories.filter(category => category.type !== 'income').map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Expense date</span><input type="date" value={obligationDate} onChange={event => setObligationDate(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface" /></label>
         </div>
         {activePeople.length > 0 && <div className="mt-5"><div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-bold text-on-surface">Responsibility split</p><button type="button" onClick={splitEqually} className="rounded-lg border border-outline-variant/30 px-2.5 py-1.5 text-xs font-semibold text-primary">Split equally</button></div><div className="space-y-2">{activePeople.map(person => <div key={person.id} className="grid grid-cols-[1fr_minmax(110px,150px)] items-center gap-3 rounded-xl bg-surface-container-low p-3"><div><p className="text-sm font-semibold text-on-surface">{person.name} {person.isSelf && <span className="text-xs font-normal text-on-surface-variant">(you)</span>}</p>{!person.isSelf && <label className="mt-1 flex items-center gap-2 text-[11px] text-on-surface-variant"><span>Paid directly/external</span><input inputMode="decimal" value={externalPaid[person.id] || ''} onChange={event => setExternalPaid(current => ({ ...current, [person.id]: event.target.value }))} placeholder="0" className="w-24 rounded-lg border border-outline-variant/30 bg-surface-container px-2 py-1 text-right font-numeric text-on-surface" /></label>}</div><input inputMode="decimal" value={shares[person.id] || ''} onChange={event => setShares(current => ({ ...current, [person.id]: event.target.value }))} placeholder="Share" className="rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-2 text-right font-numeric text-on-surface" /></div>)}</div><div className={`mt-2 text-right text-xs font-semibold ${Math.abs(allocatedTotal - selectedTotal) <= 0.01 ? 'text-primary' : 'text-error'}`}>Allocated {formatCurrency(allocatedTotal)} / {formatCurrency(selectedTotal)}</div></div>}
         {error && <p role="alert" className="mt-4 rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{error}</p>}

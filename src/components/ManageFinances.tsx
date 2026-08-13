@@ -12,7 +12,7 @@ import { SharingPanel } from './SharingPanel';
 
 
 export function ManageFinances() {
-  const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
+  const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, personalExpenseRecords, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
   
   const [mainTab, setMainTab] = useState<'Accounts' | 'Categories' | 'Sharing'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
   const mainTabSwipe = useHorizontalSwipe(() => {
@@ -66,7 +66,7 @@ export function ManageFinances() {
 
   const getSpent = (catId: string, catName: string) => {
     const category = categories.find(item => item.id === catId || item.name === catName);
-    return category ? getCategorySpend(category, transactions, isDateInCurrentCycle) : 0;
+    return category ? getCategorySpend(category, transactions, isDateInCurrentCycle, personalExpenseRecords) : 0;
   };
 
 

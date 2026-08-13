@@ -173,6 +173,7 @@ export interface SharedObligation {
   title: string;
   kind: SharedObligationKind;
   totalAmount: number;
+  categoryId?: string;
   dueDate?: string;
   transactionId?: string;
   liabilityAccountId?: string;

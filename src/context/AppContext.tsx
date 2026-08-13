@@ -54,6 +54,7 @@ import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } f
 import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
 import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { SAVINGS_GOALS_KEY, normalizeSavingsGoal, normalizeSavingsGoals } from '../domain/savingsGoals';
+import { buildPersonalExpenseRecords, type PersonalExpenseRecord } from '../domain/personalSpending';
 import {
   ensureSelfPerson,
   loadSharedFinanceState,
@@ -146,9 +147,10 @@ interface AppContextType {
   sharedSettlements: SharedSettlement[];
   loanSharingRules: LoanSharingRule[];
   loanContributionRules: LoanContributionRule[];
+  personalExpenseRecords: PersonalExpenseRecord[];
   addSharedPerson: (name: string, relationship?: string) => Promise<boolean>;
   archiveSharedPerson: (id: string) => Promise<boolean>;
-  createSharedExpense: (input: { title: string; totalAmount: number; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }) => Promise<boolean>;
+  createSharedExpense: (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }) => Promise<boolean>;
   recordSharedPayment: (payment: Omit<SharedPayment, 'id'>) => Promise<boolean>;
   recordSharedSettlement: (settlement: Omit<SharedSettlement, 'id'>) => Promise<boolean>;
   configureLoanSharing: (accountId: string, personalResponsibilityPercent: number, contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>>) => Promise<boolean>;
@@ -416,6 +418,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const sharedSettlements = sharedFinance.settlements;
   const loanSharingRules = sharedFinance.loanSharingRules;
   const loanContributionRules = sharedFinance.loanContributionRules;
+  const personalExpenseRecords = useMemo(
+    () => buildPersonalExpenseRecords(transactions, people, sharedObligations, sharedResponsibilities),
+    [transactions, people, sharedObligations, sharedResponsibilities],
+  );
 
   // `balance` remains on the UI types for backwards compatibility, but records
   // deliberately retain no balance value. Only the ledger projection below may
@@ -610,7 +616,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const archiveSharedPerson = async (id: string): Promise<boolean> =>
     persistSharedAction(() => archiveSharedPersonRow(dbDriver!, id));
 
-  const createSharedExpense = async (input: { title: string; totalAmount: number; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }): Promise<boolean> => {
+  const createSharedExpense = async (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }> }): Promise<boolean> => {
     if (!dbDriver) return false;
     const me = people.find(person => person.isSelf && !person.isArchived);
     if (!me) return false;
@@ -619,7 +625,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if ((input.trackedPaymentAmount ?? 0) > 0) initialPayments.push({ personId: me.id, transactionId: input.transactionId, amount: input.trackedPaymentAmount!, source: 'TRACKED', paidAt: now });
     for (const payment of input.externalPayments ?? []) if (payment.amount > 0) initialPayments.push({ personId: payment.personId, amount: payment.amount, source: 'EXTERNAL', paidAt: now });
     return persistSharedAction(() => createSharedObligationRow(dbDriver, {
-      title: input.title, kind: 'EXPENSE', totalAmount: input.totalAmount, transactionId: input.transactionId,
+      title: input.title, kind: 'EXPENSE', totalAmount: input.totalAmount, categoryId: input.categoryId, dueDate: input.dueDate, transactionId: input.transactionId,
       settlementMode: 'TRACK',
     }, input.allocations, initialPayments));
   };
@@ -1728,7 +1734,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
-      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing,
+      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing,
       updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,

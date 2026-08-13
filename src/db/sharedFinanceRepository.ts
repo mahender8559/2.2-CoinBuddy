@@ -36,7 +36,7 @@ function personFromRow(row: any): Person {
 function obligationFromRow(row: any): SharedObligation {
   return {
     id: String(row.id), title: String(row.title ?? ''), kind: row.kind,
-    totalAmount: Number(row.total_amount), dueDate: row.due_date ?? undefined,
+    totalAmount: Number(row.total_amount), categoryId: row.category_id ?? undefined, dueDate: row.due_date ?? undefined,
     transactionId: row.transaction_id ?? undefined, liabilityAccountId: row.liability_account_id ?? undefined,
     recurringRuleId: row.recurring_rule_id ?? undefined, settlementMode: row.settlement_mode,
     status: row.status, createdAt: row.created_at,
@@ -137,8 +137,8 @@ export async function createSharedObligation(
   await driver.execute('BEGIN TRANSACTION');
   try {
     await driver.execute(
-      `INSERT INTO shared_obligations (id, title, kind, total_amount, due_date, transaction_id, liability_account_id, recurring_rule_id, settlement_mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [obligation.id, obligation.title.trim(), obligation.kind, obligation.totalAmount, obligation.dueDate ?? null, obligation.transactionId ?? null, obligation.liabilityAccountId ?? null, obligation.recurringRuleId ?? null, obligation.settlementMode, obligation.status, obligation.createdAt],
+      `INSERT INTO shared_obligations (id, title, kind, total_amount, category_id, due_date, transaction_id, liability_account_id, recurring_rule_id, settlement_mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [obligation.id, obligation.title.trim(), obligation.kind, obligation.totalAmount, obligation.categoryId ?? null, obligation.dueDate ?? null, obligation.transactionId ?? null, obligation.liabilityAccountId ?? null, obligation.recurringRuleId ?? null, obligation.settlementMode, obligation.status, obligation.createdAt],
     );
     for (const allocation of responsibilities) {
       await driver.execute(`INSERT INTO shared_responsibilities (id, obligation_id, person_id, amount) VALUES (?, ?, ?, ?)`, [allocation.id, allocation.obligationId, allocation.personId, allocation.amount]);

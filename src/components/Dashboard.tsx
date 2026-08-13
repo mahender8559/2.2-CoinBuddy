@@ -15,7 +15,7 @@ import { BackupWarningBanner } from './BackupWarningBanner';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 
 export function Dashboard() {
-  const { transactions, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
+  const { transactions, personalExpenseRecords, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
@@ -150,7 +150,7 @@ export function Dashboard() {
     })
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
     
-  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, getCycleDetails);
+  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, getCycleDetails, personalExpenseRecords);
   const budgetStatus = budgetProgress <= 100 ? 'ON TRACK' : 'OVER BUDGET';
 
   const thirtyDaysAgo = new Date();

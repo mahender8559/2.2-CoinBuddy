@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS shared_obligations (
   title TEXT NOT NULL,
   kind TEXT NOT NULL CHECK(kind IN ('EXPENSE', 'LOAN_PAYMENT')),
   total_amount REAL NOT NULL CHECK(total_amount > 0),
+  category_id TEXT,
   due_date TEXT,
   transaction_id TEXT,
   liability_account_id TEXT,
@@ -182,6 +183,7 @@ CREATE TABLE IF NOT EXISTS shared_obligations (
   settlement_mode TEXT NOT NULL DEFAULT 'TRACK' CHECK(settlement_mode IN ('TRACK', 'IGNORE')),
   status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN', 'SETTLED', 'CANCELLED')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
   FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
   FOREIGN KEY (liability_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
   FOREIGN KEY (recurring_rule_id) REFERENCES recurring_rules(id) ON DELETE SET NULL
@@ -254,6 +256,8 @@ CREATE TABLE IF NOT EXISTS loan_contribution_rules (
   UNIQUE(account_id, person_id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction
+  ON shared_obligations(transaction_id) WHERE transaction_id IS NOT NULL AND kind = 'EXPENSE';
 CREATE INDEX IF NOT EXISTS idx_shared_responsibility_obligation ON shared_responsibilities(obligation_id);
 CREATE INDEX IF NOT EXISTS idx_shared_payment_obligation ON shared_payments(obligation_id);
 CREATE INDEX IF NOT EXISTS idx_shared_settlement_people ON shared_settlements(from_person_id, to_person_id);
@@ -262,7 +266,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_obligation_due ON shared_obligations(statu
 -- Central derived view: all totals are calculated once from normalized rows.
 CREATE VIEW IF NOT EXISTS shared_obligation_summary_view AS
 SELECT
-  o.id, o.title, o.kind, o.total_amount, o.due_date, o.transaction_id,
+  o.id, o.title, o.kind, o.total_amount, o.category_id, o.due_date, o.transaction_id,
   o.liability_account_id, o.recurring_rule_id, o.settlement_mode, o.status, o.created_at,
   COALESCE((SELECT SUM(r.amount) FROM shared_responsibilities r WHERE r.obligation_id = o.id), 0) AS responsibility_total,
   COALESCE((SELECT SUM(p.amount) FROM shared_payments p WHERE p.obligation_id = o.id), 0) AS funded_total,
@@ -433,6 +437,8 @@ export const SQLITE_MIGRATIONS = [
   `ALTER TABLE categories ADD COLUMN affordability_class TEXT;`,
   `ALTER TABLE transactions ADD COLUMN goal_id TEXT;`,
   `ALTER TABLE recurring_rules ADD COLUMN goal_id TEXT;`,
+  `ALTER TABLE shared_obligations ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL;`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction ON shared_obligations(transaction_id) WHERE transaction_id IS NOT NULL AND kind = 'EXPENSE';`,
   `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
 ];
 
