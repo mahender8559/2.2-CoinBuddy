@@ -18,6 +18,7 @@ import { recomputeAllAccountBalances } from '../utils/balanceManager';
 import { getCycleRange, shiftCycle } from '../utils/cycles';
 import { AffordabilityPlanner } from './AffordabilityPlanner';
 import { UpcomingMoney } from './UpcomingMoney';
+import { getPersonalLiabilityExposure } from '../domain/loanSharing';
 
 export function Insights() {
   const { 
@@ -31,7 +32,9 @@ export function Insights() {
     accounts, 
     creditCards,
     monthCycleDay,
-    setPayCardModalState
+    setPayCardModalState,
+    personalExpenseRecords,
+    loanSharingRules
   } = useAppContext();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -42,23 +45,21 @@ export function Insights() {
   const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
   
   const liabilities = useMemo(() => accounts.filter(a => !a.is_archived && a.type === 'liability').sort((a, b) => b.balance - a.balance), [accounts]);
-  const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+  const totalLiabilities = liabilities.reduce((sum, a) => sum + getPersonalLiabilityExposure(a, loanSharingRules), 0);
 
   // Category totals for current cycle
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     const titlesByCategory: Record<string, Set<string>> = {};
 
-    transactions.filter(t => {
-      if (t.isOpeningBalance || t.is_verified === 0 || !isCashFlowTransaction(t) || t.type !== 'expense' || !isDateInCurrentCycle(t.date)) return false;
-      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
+    personalExpenseRecords.filter(record => {
+      if (!isDateInCurrentCycle(record.date)) return false;
+      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === record.category || c.id === record.category);
       return catObj?.affordabilityClass !== 'SAVINGS' && catObj?.group !== 'Savings';
-    }).forEach(tx => {
-      totals[tx.category] = (totals[tx.category] || 0) + Math.abs(tx.amount);
-      if (!titlesByCategory[tx.category]) {
-        titlesByCategory[tx.category] = new Set();
-      }
-      titlesByCategory[tx.category].add(tx.title);
+    }).forEach(record => {
+      totals[record.category] = (totals[record.category] || 0) + Math.abs(record.amount);
+      if (!titlesByCategory[record.category]) titlesByCategory[record.category] = new Set();
+      titlesByCategory[record.category].add(record.title);
     });
 
     return Object.entries(totals)
@@ -68,7 +69,7 @@ export function Insights() {
         total, 
         uniqueSpots: titlesByCategory[cat]?.size || 0 
       }));
-  }, [transactions, categories, isDateInCurrentCycle]);
+  }, [personalExpenseRecords, categories, isDateInCurrentCycle]);
 
   const top4 = categoryTotals.slice(0, 4);
   const topCategoryInfo = top4.length > 0 ? top4[0] : null;
@@ -101,12 +102,12 @@ export function Insights() {
   // Available categories with expenses
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
-    transactions.filter(t => !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t) && t.type === 'expense').forEach(t => set.add(t.category));
+    personalExpenseRecords.forEach(record => set.add(record.category));
     return Array.from(set).map(catId => {
       const details = getCategoryDetails(catId);
       return { id: catId, name: details.name, details };
     });
-  }, [transactions, categories]);
+  }, [personalExpenseRecords, categories]);
 
   // 6-Month Category Specific Growth / Trend Data
   const categoryTrendData = useMemo(() => {
@@ -127,17 +128,11 @@ export function Insights() {
       let cycleTotal = 0;
       let count = 0;
 
-      transactions.forEach(t => {
-        if (t.isOpeningBalance || t.is_verified === 0 || t.type !== 'expense') return;
-        const tCycle = getCycleDetails(t.date);
-        if (tCycle.key === cycleKey) {
-          if (selectedCategory === 'all') {
-            cycleTotal += Math.abs(t.amount);
-            count++;
-          } else if (t.category === selectedCategory) {
-            cycleTotal += Math.abs(t.amount);
-            count++;
-          }
+      personalExpenseRecords.forEach(record => {
+        const recordCycle = getCycleDetails(record.date);
+        if (recordCycle.key === cycleKey && (selectedCategory === 'all' || record.category === selectedCategory)) {
+          cycleTotal += Math.abs(record.amount);
+          count++;
         }
       });
 
@@ -158,12 +153,8 @@ export function Insights() {
     const avgSpend = monthlyData.reduce((acc, curr) => acc + curr.total, 0) / monthlyData.length;
 
     // Highest single transaction in selected category
-    const catTxs = transactions.filter(t => 
-      !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t) && t.type === 'expense' && (selectedCategory === 'all' || t.category === selectedCategory)
-    );
-    const maxTx = catTxs.length > 0 
-      ? catTxs.reduce((max, t) => Math.abs(t.amount) > Math.abs(max.amount) ? t : max, catTxs[0])
-      : null;
+    const catTxs = personalExpenseRecords.filter(record => selectedCategory === 'all' || record.category === selectedCategory);
+    const maxTx = catTxs.length > 0 ? catTxs.reduce((max, record) => Math.abs(record.amount) > Math.abs(max.amount) ? record : max, catTxs[0]) : null;
 
     return {
       chartData: monthlyData,
@@ -173,7 +164,7 @@ export function Insights() {
       avgSpend,
       maxTx
     };
-  }, [transactions, selectedCategory, getCycleDetails]);
+  }, [personalExpenseRecords, selectedCategory, getCycleDetails]);
 
 // Net Worth at each configured cycle cutoff. Replaying the ledger
 // keeps opening balances and adjustments out of cycles where they did not exist.
@@ -206,7 +197,7 @@ const monthlyTrends = useMemo(() => {
     const projectedAccounts = recomputeAllAccountBalances(accounts, transactionsAtCutoff);
     const cycleNetWorth = projectedAccounts
       .filter(account => !account.is_archived)
-      .reduce((total, account) => total + (account.type === 'asset' ? account.balance : -account.balance), 0);
+      .reduce((total, account) => total + (account.type === 'asset' ? account.balance : -getPersonalLiabilityExposure(account, loanSharingRules)), 0);
     const cycleNetFlow = verifiedTransactions.reduce((total, transaction) => {
       const transactionTime = new Date(transaction.date).getTime();
       if (!Number.isFinite(transactionTime) || transactionTime < startTime || transactionTime > cutoffTime || !isCashFlowTransaction(transaction)) return total;
@@ -238,7 +229,7 @@ const monthlyTrends = useMemo(() => {
     a: item.isCurrent,
     netFlow: item.netFlow,
   }));
-}, [transactions, accounts, formatCurrency, getCycleDetails, monthCycleDay]);
+}, [transactions, accounts, loanSharingRules, formatCurrency, getCycleDetails, monthCycleDay]);
 
   // Smart Tips
   const smartTips = useMemo(() => {

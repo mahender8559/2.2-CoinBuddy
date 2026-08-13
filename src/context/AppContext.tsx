@@ -69,6 +69,7 @@ import {
   generateDueSharedObligations,
   addSharedSettlementWithBalanceAdjustment,
   addExternalLoanContribution,
+  setSharedObligationTemplateActive,
   type SharedFinanceState,
 } from '../db/sharedFinanceRepository';
 
@@ -167,6 +168,7 @@ interface AppContextType {
   configureLoanSharing: (accountId: string, personalResponsibilityPercent: number, contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>>) => Promise<boolean>;
   settleSharedBalance: (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }) => Promise<boolean>;
   recordExternalLoanPayment: (input: { accountId: string; personId: string; amount: number; paidAt: string }) => Promise<boolean>;
+  setSharedTemplateActive: (templateId: string, isActive: boolean) => Promise<boolean>;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -698,6 +700,13 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       return false;
     }
   };
+
+
+  const setSharedTemplateActive = async (templateId: string, isActive: boolean): Promise<boolean> =>
+    persistSharedAction(async () => {
+      await setSharedObligationTemplateActive(dbDriver!, templateId, isActive);
+      if (isActive) await generateDueSharedObligations(dbDriver!);
+    });
 
   useEffect(() => {
     let mounted = true;
@@ -1809,7 +1818,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
-      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment,
+      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
       updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,

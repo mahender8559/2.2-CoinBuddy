@@ -257,6 +257,12 @@ export async function generateDueSharedObligations(driver: SqlJsDatabaseDriver, 
   return generated;
 }
 
+export async function setSharedObligationTemplateActive(driver: SqlJsDatabaseDriver, templateId: string, isActive: boolean): Promise<void> {
+  const rows = await driver.query(`SELECT id FROM shared_obligation_templates WHERE id = ?`, [templateId]);
+  if (!rows[0]) throw new Error('Recurring shared obligation was not found.');
+  await driver.execute(`UPDATE shared_obligation_templates SET is_active = ? WHERE id = ?`, [isActive ? 1 : 0, templateId]);
+}
+
 export async function addSharedSettlementWithBalanceAdjustment(
   driver: SqlJsDatabaseDriver,
   input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string },
@@ -266,6 +272,27 @@ export async function addSharedSettlementWithBalanceAdjustment(
   const selfRows = await driver.query(`SELECT id FROM people WHERE is_self = 1 AND is_archived = 0 LIMIT 1`);
   const selfId = selfRows[0] ? String(selfRows[0].id) : '';
   if (!selfId) throw new Error('CoinBuddy could not identify the primary user.');
+  if (input.obligationId) {
+    const obligations = await driver.query(`SELECT id FROM shared_obligations WHERE id = ? AND status <> 'CANCELLED'`, [input.obligationId]);
+    if (!obligations[0]) throw new Error('The selected shared obligation no longer exists.');
+    const [responsibilities, payments, settlements] = await Promise.all([
+      driver.query(`SELECT person_id, amount FROM shared_responsibilities WHERE obligation_id = ?`, [input.obligationId]),
+      driver.query(`SELECT person_id, amount FROM shared_payments WHERE obligation_id = ?`, [input.obligationId]),
+      driver.query(`SELECT from_person_id, to_person_id, amount FROM shared_settlements WHERE obligation_id = ?`, [input.obligationId]),
+    ]);
+    const claim = (personId: string) => {
+      const paid = payments.filter((row: any) => String(row.person_id) === personId).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+      const responsibility = responsibilities.filter((row: any) => String(row.person_id) === personId).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+      const outgoing = settlements.filter((row: any) => String(row.from_person_id) === personId).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+      const incoming = settlements.filter((row: any) => String(row.to_person_id) === personId).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+      return Math.round((paid - responsibility + outgoing - incoming) * 100) / 100;
+    };
+    const payerOwes = Math.max(0, -claim(input.fromPersonId));
+    const receiverClaim = Math.max(0, claim(input.toPersonId));
+    const maximum = Math.min(payerOwes, receiverClaim);
+    if (maximum <= 0.009) throw new Error('These two people do not currently have a settlement balance in that direction.');
+    if (amount > maximum + 0.01) throw new Error(`Settlement cannot exceed the outstanding shared balance of ${maximum.toFixed(2)}.`);
+  }
   let transactionId: string | undefined;
   await driver.execute('BEGIN TRANSACTION');
   try {

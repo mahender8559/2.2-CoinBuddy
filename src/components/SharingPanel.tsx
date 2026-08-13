@@ -1,122 +1,192 @@
 import { useMemo, useState } from 'react';
-import { Plus, Users, UserPlus, ReceiptText, WalletCards, Trash2, CircleDollarSign } from 'lucide-react';
+import { Archive, ArrowRightLeft, CalendarClock, HandCoins, Landmark, Plus, Repeat2, Users, WalletCards } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { CurrencyInput } from './CurrencyInput';
-import { getMyEconomicCost, getTrackedCashPaid, isObligationFunded } from '../domain/sharedFinances';
+import { getPersonNetClaim, getTrackedCashPaid } from '../domain/sharedFinances';
+import { describeLoanContribution, getPersonalLiabilityExposure } from '../domain/loanSharing';
+import type { RecurrenceFrequency } from '../types';
+
+function todayKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 export function SharingPanel() {
   const {
-    people, sharedObligations, sharedResponsibilities, sharedPayments,
-    addSharedPerson, archiveSharedPerson, createSharedExpense,
-    transactions, categories, formatCurrency,
+    people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements,
+    sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions,
+    loanSharingRules, loanContributionRules, addSharedPerson, archiveSharedPerson,
+    createSharedExpense, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
+    transactions, categories, accounts, formatCurrency,
   } = useAppContext();
+
   const activePeople = people.filter(person => !person.isArchived);
   const me = activePeople.find(person => person.isSelf);
-  const expenseTransactions = useMemo(() => transactions.filter(tx => tx.type === 'expense' && tx.is_verified !== 0 && !tx.isOpeningBalance), [transactions]);
+  const otherPeople = activePeople.filter(person => !person.isSelf);
+  const assetAccounts = accounts.filter(account => account.type === 'asset' && account.is_archived !== 1);
+  const expenseTransactions = transactions.filter(transaction =>
+    !transaction.isOpeningBalance && transaction.is_verified !== 0 && transaction.type === 'expense' &&
+    !sharedObligations.some(obligation => obligation.transactionId === transaction.id)
+  );
+  const sharedLoans = accounts.filter(account =>
+    account.type === 'liability' && account.is_archived !== 1 && loanSharingRules.some(rule => rule.accountId === account.id && rule.isShared)
+  );
 
   const [personName, setPersonName] = useState('');
   const [relationship, setRelationship] = useState('');
-  const [linkedTransactionId, setLinkedTransactionId] = useState('');
-  const linkedTransaction = expenseTransactions.find(tx => tx.id === linkedTransactionId);
   const [title, setTitle] = useState('');
-  const [totalAmount, setTotalAmount] = useState('');
+  const [total, setTotal] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [obligationDate, setObligationDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(todayKey());
+  const [transactionId, setTransactionId] = useState('');
+  const [repeatFrequency, setRepeatFrequency] = useState<'NONE' | RecurrenceFrequency>('NONE');
   const [shares, setShares] = useState<Record<string, string>>({});
   const [externalPaid, setExternalPaid] = useState<Record<string, string>>({});
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const selectedTotal = Number(totalAmount || 0);
-  const allocatedTotal = activePeople.reduce((sum, person) => sum + Number(shares[person.id] || 0), 0);
+  const [settlementObligationId, setSettlementObligationId] = useState('');
+  const [settlementPersonId, setSettlementPersonId] = useState('');
+  const [settlementDirection, setSettlementDirection] = useState<'TO_ME' | 'FROM_ME'>('TO_ME');
+  const [settlementAmount, setSettlementAmount] = useState('');
+  const [settlementAccountId, setSettlementAccountId] = useState('');
+  const [settlementDate, setSettlementDate] = useState(todayKey());
+  const [settlementSaving, setSettlementSaving] = useState(false);
 
-  const selectTransaction = (id: string) => {
-    setLinkedTransactionId(id);
-    const tx = expenseTransactions.find(item => item.id === id);
-    if (!tx) return;
-    setTitle(tx.title);
-    const amount = Math.abs(Number(tx.amount));
-    setTotalAmount(String(amount));
-    const matchedCategory = categories.find(category => category.id === tx.category || `#${category.name.toLowerCase().replace(/\s+/g, '')}` === tx.category);
-    setCategoryId(matchedCategory?.id || '');
-    setObligationDate(new Date(tx.date).toISOString().slice(0, 10));
-    if (me) setShares(current => ({ ...current, [me.id]: String(amount) }));
+  const [loanId, setLoanId] = useState('');
+  const [loanPersonId, setLoanPersonId] = useState('');
+  const [loanPaymentAmount, setLoanPaymentAmount] = useState('');
+  const [loanPaymentDate, setLoanPaymentDate] = useState(todayKey());
+  const [loanSaving, setLoanSaving] = useState(false);
+
+  const totalNumber = Math.abs(Number(total) || 0);
+  const selectedTransaction = expenseTransactions.find(transaction => transaction.id === transactionId);
+
+  const personalClaims = useMemo(() => {
+    if (!me) return new Map<string, number>();
+    return new Map(sharedObligations.map(obligation => [
+      obligation.id,
+      getPersonNetClaim(obligation.id, me.id, sharedResponsibilities, sharedPayments, sharedSettlements),
+    ]));
+  }, [me, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements]);
+
+  const addPerson = async () => {
+    if (!personName.trim()) return;
+    const ok = await addSharedPerson(personName, relationship);
+    if (ok) { setPersonName(''); setRelationship(''); }
   };
 
-  const splitEqually = () => {
-    if (!selectedTotal || activePeople.length === 0) return;
-    const cents = Math.round(selectedTotal * 100);
-    const base = Math.floor(cents / activePeople.length);
-    let remainder = cents - base * activePeople.length;
-    const next: Record<string, string> = {};
-    for (const person of activePeople) {
-      const personCents = base + (remainder-- > 0 ? 1 : 0);
-      next[person.id] = (personCents / 100).toFixed(2);
-    }
-    setShares(next);
-  };
-
-  const saveSharedExpense = async () => {
+  const saveExpense = async () => {
     setError('');
-    if (!me) { setError('CoinBuddy could not identify the primary user.'); return; }
-    if (!title.trim() || !selectedTotal || selectedTotal <= 0) { setError('Enter a title and total household amount.'); return; }
-    if (!categoryId) { setError('Choose an expense category so personal-spending reports stay accurate.'); return; }
-    if (!obligationDate) { setError('Choose the date this shared expense belongs to.'); return; }
-    if (Math.abs(allocatedTotal - selectedTotal) > 0.01) { setError('Responsibility shares must add up to the household total.'); return; }
-    const allocations = activePeople
-      .map(person => ({ personId: person.id, amount: Number(shares[person.id] || 0) }))
-      .filter(item => item.amount > 0);
-    if (!allocations.length) { setError('Assign the expense to at least one person.'); return; }
-    const externalPayments = activePeople
-      .filter(person => !person.isSelf)
-      .map(person => ({ personId: person.id, amount: Number(externalPaid[person.id] || 0) }))
-      .filter(item => item.amount > 0);
-    const trackedPaymentAmount = linkedTransaction ? Math.abs(Number(linkedTransaction.amount)) : 0;
-    if (trackedPaymentAmount + externalPayments.reduce((sum, item) => sum + item.amount, 0) > selectedTotal + 0.01) {
-      setError('Recorded payments cannot exceed the household obligation total.'); return;
-    }
+    if (!me || !title.trim() || totalNumber <= 0) { setError('Enter a title and household total.'); return; }
+    const allocations = activePeople.map(person => ({ personId: person.id, amount: Math.abs(Number(shares[person.id]) || 0) })).filter(row => row.amount > 0);
+    const allocationTotal = allocations.reduce((sum, row) => sum + row.amount, 0);
+    if (Math.abs(allocationTotal - totalNumber) > 0.01) { setError('Responsibility amounts must add up to the full household total.'); return; }
+    const trackedPaymentAmount = selectedTransaction ? Math.abs(selectedTransaction.amount) : 0;
+    const directPayments = otherPeople.map(person => ({ personId: person.id, amount: Math.abs(Number(externalPaid[person.id]) || 0) })).filter(row => row.amount > 0);
+    if (trackedPaymentAmount + directPayments.reduce((sum, row) => sum + row.amount, 0) > totalNumber + 0.01) { setError('Recorded payments cannot exceed the household total.'); return; }
     setSaving(true);
     const ok = await createSharedExpense({
-      title: title.trim(), totalAmount: selectedTotal, categoryId, dueDate: obligationDate,
-      transactionId: linkedTransactionId || undefined,
-      allocations, trackedPaymentAmount, externalPayments,
+      title: title.trim(), totalAmount: totalNumber, categoryId: categoryId || selectedTransaction?.category,
+      dueDate, transactionId: transactionId || undefined, allocations, trackedPaymentAmount,
+      externalPayments: directPayments, repeatFrequency: repeatFrequency === 'NONE' ? undefined : repeatFrequency,
     });
     setSaving(false);
-    if (!ok) return;
-    setLinkedTransactionId(''); setTitle(''); setTotalAmount(''); setCategoryId(''); setObligationDate(new Date().toISOString().slice(0, 10)); setShares({}); setExternalPaid({});
+    if (ok) {
+      setTitle(''); setTotal(''); setCategoryId(''); setTransactionId(''); setRepeatFrequency('NONE'); setShares({}); setExternalPaid({});
+    }
+  };
+
+  const saveSettlement = async () => {
+    if (!me || !settlementPersonId || Number(settlementAmount) <= 0) return;
+    setSettlementSaving(true);
+    const other = settlementPersonId;
+    await settleSharedBalance({
+      obligationId: settlementObligationId || undefined,
+      fromPersonId: settlementDirection === 'TO_ME' ? other : me.id,
+      toPersonId: settlementDirection === 'TO_ME' ? me.id : other,
+      amount: Math.abs(Number(settlementAmount)), settledAt: `${settlementDate}T12:00:00`,
+      accountId: settlementAccountId || undefined,
+    });
+    setSettlementSaving(false);
+    setSettlementAmount('');
+  };
+
+  const saveExternalLoanPayment = async () => {
+    if (!loanId || !loanPersonId || Number(loanPaymentAmount) <= 0) return;
+    setLoanSaving(true);
+    await recordExternalLoanPayment({ accountId: loanId, personId: loanPersonId, amount: Math.abs(Number(loanPaymentAmount)), paidAt: `${loanPaymentDate}T12:00:00` });
+    setLoanSaving(false);
+    setLoanPaymentAmount('');
   };
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container p-5 sm:p-6">
-        <div className="flex items-start gap-3"><Users className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-lg font-bold text-on-surface">People & sharing</h2><p className="mt-1 text-xs leading-relaxed text-on-surface-variant">People are participants, not accounts. Recording their share never makes their money part of your ledger.</p></div></div>
-        <div className="mt-5 flex flex-wrap gap-2">{activePeople.map(person => <div key={person.id} className="flex items-center gap-2 rounded-full border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-xs"><span className="font-semibold text-on-surface">{person.name}</span><span className="text-on-surface-variant">{person.isSelf ? 'You' : person.relationship || 'Person'}</span>{!person.isSelf && <button type="button" aria-label={`Archive ${person.name}`} onClick={() => { void archiveSharedPerson(person.id); }} className="ml-1 text-on-surface-variant hover:text-error"><Trash2 className="h-3.5 w-3.5" /></button>}</div>)}</div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input value={personName} onChange={event => setPersonName(event.target.value)} placeholder="Name, e.g. Brother" className="rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary/50" /><input value={relationship} onChange={event => setRelationship(event.target.value)} placeholder="Relationship (optional)" className="rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary/50" /><button type="button" onClick={async () => { if (!personName.trim()) return; const ok = await addSharedPerson(personName, relationship); if (ok) { setPersonName(''); setRelationship(''); } }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-on-primary"><UserPlus className="h-4 w-4" />Add person</button></div>
+      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <Users className="w-6 h-6 text-primary mt-0.5" />
+          <div><h2 className="text-xl font-bold text-on-surface">People & sharing</h2><p className="text-sm text-on-surface-variant mt-1">People are participants, not accounts. CoinBuddy stores responsibility, who actually paid, and settlements separately.</p></div>
+        </div>
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+          <input aria-label="Person name" value={personName} onChange={event => setPersonName(event.target.value)} placeholder="Name" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <input aria-label="Relationship" value={relationship} onChange={event => setRelationship(event.target.value)} placeholder="Relationship (e.g. Brother)" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <button type="button" onClick={addPerson} className="min-h-11 rounded-xl bg-primary px-4 font-semibold text-on-primary flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Add</button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {activePeople.map(person => <div key={person.id} className="inline-flex items-center gap-2 rounded-full border border-outline-variant/30 bg-surface-container px-3 py-1.5 text-sm text-on-surface"><span>{person.name}{person.isSelf ? ' (you)' : person.relationship ? ` · ${person.relationship}` : ''}</span>{!person.isSelf && <button aria-label={`Archive ${person.name}`} title={`Archive ${person.name}`} onClick={() => archiveSharedPerson(person.id)} className="text-on-surface-variant hover:text-error"><Archive className="w-3.5 h-3.5" /></button>}</div>)}
+        </div>
       </section>
 
-      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container p-5 sm:p-6">
-        <div className="flex items-start gap-3"><ReceiptText className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-lg font-bold text-on-surface">Create shared expense</h2><p className="mt-1 text-xs leading-relaxed text-on-surface-variant">Link a real expense when money moved through your account, or leave it unlinked when everybody paid externally.</p></div></div>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Link tracked expense (optional)</span><select value={linkedTransactionId} onChange={event => selectTransaction(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface"><option value="">No tracked transaction</option>{expenseTransactions.slice(0, 80).map(tx => <option key={tx.id} value={tx.id}>{tx.title} · {formatCurrency(Math.abs(tx.amount))}</option>)}</select></label>
-          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Household expense</span><input value={title} onChange={event => setTitle(event.target.value)} placeholder="Rent" className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface" /></label>
-          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Household total</span><div className="mt-1.5"><CurrencyInput value={totalAmount} onValueChange={setTotalAmount} /></div></label>
-          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Expense category</span><select value={categoryId} onChange={event => setCategoryId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface"><option value="">Choose category</option>{categories.filter(category => category.type !== 'income').map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          <label className="block"><span className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Expense date</span><input type="date" value={obligationDate} onChange={event => setObligationDate(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-sm text-on-surface" /></label>
+      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <div className="flex items-start gap-3"><WalletCards className="w-6 h-6 text-primary mt-0.5" /><div><h3 className="text-lg font-bold text-on-surface">Add shared expense</h3><p className="text-sm text-on-surface-variant mt-1">The household amount never becomes a cash movement by itself. Link a real expense only when it actually left one of your accounts.</p></div></div>
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input aria-label="Shared expense title" value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Apartment rent" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <CurrencyInput aria-label="Household total" value={total} onValueChange={setTotal} placeholder="Household total" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <select aria-label="Shared expense category" value={categoryId} onChange={event => setCategoryId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">Category</option>{categories.filter(category => category.type !== 'income').map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          <input aria-label="Shared expense date" type="date" value={dueDate} onChange={event => setDueDate(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <select aria-label="Link tracked expense" value={transactionId} onChange={event => { const id = event.target.value; setTransactionId(id); const tx = expenseTransactions.find(item => item.id === id); if (tx) { setTitle(tx.title); setTotal(String(Math.abs(tx.amount))); setDueDate(tx.date.slice(0, 10)); setCategoryId(tx.category); } }} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface sm:col-span-2"><option value="">No tracked cash payment / someone else paid</option>{expenseTransactions.map(transaction => <option key={transaction.id} value={transaction.id}>{transaction.title} · {formatCurrency(Math.abs(transaction.amount))}</option>)}</select>
+          <select aria-label="Repeat shared expense" value={repeatFrequency} onChange={event => setRepeatFrequency(event.target.value as 'NONE' | RecurrenceFrequency)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface sm:col-span-2"><option value="NONE">Does not repeat</option><option value="MONTHLY">Repeat monthly</option><option value="QUARTERLY">Repeat quarterly</option><option value="ANNUALLY">Repeat annually</option></select>
         </div>
-        {activePeople.length > 0 && <div className="mt-5"><div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-bold text-on-surface">Responsibility split</p><button type="button" onClick={splitEqually} className="rounded-lg border border-outline-variant/30 px-2.5 py-1.5 text-xs font-semibold text-primary">Split equally</button></div><div className="space-y-2">{activePeople.map(person => <div key={person.id} className="grid grid-cols-[1fr_minmax(110px,150px)] items-center gap-3 rounded-xl bg-surface-container-low p-3"><div><p className="text-sm font-semibold text-on-surface">{person.name} {person.isSelf && <span className="text-xs font-normal text-on-surface-variant">(you)</span>}</p>{!person.isSelf && <label className="mt-1 flex items-center gap-2 text-[11px] text-on-surface-variant"><span>Paid directly/external</span><input inputMode="decimal" value={externalPaid[person.id] || ''} onChange={event => setExternalPaid(current => ({ ...current, [person.id]: event.target.value }))} placeholder="0" className="w-24 rounded-lg border border-outline-variant/30 bg-surface-container px-2 py-1 text-right font-numeric text-on-surface" /></label>}</div><input inputMode="decimal" value={shares[person.id] || ''} onChange={event => setShares(current => ({ ...current, [person.id]: event.target.value }))} placeholder="Share" className="rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-2 text-right font-numeric text-on-surface" /></div>)}</div><div className={`mt-2 text-right text-xs font-semibold ${Math.abs(allocatedTotal - selectedTotal) <= 0.01 ? 'text-primary' : 'text-error'}`}>Allocated {formatCurrency(allocatedTotal)} / {formatCurrency(selectedTotal)}</div></div>}
-        {error && <p role="alert" className="mt-4 rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{error}</p>}
-        <button type="button" disabled={saving || activePeople.length === 0} onClick={() => { void saveSharedExpense(); }} className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-on-primary disabled:opacity-50"><Plus className="h-4 w-4" />{saving ? 'Saving…' : 'Create shared expense'}</button>
+        {activePeople.length > 0 && <div className="mt-5 space-y-3"><p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Responsibility & direct payments</p>{activePeople.map(person => <div key={person.id} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,0.7fr)] gap-2 items-center"><span className="text-sm text-on-surface">{person.name}{person.isSelf ? ' (you)' : ''}</span><CurrencyInput aria-label={`${person.name} responsibility`} value={shares[person.id] ?? ''} onValueChange={value => setShares(previous => ({ ...previous, [person.id]: value }))} placeholder="Responsibility" className="min-h-10 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />{!person.isSelf && <><span className="text-xs text-on-surface-variant">Paid directly outside your accounts</span><CurrencyInput aria-label={`${person.name} paid directly`} value={externalPaid[person.id] ?? ''} onValueChange={value => setExternalPaid(previous => ({ ...previous, [person.id]: value }))} placeholder="Direct payment" className="min-h-10 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" /></>}</div>)}</div>}
+        {error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}
+        <button type="button" disabled={saving} onClick={saveExpense} className="mt-5 min-h-11 w-full rounded-xl bg-primary text-on-primary font-bold disabled:opacity-50">{saving ? 'Saving…' : 'Save shared expense'}</button>
+      </section>
+
+      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <div className="flex items-start gap-3"><HandCoins className="w-6 h-6 text-primary mt-0.5" /><div><h3 className="text-lg font-bold text-on-surface">Settle reimbursements</h3><p className="text-sm text-on-surface-variant mt-1">A reimbursement can adjust a tracked bank balance, but it is never classified as salary/income or personal spending.</p></div></div>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <select aria-label="Settlement obligation" value={settlementObligationId} onChange={event => setSettlementObligationId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">General settlement</option>{sharedObligations.filter(item => item.status !== 'CANCELLED').map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
+          <select aria-label="Settlement person" value={settlementPersonId} onChange={event => setSettlementPersonId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">Select person</option>{otherPeople.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select>
+          <select aria-label="Settlement direction" value={settlementDirection} onChange={event => setSettlementDirection(event.target.value as 'TO_ME' | 'FROM_ME')} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="TO_ME">They reimburse me</option><option value="FROM_ME">I reimburse them</option></select>
+          <CurrencyInput aria-label="Settlement amount" value={settlementAmount} onValueChange={setSettlementAmount} placeholder="Amount" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+          <select aria-label="Settlement account" value={settlementAccountId} onChange={event => setSettlementAccountId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">Settled outside tracked accounts</option>{assetAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
+          <input aria-label="Settlement date" type="date" value={settlementDate} onChange={event => setSettlementDate(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" />
+        </div>
+        <button type="button" disabled={settlementSaving || !settlementPersonId || Number(settlementAmount) <= 0} onClick={saveSettlement} className="mt-4 min-h-11 w-full rounded-xl border border-primary/40 bg-primary/10 text-primary font-bold disabled:opacity-40">{settlementSaving ? 'Saving…' : 'Record settlement'}</button>
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2 px-1"><WalletCards className="h-5 w-5 text-primary" /><h2 className="font-bold text-on-surface">Shared obligations</h2></div>
-        {sharedObligations.length === 0 ? <div className="rounded-2xl border border-dashed border-outline-variant/40 p-6 text-center text-sm text-on-surface-variant">No shared expenses yet.</div> : sharedObligations.map(obligation => {
-          const myCost = getMyEconomicCost(obligation, people, sharedResponsibilities);
-          const trackedCash = getTrackedCashPaid(obligation.id, sharedPayments);
-          const funded = isObligationFunded(obligation, sharedPayments);
-          return <article key={obligation.id} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold text-on-surface">{obligation.title}</h3><p className="mt-1 text-xs text-on-surface-variant">Household {formatCurrency(obligation.totalAmount)} · Your responsibility {formatCurrency(myCost)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${funded ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-500'}`}>{funded ? 'Funded' : 'Open'}</span></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-surface-container p-3"><span className="text-on-surface-variant">Tracked cash paid</span><p className="mt-1 font-bold font-numeric text-on-surface">{formatCurrency(trackedCash)}</p></div><div className="rounded-xl bg-surface-container p-3"><span className="text-on-surface-variant">Economic cost to you</span><p className="mt-1 font-bold font-numeric text-on-surface">{formatCurrency(myCost)}</p></div></div>{trackedCash > myCost + 0.01 && <p className="mt-3 flex items-center gap-2 text-xs text-on-surface-variant"><CircleDollarSign className="h-4 w-4 text-primary" />You fronted {formatCurrency(trackedCash - myCost)} beyond your own share. This is not additional personal spending.</p>}</article>;
+        <div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-on-surface">Shared obligations</h3><p className="text-xs text-on-surface-variant">Economic responsibility and cash paid are deliberately separate.</p></div></div>
+        {sharedObligations.length === 0 ? <div className="rounded-2xl border border-dashed border-outline-variant/40 p-6 text-center text-sm text-on-surface-variant">No shared obligations yet.</div> : sharedObligations.map(obligation => {
+          const mine = me ? sharedResponsibilities.filter(row => row.obligationId === obligation.id && row.personId === me.id).reduce((sum, row) => sum + row.amount, 0) : 0;
+          const tracked = getTrackedCashPaid(obligation.id, sharedPayments);
+          const claim = personalClaims.get(obligation.id) ?? 0;
+          return <article key={obligation.id} aria-label={`Shared obligation ${obligation.title}`} className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-on-surface">{obligation.title}</h4><p className="text-xs text-on-surface-variant mt-1">{obligation.dueDate ? new Date(`${obligation.dueDate}T12:00:00`).toLocaleDateString() : 'No due date'}{obligation.templateId ? ' · recurring occurrence' : ''}</p></div><span className="text-sm font-bold text-on-surface">{formatCurrency(obligation.totalAmount)}</span></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-xl bg-surface-container p-3"><span className="text-on-surface-variant">Your responsibility</span><strong className="block mt-1 text-on-surface">{formatCurrency(mine)}</strong></div><div className="rounded-xl bg-surface-container p-3"><span className="text-on-surface-variant">Tracked cash paid</span><strong className="block mt-1 text-on-surface">{formatCurrency(tracked)}</strong></div></div>{claim > 0.01 && <p className="mt-3 text-sm font-semibold text-emerald-500">You should receive {formatCurrency(claim)}</p>}{claim < -0.01 && <p className="mt-3 text-sm font-semibold text-amber-500">You still owe {formatCurrency(Math.abs(claim))}</p>}<div className="mt-2 flex flex-wrap gap-2">{otherPeople.map(person => { const value = getPersonNetClaim(obligation.id, person.id, sharedResponsibilities, sharedPayments, sharedSettlements); if (Math.abs(value) < 0.01) return null; return <span key={person.id} className="rounded-full bg-surface-container px-2.5 py-1 text-[11px] text-on-surface-variant">{value < 0 ? `${person.name} owes ${formatCurrency(Math.abs(value))}` : `${person.name} should receive ${formatCurrency(value)}`}</span>; })}</div></article>;
         })}
       </section>
+
+      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <div className="flex items-start gap-3"><Repeat2 className="w-6 h-6 text-primary mt-0.5" /><div><h3 className="text-lg font-bold text-on-surface">Recurring shared expenses</h3><p className="text-sm text-on-surface-variant mt-1">Templates generate household obligations without generating fake bank transactions.</p></div></div>
+        <div className="mt-4 space-y-2">{sharedObligationTemplates.length === 0 ? <p className="text-sm text-on-surface-variant">No recurring shared expenses yet.</p> : sharedObligationTemplates.map(template => { const myShare = me ? sharedTemplateResponsibilities.filter(row => row.templateId === template.id && row.personId === me.id).reduce((sum, row) => sum + row.amount, 0) : 0; return <div key={template.id} className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4 flex items-center justify-between gap-3"><div><p className="font-semibold text-on-surface">{template.title}</p><p className="text-xs text-on-surface-variant mt-1">{template.frequency.toLowerCase()} · next {template.nextDueDate} · your share {formatCurrency(myShare)}</p></div><button type="button" aria-label={`${template.isActive ? 'Pause' : 'Resume'} ${template.title}`} onClick={() => setSharedTemplateActive(template.id, !template.isActive)} className="shrink-0 rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs font-semibold text-primary">{template.isActive ? 'Pause' : 'Resume'}</button></div>; })}</div>
+      </section>
+
+      {sharedLoans.length > 0 && <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <div className="flex items-start gap-3"><Landmark className="w-6 h-6 text-primary mt-0.5" /><div><h3 className="text-lg font-bold text-on-surface">Shared loans</h3><p className="text-sm text-on-surface-variant mt-1">The legal loan stays whole. Personal exposure, EMI contribution, and direct lender payments are tracked separately.</p></div></div>
+        <div className="mt-4 space-y-3">{sharedLoans.map(loan => { const contributions = describeLoanContribution(loan, people, loanContributionRules); const history = externalLoanContributions.filter(item => item.accountId === loan.id); return <article key={loan.id} aria-label={`Shared loan ${loan.name}`} className="rounded-2xl border border-outline-variant/20 bg-surface-container p-4"><div className="flex justify-between gap-3"><div><p className="font-semibold text-on-surface">{loan.name}</p><p className="text-xs text-on-surface-variant mt-1">Full balance {formatCurrency(loan.balance)} · personal exposure {formatCurrency(getPersonalLiabilityExposure(loan, loanSharingRules))}</p></div><span className="text-xs font-bold text-primary">Shared</span></div><div className="mt-3 flex flex-wrap gap-2">{contributions.map(item => <span key={item.personId} className="rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] text-on-surface-variant">{item.name}: {formatCurrency(item.amount)}/payment</span>)}</div>{history.length > 0 && <div className="mt-3 border-t border-outline-variant/20 pt-3"><p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Direct lender payments</p>{history.slice(0, 3).map(item => { const person = people.find(p => p.id === item.personId); return <p key={item.id} className="mt-1 text-xs text-on-surface-variant">{person?.name ?? 'Family'} paid {formatCurrency(item.amount)} · principal {formatCurrency(item.principalAmount)} · interest {formatCurrency(item.interestAmount)}</p>; })}</div>}</article>; })}</div>
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3"><select aria-label="External payment loan" value={loanId} onChange={event => setLoanId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">Select shared loan</option>{sharedLoans.map(loan => <option key={loan.id} value={loan.id}>{loan.name}</option>)}</select><select aria-label="External loan contributor" value={loanPersonId} onChange={event => setLoanPersonId(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface"><option value="">Who paid lender?</option>{otherPeople.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select><CurrencyInput aria-label="External loan payment amount" value={loanPaymentAmount} onValueChange={setLoanPaymentAmount} placeholder="Amount paid directly" className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" /><input aria-label="External loan payment date" type="date" value={loanPaymentDate} onChange={event => setLoanPaymentDate(event.target.value)} className="min-h-11 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-on-surface" /></div><button type="button" disabled={loanSaving || !loanId || !loanPersonId || Number(loanPaymentAmount) <= 0} onClick={saveExternalLoanPayment} className="mt-4 min-h-11 w-full rounded-xl border border-primary/40 bg-primary/10 text-primary font-bold disabled:opacity-40">{loanSaving ? 'Saving…' : 'Record direct lender payment'}</button>
+      </section>}
+
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex items-start gap-3"><ArrowRightLeft className="w-5 h-5 text-primary mt-0.5" /><div className="text-sm text-on-surface-variant"><strong className="text-on-surface">Two truths stay separate:</strong> account/cash-flow screens show money that actually moved through your accounts; budgets, Insights and shared balances show the economic responsibility that belongs to you.</div></div>
     </div>
   );
 }

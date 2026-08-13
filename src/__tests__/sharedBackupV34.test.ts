@@ -15,6 +15,9 @@ describe('v3.4 shared-finance backup migration', () => {
     expect(migrated.sharedSettlements).toEqual([]);
     expect(migrated.loanSharingRules).toEqual([]);
     expect(migrated.loanContributionRules).toEqual([]);
+    expect(migrated.sharedObligationTemplates).toEqual([]);
+    expect(migrated.sharedTemplateResponsibilities).toEqual([]);
+    expect(migrated.externalLoanContributions).toEqual([]);
   });
 
   it('preserves v4 shared rows without converting them into transactions', () => {

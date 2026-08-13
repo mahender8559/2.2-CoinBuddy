@@ -8,6 +8,7 @@ import { getCycleDetailsForDay, getCycleRange, shiftCycle } from '../utils/cycle
 import { AffordabilitySettings } from './AffordabilitySettings';
 import { CurrencyInput } from './CurrencyInput';
 import { CategoryAffordabilityReview } from './CategoryAffordabilityReview';
+import { personalExpenseRecordsToTransactions } from '../domain/personalSpending';
 
 function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -20,7 +21,7 @@ function statusCopy(status: AffordabilityPlannerResult['projection']['status']) 
 }
 
 export function AffordabilityPlanner() {
-  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, monthCycleDay, formatCurrency } = useAppContext();
+  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, personalExpenseRecords, sharedObligationTemplates, sharedTemplateResponsibilities, monthCycleDay, formatCurrency } = useAppContext();
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
@@ -57,6 +58,9 @@ export function AffordabilityPlanner() {
       people,
       loanSharingRules,
       loanContributionRules,
+      sharedObligationTemplates,
+      sharedTemplateResponsibilities,
+      historicalSpendingTransactions: personalExpenseRecordsToTransactions(personalExpenseRecords),
       purchaseAmount: amount,
       affordabilitySettings,
       savingsGoals,
@@ -69,10 +73,15 @@ export function AffordabilityPlanner() {
   const amount = Number(purchaseAmount) || 0;
   const safeDifference = result ? amount - result.projection.safePurchaseCapacity : 0;
   const additionalSavingsTarget = result ? Math.max(0, result.projection.plannedSavings - result.projection.scheduledSavings) : 0;
+  const selfPerson = people.find(person => person.isSelf && !person.isArchived);
+  const sharedTemplateSources = sharedObligationTemplates.filter(template => template.isActive).map(template => {
+    const myShare = selfPerson ? sharedTemplateResponsibilities.filter(row => row.templateId === template.id && row.personId === selfPerson.id).reduce((sum, row) => sum + row.amount, 0) : 0;
+    return myShare > 0 ? `${template.title} · ${formatCurrency(myShare)} your ${template.frequency.toLowerCase()} share` : null;
+  }).filter((value): value is string => Boolean(value));
   const breakdownRows = result ? [
     { key: 'cash', label: 'Liquid cash now', raw: result.projection.openingCash, sign: '+', sources: accounts.filter(account => account.type === 'asset' && account.is_archived !== 1 && isLiquidCashAccount(account)).map(account => `${account.name} · ${formatCurrency(account.balance)}`) },
     { key: 'income', label: 'Expected income', raw: result.projection.expectedIncome + result.projection.otherCashInflows, sign: '+', sources: sourceProjection.items.filter(item => item.kind === 'INCOME').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
-    { key: 'expenses', label: 'Known scheduled expenses', raw: Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), sign: '-', sources: sourceProjection.items.filter(item => item.kind === 'OBLIGATION').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
+    { key: 'expenses', label: 'Known scheduled expenses', raw: Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), sign: '-', sources: [...sourceProjection.items.filter(item => item.kind === 'OBLIGATION').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`), ...sharedTemplateSources] },
     { key: 'cards', label: 'Credit-card outstanding still to cover', raw: result.projection.creditCardOutstandingReserve, sign: '-', sources: creditCards.filter(card => card.balance > 0 || card.dueAmount > 0).map(card => `${card.name} · outstanding ${formatCurrency(card.balance)}${card.dueAmount > 0 ? ` · due ${formatCurrency(card.dueAmount)}` : ''}`) },
     { key: 'living', label: 'Additional normal living expenses (history)', raw: result.projection.normalLivingExpenseForecast, sign: '-', sources: [result.normalLivingSpending.estimateUsable ? `Median NORMAL spending from ${result.normalLivingSpending.observedCycleCount} completed cycle${result.normalLivingSpending.observedCycleCount === 1 ? '' : 's'} · ${formatCurrency(result.normalLivingSpending.medianNormalSpend)}` : 'No usable completed-cycle history yet.'] },
     { key: 'savings', label: 'Scheduled savings', raw: result.projection.scheduledSavings, sign: '-', sources: sourceProjection.items.filter(item => item.kind === 'SAVINGS').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
