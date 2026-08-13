@@ -67,6 +67,9 @@ export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput
     recurringRules: input.recurringRules,
     categories: input.categories,
     creditCards: input.creditCards,
+    people: input.people,
+    loanSharingRules: input.loanSharingRules,
+    loanContributionRules: input.loanContributionRules,
     purchaseAmount: input.purchaseAmount,
     settings: baseSettings,
   });
@@ -83,6 +86,9 @@ export function projectAffordabilityWithHistory(input: AffordabilityPlannerInput
     recurringRules: input.recurringRules,
     categories: input.categories,
     creditCards: input.creditCards,
+    people: input.people,
+    loanSharingRules: input.loanSharingRules,
+    loanContributionRules: input.loanContributionRules,
     purchaseAmount: input.purchaseAmount,
     settings: {
       ...baseSettings,

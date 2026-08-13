@@ -189,7 +189,7 @@ export async function setLoanSharingRule(driver: SqlJsDatabaseDriver, rule: Loan
   );
 }
 
-export async function replaceLoanContributionRules(driver: SqlJsDatabaseDriver, accountId: string, rules: Array<Omit<LoanContributionRule, 'id' | 'accountId'> & { id?: string }>): Promise<void> {
+export async function replaceLoanContributionRules(driver: SqlJsDatabaseDriver, accountId: string, rules: Array<Omit<LoanContributionRule, 'id' | 'accountId'> & { id?: string }>, manageTransaction = true): Promise<void> {
   const active = rules.filter(rule => rule.isActive);
   const percentRules = active.filter(rule => rule.mode === 'PERCENT');
   const fixedRules = active.filter(rule => rule.mode === 'FIXED');
@@ -198,9 +198,16 @@ export async function replaceLoanContributionRules(driver: SqlJsDatabaseDriver, 
     const total = percentRules.reduce((sum, rule) => sum + Number(rule.value), 0);
     if (Math.abs(total - 100) > 0.01) throw new Error('Active percentage EMI contributions must add up to 100%.');
   }
+  if (fixedRules.length) {
+    const accountRows = await driver.query(`SELECT monthly_emi FROM accounts WHERE id = ? AND type = 'LIABILITY'`, [accountId]);
+    if (!accountRows[0]) throw new Error('Loan contribution rules require a liability account.');
+    const emi = Math.max(0, Number(accountRows[0].monthly_emi ?? 0));
+    const total = fixedRules.reduce((sum, rule) => sum + Number(rule.value), 0);
+    if (Math.abs(total - emi) > 0.01) throw new Error('Active fixed EMI contributions must add up to the full loan payment.');
+  }
   const ids = new Set(active.map(rule => rule.personId));
   if (ids.size !== active.length) throw new Error('Each person can have only one active EMI contribution rule per loan.');
-  await driver.execute('BEGIN TRANSACTION');
+  if (manageTransaction) await driver.execute('BEGIN TRANSACTION');
   try {
     await driver.execute(`DELETE FROM loan_contribution_rules WHERE account_id = ?`, [accountId]);
     for (const rule of rules) {
@@ -211,9 +218,9 @@ export async function replaceLoanContributionRules(driver: SqlJsDatabaseDriver, 
         [rule.id ?? crypto.randomUUID(), accountId, rule.personId, rule.mode, value, rule.isActive ? 1 : 0],
       );
     }
-    await driver.execute('COMMIT');
+    if (manageTransaction) await driver.execute('COMMIT');
   } catch (error) {
-    await driver.execute('ROLLBACK');
+    if (manageTransaction) await driver.execute('ROLLBACK');
     throw error;
   }
 }

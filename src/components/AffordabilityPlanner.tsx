@@ -20,7 +20,7 @@ function statusCopy(status: AffordabilityPlannerResult['projection']['status']) 
 }
 
 export function AffordabilityPlanner() {
-  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, monthCycleDay, formatCurrency } = useAppContext();
+  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, monthCycleDay, formatCurrency } = useAppContext();
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
@@ -54,6 +54,9 @@ export function AffordabilityPlanner() {
       recurringRules,
       categories,
       creditCards,
+      people,
+      loanSharingRules,
+      loanContributionRules,
       purchaseAmount: amount,
       affordabilitySettings,
       savingsGoals,

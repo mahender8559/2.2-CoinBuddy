@@ -75,6 +75,7 @@ export type UndoRedoCommand = {
   newState: AccountUndoState | Transaction | null;
 };
 export type AccountUndoState = { account: Account; openingTx: Transaction | null };
+type LoanSharingSaveConfig = { isShared: boolean; personalResponsibilityPercent: number; contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>> };
 type LedgerImportData = {
   accounts?: Account[];
   transactions?: Transaction[];
@@ -116,8 +117,8 @@ interface AppContextType {
   getAccountBalance: (accountId: string) => number;
   accounts: Account[];
   calculateEmiSplit?: (balance: number, annualRate: number, emi: number) => { interestAmount: number; principalAmount: number };
-  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
-  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
+  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
+  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
   deleteAccount: (id: string) => void;
   editingAccount: Account | null;
   setEditingAccount: (account: Account | null) => void;
@@ -1166,7 +1167,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
+  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
@@ -1227,7 +1228,12 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         try {
           await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
           await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
+          }
           await dbDriver.execute('COMMIT');
+          if (options.loanSharing) await refreshSharedFinance(dbDriver);
         } catch (error) {
           await dbDriver.execute('ROLLBACK');
           throw error;
@@ -1236,7 +1242,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
+  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
 
@@ -1278,6 +1284,11 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           await updateAccountRow(dbDriver, mergedAccount);
           await updateOpeningBalance(dbDriver, id, account.balance);
           await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+            await refreshSharedFinance(dbDriver);
+          }
         });
       }
     } else {
@@ -1312,13 +1323,17 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       setAccountRecords(accs => accs.map(a => a.id === id ? { ...account, id, balance: 0 } : a));
       setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
 
+      const mergedAccount = { ...account, id, balance: 0 };
       if (dbDriver) {
         persistDbAction(async () => {
-          await updateAccountRow(dbDriver, { ...account, id, balance: 0 });
-          if (newOpeningTx) {
-            await insertTransactionRow(dbDriver, newOpeningTx);
+          await updateAccountRow(dbDriver, mergedAccount);
+          if (newOpeningTx) await insertTransactionRow(dbDriver, newOpeningTx);
+          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+            await refreshSharedFinance(dbDriver);
           }
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...account, id }, options.sipSourceAccountId);
         });
       }
     }

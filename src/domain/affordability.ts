@@ -5,7 +5,11 @@ import type {
   CreditCardInfo,
   RecurringRule,
   Transaction,
+  Person,
+  LoanSharingRule,
+  LoanContributionRule,
 } from '../types';
+import { getMyExpectedLoanContribution } from './loanSharing';
 import { advanceRecurringDate } from './recurring';
 import { normalizeAffordabilityClass } from './categoryAffordability';
 
@@ -32,6 +36,9 @@ export interface AffordabilityInput {
   recurringRules: RecurringRule[];
   categories: Category[];
   creditCards?: CreditCardInfo[];
+  people?: Person[];
+  loanSharingRules?: LoanSharingRule[];
+  loanContributionRules?: LoanContributionRule[];
   settings: AffordabilityProjectionSettings;
   purchaseAmount: number;
 }
@@ -335,6 +342,9 @@ function projectLoanFallbacks(
   asOfDate: string,
   endDate: string,
   accumulator: ProjectionAccumulator,
+  people: Person[] = [],
+  loanSharingRules: LoanSharingRule[] = [],
+  loanContributionRules: LoanContributionRule[] = [],
 ): void {
   for (const account of accounts) {
     if (
@@ -352,7 +362,8 @@ function projectLoanFallbacks(
     }
     while (dueDate <= endDate && guard++ < 240) {
       const explicitPayment = liabilityPaymentForDate(accumulator, account.id, dueDate);
-      const remainingEmi = Math.max(0, nonNegative(account.monthlyEMI) - explicitPayment);
+      const personalEmi = getMyExpectedLoanContribution(account, people, loanSharingRules, loanContributionRules);
+      const remainingEmi = Math.max(0, personalEmi - explicitPayment);
       addCommittedFallbackExpense(accumulator, remainingEmi);
       dueDate = advanceRecurringDate(dueDate, account.paymentFrequency ?? 'MONTHLY');
     }
@@ -426,13 +437,7 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
     addCommittedFallbackExpense(accumulator, remainingOutstanding);
   }
 
-  projectLoanFallbacks(
-    accounts,
-    creditCardIds,
-    input.asOfDate,
-    input.endDate,
-    accumulator,
-  );
+  projectLoanFallbacks(accounts, creditCardIds, input.asOfDate, input.endDate, accumulator, input.people, input.loanSharingRules, input.loanContributionRules);
 
   const plannedSavingsTarget = nonNegative(input.settings.plannedSavingsTarget);
   const plannedSavings = Math.max(plannedSavingsTarget, accumulator.scheduledSavings);
