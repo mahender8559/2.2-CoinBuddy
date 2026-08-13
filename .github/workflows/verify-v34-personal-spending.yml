@@ -23,7 +23,7 @@ jobs:
           node-version: 20
           cache: npm
       - name: Apply responsibility-aware spending integration
-        run: python3 scripts/apply_v34_personal_spending.py
+        run: python3 scripts/apply_v34_personal_spending_v2.py
       - name: Install dependencies
         run: npm ci
       - name: TypeScript
