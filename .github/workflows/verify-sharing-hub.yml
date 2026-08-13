@@ -1,0 +1,32 @@
+name: Verify Sharing hub redesign
+
+on:
+  push:
+    branches:
+      - feature/v3.4-shared-finances
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Dependency audit
+        run: npm audit
+      - name: TypeScript
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Production and PWA build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Full desktop and mobile regression
+        run: npm run test:e2e
