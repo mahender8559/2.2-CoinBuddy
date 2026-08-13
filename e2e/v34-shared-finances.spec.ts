@@ -18,7 +18,12 @@ async function loadDemo(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
 }
 
-test('v3.4 demo exposes shared obligations, settlements, recurring shares and shared loans', async ({ page }) => {
+async function backToSharing(page: Page) {
+  await page.getByRole('button', { name: 'Back to Sharing', exact: true }).click();
+  await expect(page.getByTestId('sharing-hub')).toBeVisible();
+}
+
+test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -26,21 +31,42 @@ test('v3.4 demo exposes shared obligations, settlements, recurring shares and sh
 
   await openTab(page, 'Manage');
   await page.getByRole('button', { name: 'Sharing', exact: true }).click();
-  await expect(page.getByText('People & sharing', { exact: true })).toBeVisible();
+
+  await expect(page.getByTestId('sharing-hub')).toBeVisible();
+  await expect(page.getByText('What do you want to do?', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Shared expenses', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Settle / reimburse', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Recurring shared bills', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Shared loans', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open People', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open People', exact: true }).click();
+  await expect(page.getByText('People', { exact: true })).toBeVisible();
   await expect(page.getByText(/Rohan Rao/).first()).toBeVisible();
   await expect(page.getByText(/Maya Rao/).first()).toBeVisible();
+  await backToSharing(page);
 
+  await page.getByRole('button', { name: 'Open Shared expenses', exact: true }).click();
+  await expect(page.getByText('Shared expenses', { exact: true })).toBeVisible();
   const rent = page.getByRole('article', { name: 'Shared obligation Apartment Rent' });
   await expect(rent).toBeVisible();
   await expect(rent).toContainText('Your responsibility');
   await expect(rent).toContainText('You should receive');
-
   const groceries = page.getByRole('article', { name: 'Shared obligation Family Groceries' });
   await expect(groceries).toContainText('You still owe');
+  await backToSharing(page);
 
-  await expect(page.getByText('Recurring shared expenses', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Settle / reimburse', exact: true }).click();
+  await expect(page.getByText('Settle / reimburse', { exact: true })).toBeVisible();
+  await expect(page.getByText(/does not count it as salary\/income/i)).toBeVisible();
+  await backToSharing(page);
+
+  await page.getByRole('button', { name: 'Open Recurring shared bills', exact: true }).click();
+  await expect(page.getByText('Recurring shared bills', { exact: true })).toBeVisible();
   await expect(page.getByText('Family Utilities', { exact: true })).toBeVisible();
+  await backToSharing(page);
 
+  await page.getByRole('button', { name: 'Open Shared loans', exact: true }).click();
   const loan = page.getByRole('article', { name: 'Shared loan Car Loan' });
   await expect(loan).toBeVisible();
   await expect(loan).toContainText(/personal exposure/i);
