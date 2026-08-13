@@ -1,0 +1,38 @@
+name: Audit v3.4 dependencies
+
+on:
+  push:
+    branches:
+      - feature/v3.4-shared-finances
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Audit production dependencies
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev
+          echo "PROD_AUDIT_EXIT=$?"
+          exit 0
+      - name: Audit all dependencies
+        shell: bash
+        run: |
+          set +e
+          npm audit
+          echo "ALL_AUDIT_EXIT=$?"
+          exit 0
+      - name: Dependency tree for vulnerable utility packages
+        shell: bash
+        run: |
+          npm ls minimatch glob tar fstream rimraf uuid lodash.isequal inflight --all || true
