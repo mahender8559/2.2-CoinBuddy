@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   normalize-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: "${{ github.actor != 'github-actions[bot]' }}"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -157,5 +157,5 @@ test('main pages share one responsive canvas', async ({ page }, testInfo) => {
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
           git add src/App.tsx src/components/Dashboard.tsx src/components/Activity.tsx src/components/ManageFinances.tsx src/components/Cards.tsx src/components/Settings.tsx src/components/Insights.tsx e2e/layout-consistency.spec.ts
-          git commit -m "fix: unify desktop page layout widths"
+          git commit -m "fix: unify desktop page layout widths [skip ci]"
           git push origin HEAD:feature/v3.4-shared-finances
