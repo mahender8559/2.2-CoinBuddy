@@ -69,6 +69,8 @@ jobs:
           else
             python scripts/apply_v35_forms_modals.py
           fi
+      - name: Anchor shared V3.5 modals to viewport
+        run: python scripts/apply_v35_modal_portal.py
       - name: Apply V3.5 secondary dialog refresh
         run: python scripts/apply_v35_secondary_dialogs.py
       - name: Install dependencies
@@ -113,6 +115,6 @@ jobs:
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/components/EditProfileModal.tsx src/components/OnboardingModal.tsx src/components/WidgetModal.tsx e2e/v35-secondary-dialogs.spec.ts
+          git add src/components/ui/V35ModalFrame.tsx src/components/EditProfileModal.tsx src/components/OnboardingModal.tsx src/components/WidgetModal.tsx e2e/v35-secondary-dialogs.spec.ts
           git diff --cached --quiet || git commit -m "feat: refresh CoinBuddy v3.5 secondary dialogs [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
