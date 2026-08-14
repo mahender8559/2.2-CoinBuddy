@@ -29,11 +29,14 @@ jobs:
       - name: Preserve mobile shell and Dashboard fidelity
         run: python scripts/refine_v35_dashboard.py
       - name: Preserve V3.5 Activity redesign
-        run: python scripts/apply_v35_activity.py
-      - name: Preserve V3.5 Activity density
-        run: python scripts/refine_v35_activity.py
-      - name: Adapt Activity regressions
-        run: python scripts/fix_v35_activity_tests.py
+        run: |
+          if test -f e2e/v35-activity.spec.ts && grep -q "V35TransactionDetail" src/components/Activity.tsx && grep -q "Advanced filters" src/components/Activity.tsx; then
+            echo 'V3.5 Activity already committed; skipping migration.'
+          else
+            python scripts/apply_v35_activity.py
+            python scripts/refine_v35_activity.py
+            python scripts/fix_v35_activity_tests.py
+          fi
       - name: Apply V3.5 Sharing redesign
         run: python scripts/apply_v35_sharing.py
       - name: Preserve V3.5 Accounts and Goals redesign
