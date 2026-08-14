@@ -21,11 +21,15 @@ if start_marker in text:
 text = text.replace('        <Cards />', '        <V35AccountsPanel />')
 
 old_branch = """      ) : mainTab === 'Sharing' ? (\n        <SharingPanel />\n      ) : (\n        <>\n"""
-new_branch = """      ) : mainTab === 'Sharing' ? (\n        <SharingPanel />\n      ) : activeTab === 'Goals' ? (\n        <V35GoalsPanel searchQuery={searchQuery} />\n      ) : (\n        <>\n"""
+new_branch = """      ) : mainTab === 'Sharing' ? (\n        <SharingPanel />\n      ) : (activeTab as 'Categories' | 'Goals') === 'Goals' ? (\n        <V35GoalsPanel searchQuery={searchQuery} />\n      ) : (\n        <>\n"""
+legacy_new_branch = """      ) : mainTab === 'Sharing' ? (\n        <SharingPanel />\n      ) : activeTab === 'Goals' ? (\n        <V35GoalsPanel searchQuery={searchQuery} />\n      ) : (\n        <>\n"""
 if new_branch not in text:
-    if old_branch not in text:
+    if legacy_new_branch in text:
+        text = text.replace(legacy_new_branch, new_branch, 1)
+    elif old_branch in text:
+        text = text.replace(old_branch, new_branch, 1)
+    else:
         raise SystemExit('Manage branch marker not found')
-    text = text.replace(old_branch, new_branch, 1)
 text = text.replace('Categories & Goals</h1>', 'Categories</h1>', 1)
 text = text.replace('<GoalsPanel searchQuery={searchQuery} />', '<V35GoalsPanel searchQuery={searchQuery} />')
 path.write_text(text)
@@ -52,6 +56,10 @@ for test_path in Path('e2e').glob('*.spec.ts'):
     test = test.replace(
         "if (destination === 'Home' || destination === 'Activity') {",
         "if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {",
+    )
+    test = test.replace(
+        "destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings'",
+        "destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings' | 'Sharing'",
     )
 
     goal_sequences = [
