@@ -1,4 +1,4 @@
-# verification-trigger: corrected-passcode-lifecycle
+# verification-trigger: persisted-passcode-hydration
 name: Verify V3.5 UI
 
 on:
@@ -87,6 +87,8 @@ jobs:
           fi
       - name: Apply V3.5 lock screen refresh
         run: python scripts/apply_v35_lock_screen.py
+      - name: Fix persisted passcode hydration
+        run: python scripts/fix_v35_passcode_persistence.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
@@ -126,11 +128,11 @@ jobs:
             test-results/**/v35-exit-confirmation.png
             test-results/**/v35-lock-screen.png
           if-no-files-found: warn
-      - name: Commit verified V3.5 lock screen
+      - name: Commit verified V3.5 lock screen and passcode fix
         if: success()
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/App.tsx e2e/v35-lock-screen.spec.ts
-          git diff --cached --quiet || git commit -m "feat: refresh CoinBuddy v3.5 lock screen [skip ci]"
+          git add src/App.tsx src/context/AppContext.tsx src/utils/passcode.ts src/utils/passcode.test.ts e2e/v35-lock-screen.spec.ts
+          git diff --cached --quiet || git commit -m "feat: refresh CoinBuddy v3.5 lock screen and fix PIN persistence [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
