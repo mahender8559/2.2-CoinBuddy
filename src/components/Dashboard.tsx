@@ -170,7 +170,7 @@ export function Dashboard() {
   }).filter(c => c.lastMonthAmount > 0 && c.increase > 20).sort((a, b) => b.increase - a.increase);
 
   return (
-    <div className="space-y-6 animate-fade-in pb-24 md:pb-0 max-w-lg mx-auto relative">
+    <div data-testid="page-dashboard" className="w-full space-y-6 animate-fade-in pb-24 md:pb-0 relative">
       {/* Backup Warning Banner for Background Error Watchdog */}
       <BackupWarningBanner />
 

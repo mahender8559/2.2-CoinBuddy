@@ -141,7 +141,7 @@ export function Settings() {
   }
 
   return (
-    <div className="space-y-8 pb-24 md:pb-0 max-w-3xl mx-auto animate-fade-in relative">
+    <div data-testid="page-settings" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in relative">
       {/* Alert Modal */}
       
       {alertConfig.isOpen && (

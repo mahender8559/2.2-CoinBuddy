@@ -97,7 +97,7 @@ export function ManageFinances() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
+    <div data-testid="page-manage" className="w-full space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
       
       {/* Top Segmented Control matching the mockup */}
       <div className="flex justify-center mb-8">

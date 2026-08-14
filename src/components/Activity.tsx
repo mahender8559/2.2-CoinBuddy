@@ -188,7 +188,7 @@ const unassignSelectedEvents = () => {
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
 
   return (
-    <div className="space-y-6 pb-24 md:pb-0 animate-fade-in">
+    <div data-testid="page-activity" className="w-full space-y-6 pb-24 md:pb-0 animate-fade-in">
       {/* Header with Select */} 
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-on-surface">Activity Logger</h2>
