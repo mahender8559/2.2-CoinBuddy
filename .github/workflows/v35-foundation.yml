@@ -1,5 +1,4 @@
-# verification-trigger: persisted-passcode-hydration
-name: Verify V3.5 UI
+name: Final Verify V3.5 Product
 
 on:
   push:
@@ -7,14 +6,14 @@ on:
       - feature/v3.5-ui-refresh
 
 concurrency:
-  group: coinbuddy-v35-ui-refresh
+  group: coinbuddy-v35-final-product
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  v35-ui:
+  final-v35-product:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -25,70 +24,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Stabilize migrated responsive tests
-        run: python scripts/fix_v35_foundation.py
-      - name: Preserve mobile shell and Dashboard fidelity
-        run: python scripts/refine_v35_dashboard.py
-      - name: Preserve V3.5 Activity redesign
-        run: |
-          if test -f e2e/v35-activity.spec.ts && grep -q "V35TransactionDetail" src/components/Activity.tsx && grep -q "Advanced filters" src/components/Activity.tsx; then
-            echo 'V3.5 Activity already committed; skipping migration.'
-          else
-            python scripts/apply_v35_activity.py
-            python scripts/refine_v35_activity.py
-            python scripts/fix_v35_activity_tests.py
-          fi
-      - name: Apply V3.5 Sharing redesign
-        run: python scripts/apply_v35_sharing.py
-      - name: Preserve V3.5 Accounts and Goals redesign
-        run: |
-          if test -f src/components/V35AccountsPanel.tsx && test -f src/components/V35GoalsPanel.tsx && grep -q "<V35AccountsPanel" src/components/ManageFinances.tsx && grep -q "<V35GoalsPanel" src/components/ManageFinances.tsx; then
-            echo 'V3.5 Accounts and Goals already committed; skipping migration.'
-          else
-            python scripts/apply_v35_accounts_goals.py
-          fi
-      - name: Preserve V3.5 Insights and Settings redesign
-        run: |
-          if grep -q 'Settings & Manage ⚙️' src/components/Settings.tsx && grep -q 'advanced-insights-content' src/components/Insights.tsx; then
-            echo 'V3.5 Insights and Settings already committed; skipping migration.'
-          else
-            python scripts/apply_v35_insights_settings.py
-          fi
-      - name: Adapt legacy Insights regressions
-        run: python scripts/fix_v35_insights_tests.py
-      - name: Preserve V3.5 Categories and Transaction Details
-        run: |
-          if test -f src/components/V35CategoriesPanel.tsx && test -f src/components/V35TransactionDetail.tsx && grep -q "V35TransactionDetail" src/components/Activity.tsx && grep -q "<V35CategoriesPanel" src/components/ManageFinances.tsx; then
-            echo 'V3.5 Categories and Transaction Details already committed; skipping migration.'
-          else
-            python scripts/apply_v35_categories_transaction_details.py
-          fi
-      - name: Preserve V3.5 forms and modal system
-        run: |
-          if test -f src/components/ui/V35ModalFrame.tsx && test -f e2e/v35-forms-modals.spec.ts && grep -q 'transaction-form-sheet' src/components/AddTransactionModal.tsx && grep -q 'account-form-sheet' src/components/AddAccountModal.tsx && grep -q 'reconcile-sheet' src/components/ReconcileWizard.tsx && grep -q 'wallet-summary-sheet' src/components/WalletSummaryModal.tsx; then
-            echo 'V3.5 forms and modal system already committed; skipping migration.'
-          else
-            python scripts/apply_v35_forms_modals.py
-          fi
-      - name: Preserve V3.5 secondary dialogs
-        run: |
-          if grep -q 'createPortal' src/components/ui/V35ModalFrame.tsx && grep -q 'profile-edit-sheet' src/components/EditProfileModal.tsx && grep -q 'onboarding-sheet' src/components/OnboardingModal.tsx && grep -q 'widget-config-sheet' src/components/WidgetModal.tsx; then
-            echo 'V3.5 secondary dialogs already committed; skipping migration.'
-          else
-            python scripts/apply_v35_modal_portal.py
-            python scripts/apply_v35_secondary_dialogs.py
-          fi
-      - name: Preserve V3.5 exit confirmation
-        run: |
-          if test -f src/components/ExitConfirmSheet.tsx && test -f e2e/v35-exit-confirmation.spec.ts && grep -q 'exit-confirm-sheet' src/components/ExitConfirmSheet.tsx && ! grep -q "window.confirm('Do you want to exit the app?')" src/App.tsx; then
-            echo 'V3.5 exit confirmation already committed; skipping migration.'
-          else
-            python scripts/apply_v35_exit_confirmation.py
-          fi
-      - name: Apply V3.5 lock screen refresh
-        run: python scripts/apply_v35_lock_screen.py
-      - name: Fix persisted passcode hydration
-        run: python scripts/fix_v35_passcode_persistence.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
@@ -103,36 +38,11 @@ jobs:
         run: npx playwright install chromium
       - name: Full desktop and mobile browser regression
         run: npm run test:e2e
-      - name: Upload V3.5 screen screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: v35-ui-milestone-screenshots
-          path: |
-            test-results/**/v35-dashboard.png
-            test-results/**/v35-activity.png
-            test-results/**/v35-sharing.png
-            test-results/**/v35-accounts.png
-            test-results/**/v35-goals.png
-            test-results/**/v35-insights.png
-            test-results/**/v35-settings.png
-            test-results/**/v35-categories.png
-            test-results/**/v35-transaction-detail.png
-            test-results/**/v35-transaction-form.png
-            test-results/**/v35-account-form.png
-            test-results/**/v35-pay-down.png
-            test-results/**/v35-wallet-summary.png
-            test-results/**/v35-profile-sheet.png
-            test-results/**/v35-onboarding-sheet.png
-            test-results/**/v35-widget-sheet.png
-            test-results/**/v35-exit-confirmation.png
-            test-results/**/v35-lock-screen.png
-          if-no-files-found: warn
-      - name: Commit verified V3.5 lock screen and passcode fix
+      - name: Remove temporary V3.5 migration scaffolding
         if: success()
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/App.tsx src/context/AppContext.tsx src/utils/passcode.ts src/utils/passcode.test.ts e2e/v35-lock-screen.spec.ts
-          git diff --cached --quiet || git commit -m "feat: refresh CoinBuddy v3.5 lock screen and fix PIN persistence [skip ci]"
+          git rm -r scripts
+          git commit -m "chore: remove V3.5 development scaffolding [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
