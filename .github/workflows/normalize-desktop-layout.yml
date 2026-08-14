@@ -22,6 +22,10 @@ jobs:
           cache: npm
       - name: Apply layout patch
         run: python scripts/normalize_layout.py
+      - name: Refresh patched NanoID override
+        run: |
+          npm pkg set overrides.nanoid=3.3.18
+          npm install --package-lock-only
       - run: npm ci
       - name: Dependency audit
         run: npm audit
@@ -47,6 +51,6 @@ jobs:
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/App.tsx src/components/Dashboard.tsx src/components/Activity.tsx src/components/ManageFinances.tsx src/components/Cards.tsx src/components/Settings.tsx src/components/Insights.tsx e2e/layout-consistency.spec.ts
-          git diff --cached --quiet || git commit -m "fix: unify desktop page layout widths [skip ci]"
+          git add package.json package-lock.json src/App.tsx src/components/Dashboard.tsx src/components/Activity.tsx src/components/ManageFinances.tsx src/components/Cards.tsx src/components/Settings.tsx src/components/Insights.tsx e2e/layout-consistency.spec.ts
+          git diff --cached --quiet || git commit -m "fix: unify desktop page layout widths and refresh NanoID [skip ci]"
           git push origin HEAD:feature/v3.4-shared-finances
