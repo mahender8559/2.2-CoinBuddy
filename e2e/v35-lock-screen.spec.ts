@@ -64,8 +64,13 @@ test('v3.5 lock screen preserves hashed PIN unlock behavior in a compact respons
   await expect(lockScreen).toBeVisible();
   await expect(lockScreen.getByLabel('4 of 4 PIN digits entered')).toBeVisible();
   await expect(lockScreen.getByLabel('0 of 4 PIN digits entered')).toBeVisible({ timeout: 1500 });
+  await expect(lockScreen.getByRole('alert')).toHaveCount(0, { timeout: 1500 });
 
-  // Correct PIN must unlock through the existing verifyPasscode implementation.
+  // Start the final unlock from a clean locked render after the failed attempt.
+  // This avoids overlapping the failure-reset timer with a second PBKDF2 check
+  // while still proving the persisted PIN remains valid after a rejection.
+  await page.reload();
+  await expect(lockScreen).toBeVisible();
   await enterPin(page, '1234');
   await expect(lockScreen).toHaveCount(0);
   await expect(page.getByTestId('page-settings')).toBeVisible();
