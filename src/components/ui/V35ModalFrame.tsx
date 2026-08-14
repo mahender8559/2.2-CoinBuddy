@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 type V35ModalFrameProps = {
   children: ReactNode;
@@ -21,7 +22,7 @@ export function V35ModalFrame({
   panelClassName = '',
   labelledBy,
 }: V35ModalFrameProps) {
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
       <div
         data-testid={testId}
@@ -33,6 +34,7 @@ export function V35ModalFrame({
         <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-outline-variant/55 sm:hidden" />
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
