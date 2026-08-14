@@ -1,3 +1,4 @@
+import type { ComponentType, SVGProps } from 'react';
 import { ArrowLeft, ArrowRightLeft, CalendarDays, Edit2, Layers, ReceiptText, Share2, StickyNote, WalletCards, X } from 'lucide-react';
 import type { Transaction } from '../types';
 import { useAppContext } from '../context/AppContext';
@@ -30,6 +31,7 @@ export function V35TransactionDetail({
   const date = new Date(transaction.date);
   const dateLabel = Number.isNaN(date.getTime()) ? transaction.date : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   const timeLabel = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const categoryLabel = (category?.name ?? transaction.category.replace(/^#/, '')) || 'Uncategorized';
 
   const accountText = transaction.type === 'transfer'
     ? `${from?.name ?? 'Unknown account'} → ${to?.name ?? 'Unknown account'}`
@@ -63,7 +65,7 @@ export function V35TransactionDetail({
 
         <div className="mt-6 v35-surface overflow-hidden rounded-2xl border border-outline-variant/20">
           <DetailRow icon={WalletCards} label={transaction.type === 'transfer' ? 'Movement' : transaction.type === 'income' ? 'Paid into' : 'Paid from'} value={accountText} />
-          <DetailRow icon={ReceiptText} label="Category" value={category?.name ?? transaction.category.replace(/^#/, '') || 'Uncategorized'} />
+          <DetailRow icon={ReceiptText} label="Category" value={categoryLabel} />
           <DetailRow icon={CalendarDays} label="Date" value={`${dateLabel}${timeLabel ? ` · ${timeLabel}` : ''}`} />
           {event ? <DetailRow icon={Layers} label="Event" value={event.name} /> : null}
           {transaction.notes ? <DetailRow icon={StickyNote} label="Notes" value={transaction.notes} /> : null}
@@ -84,6 +86,6 @@ export function V35TransactionDetail({
   );
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: typeof WalletCards; label: string; value: string }) {
+function DetailRow({ icon: Icon, label, value }: { icon: ComponentType<SVGProps<SVGSVGElement>>; label: string; value: string }) {
   return <div className="flex min-h-[64px] items-start gap-3 border-b border-outline-variant/20 px-4 py-3 last:border-b-0"><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/8 text-primary"><Icon className="h-4 w-4" /></span><div className="min-w-0 flex-1"><p className="text-[11px] font-medium text-on-surface-variant">{label}</p><p className="mt-1 break-words text-sm font-medium capitalize text-on-surface">{value}</p></div></div>;
 }
