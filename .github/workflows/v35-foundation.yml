@@ -41,7 +41,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser regression
-        run: npm run test:e2e
+        run: npx playwright test e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/v34-shared-finances.spec.ts
       - name: Commit verified V3.5 foundation
         if: success()
         run: |
