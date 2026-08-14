@@ -66,23 +66,23 @@ test('v3.5 transaction details hands an expense to Sharing without duplicating i
   await expect(page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true }).click();
 
-  await expect(page.getByTestId('transaction-detail')).toBeVisible();
-  await expect(page.getByText('Dinner Out', { exact: true })).toBeVisible();
-  await expect(page.getByText('HDFC Salary Account', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Split with friends', exact: false })).toBeVisible();
+  const detail = page.getByTestId('transaction-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByRole('heading', { name: 'Dinner Out', exact: true })).toBeVisible();
+  await expect(detail.getByText('HDFC Salary Account', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: 'Split with friends', exact: false })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-transaction-detail.png'), fullPage: false });
 
-  await page.getByRole('button', { name: 'Split with friends', exact: false }).click();
+  await detail.getByRole('button', { name: 'Split with friends', exact: false }).click();
   await expect(page.getByRole('heading', { name: 'Shared expenses', exact: true })).toBeVisible();
   await expect(page.getByLabel('Shared expense title')).toHaveValue('Dinner Out');
   await expect(page.getByLabel('Household total')).toHaveValue(/1,650|1650/);
   await expect(page.getByLabel('Link tracked expense')).toHaveValue('tx_dining');
 
-  const dinnerCount = await page.evaluate(async () => {
-    // The transaction list itself is source-of-truth state; the UI handoff must
-    // not create another ledger transaction simply by opening Sharing.
-    return document.body.textContent?.includes('Dinner Out') ? 1 : 0;
-  });
-  expect(dinnerCount).toBe(1);
+  // Opening Sharing only carries transient navigation intent. It must not
+  // create a second transaction before the user submits a shared obligation.
+  await openDestination(page, 'Activity');
+  await search.fill('Dinner Out');
+  await expect(page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true })).toHaveCount(1);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
