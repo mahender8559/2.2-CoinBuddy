@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -45,14 +45,17 @@ export function SharingPanel() {
     account.type === 'liability' && account.is_archived !== 1 && loanSharingRules.some(rule => rule.accountId === account.id && rule.isShared)
   );
 
-  const [workspace, setWorkspace] = useState<SharingWorkspace>('HOME');
+  const preselectedTransactionId = typeof window !== 'undefined' ? sessionStorage.getItem('coinbuddy_share_transaction_id') ?? '' : '';
+  const preselectedTransaction = expenseTransactions.find(transaction => transaction.id === preselectedTransactionId);
+
+  const [workspace, setWorkspace] = useState<SharingWorkspace>(() => preselectedTransaction ? 'EXPENSES' : 'HOME');
   const [personName, setPersonName] = useState('');
   const [relationship, setRelationship] = useState('');
-  const [title, setTitle] = useState('');
-  const [total, setTotal] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [dueDate, setDueDate] = useState(todayKey());
-  const [transactionId, setTransactionId] = useState('');
+  const [title, setTitle] = useState(() => preselectedTransaction?.title ?? '');
+  const [total, setTotal] = useState(() => preselectedTransaction ? String(Math.abs(preselectedTransaction.amount)) : '');
+  const [categoryId, setCategoryId] = useState(() => preselectedTransaction?.category ?? '');
+  const [dueDate, setDueDate] = useState(() => preselectedTransaction?.date?.slice(0, 10) || todayKey());
+  const [transactionId, setTransactionId] = useState(() => preselectedTransaction?.id ?? '');
   const [repeatFrequency, setRepeatFrequency] = useState<'NONE' | RecurrenceFrequency>('NONE');
   const [shares, setShares] = useState<Record<string, string>>({});
   const [externalPaid, setExternalPaid] = useState<Record<string, string>>({});
@@ -72,6 +75,10 @@ export function SharingPanel() {
   const [loanPaymentAmount, setLoanPaymentAmount] = useState('');
   const [loanPaymentDate, setLoanPaymentDate] = useState(todayKey());
   const [loanSaving, setLoanSaving] = useState(false);
+
+  useEffect(() => {
+    if (preselectedTransactionId) sessionStorage.removeItem('coinbuddy_share_transaction_id');
+  }, [preselectedTransactionId]);
 
   const totalNumber = Math.abs(Number(total) || 0);
   const selectedTransaction = expenseTransactions.find(transaction => transaction.id === transactionId);

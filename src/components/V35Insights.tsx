@@ -139,7 +139,7 @@ export function V35Insights() {
                 <div className="relative mx-auto h-48 w-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={spendingByCategory.slice(0, 6)} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} strokeWidth={0} paddingAngle={2}>
+                      <Pie data={spendingByCategory.slice(0, 6)} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} strokeWidth={0} paddingAngle={2} isAnimationActive={false}>
                         {spendingByCategory.slice(0, 6).map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
                       </Pie>
                       <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ background: '#0e1b2e', border: '1px solid #203047', borderRadius: 12, color: '#f8fafc' }} />

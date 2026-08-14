@@ -7,10 +7,11 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useDebounce } from '../hooks/useDebounce';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { isEventAssignableTransaction } from '../domain/eventRules';
+import { V35TransactionDetail } from './V35TransactionDetail';
 import { transactionMatchesSearch } from '../utils/transactionSearch';
 
 
-export function Activity() {
+export function Activity({ onOpenSharing }: { onOpenSharing?: (transactionId: string) => void }) {
   const { transactions, formatCurrency, setAddModalOpen, categories, events, createEvent, groupTransactionsToEvent, deleteTransaction, setEditingTransaction, getCycleDetails, accounts, approveTransaction, rejectTransaction } = useAppContext();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +39,8 @@ export function Activity() {
   const [approvalDates, setApprovalDates] = useState<Record<string, string>>({});
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
   const pendingTransactions = useMemo(() => transactions.filter(tx => tx.is_verified === 0), [transactions]);
+  const [detailTransactionId, setDetailTransactionId] = useState<string | null>(null);
+  const detailTransaction = detailTransactionId ? transactions.find(tx => tx.id === detailTransactionId) : undefined;
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => {
@@ -419,6 +422,7 @@ const unassignSelectedEvents = () => {
                     isTransfer={isTransfer}
                     isPending={tx.is_verified === 0}
                     type={tx.type}
+                    onOpen={() => setDetailTransactionId(tx.id)}
                     onDelete={tx.isOpeningBalance ? undefined : () => deleteTransaction(tx.id)}
                     onEdit={tx.isOpeningBalance || isBalanceAdjustment ? undefined : () => {
                       setEditingTransaction(tx);
@@ -447,6 +451,22 @@ const unassignSelectedEvents = () => {
           </div>
         )}
       </div>
+
+      {detailTransaction ? (
+        <V35TransactionDetail
+          transaction={detailTransaction}
+          onClose={() => setDetailTransactionId(null)}
+          onEdit={detailTransaction.isOpeningBalance ? undefined : () => {
+            setEditingTransaction(detailTransaction);
+            setDetailTransactionId(null);
+            setAddModalOpen(true);
+          }}
+          onOpenSharing={onOpenSharing ? transactionId => {
+            setDetailTransactionId(null);
+            onOpenSharing(transactionId);
+          } : undefined}
+        />
+      ) : null}
 
 {isEventPickerOpen && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={() => setEventPickerOpen(false)}>
@@ -555,6 +575,7 @@ type TransactionRowProps = {
   type: string;
   onDelete?: () => void;
   onEdit?: () => void;
+  onOpen?: () => void;
   isSelectionMode: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -562,7 +583,7 @@ type TransactionRowProps = {
   tourId?: string;
 };
 
-function TransactionRow({ icon: Icon, title, eventName, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, isSelectionMode, isSelected, onToggleSelect, onLongPress, tourId }: TransactionRowProps) {
+function TransactionRow({ icon: Icon, title, eventName, subtitle, amount, tag, color, isIncome = false, isTransfer = false, isPending = false, type, onDelete, onEdit, onOpen, isSelectionMode, isSelected, onToggleSelect, onLongPress, tourId }: TransactionRowProps) {
   const colorMap: Record<string, { bg: string, text: string }> = {
     primary: { bg: 'bg-primary-container/20', text: 'text-primary' },
     secondary: { bg: 'bg-secondary-container/20', text: 'text-secondary' },
@@ -608,6 +629,9 @@ const handlePointerEnd = () => {
 return (
   <div 
     data-tour-id={tourId}
+    role="button"
+    tabIndex={0}
+    aria-label={`${isSelectionMode ? (isSelected ? 'Deselect' : 'Select') : 'Open transaction'} ${title}`}
     aria-pressed={isSelectionMode ? isSelected : undefined}
     onPointerDown={handlePointerDown}
     onPointerMove={handlePointerMove}
@@ -622,6 +646,14 @@ return (
         return;
       }
       if (isSelectionMode) onToggleSelect();
+      else if (onOpen) onOpen();
+      else if (onEdit) onEdit();
+    }}
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      if (isSelectionMode) onToggleSelect();
+      else if (onOpen) onOpen();
       else if (onEdit) onEdit();
     }}
       className={`group flex cursor-pointer items-center gap-3 border-b px-3.5 py-3.5 transition-colors sm:px-4 ${isSelected ? 'border-primary/40 bg-primary/8' : 'border-outline-variant/20 bg-transparent hover:bg-surface-container-high/45'}`}

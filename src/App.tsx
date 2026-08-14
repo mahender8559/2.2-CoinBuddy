@@ -57,6 +57,12 @@ export default function App() {
     }
   };
 
+  const handleOpenSharingForTransaction = (transactionId: string) => {
+    sessionStorage.setItem('coinbuddy_share_transaction_id', transactionId);
+    sessionStorage.setItem('coinbuddy_manage_destination', 'Sharing');
+    handleTabChange('manage');
+  };
+
   const handleGoogleLogout = async () => {
     try {
       await fetch('/api/auth/google/logout', { method: 'POST', credentials: 'include' });
@@ -322,7 +328,7 @@ export default function App() {
             </div>
           )}
           {activeTab === 'dashboard' && <Dashboard />}
-          {activeTab === 'activity' && <Activity />}
+          {activeTab === 'activity' && <Activity onOpenSharing={handleOpenSharingForTransaction} />}
           {activeTab === 'manage' && <ManageFinances />}
           {activeTab === 'insights' && <V35Insights />}
           {activeTab === 'settings' && <Settings />}
