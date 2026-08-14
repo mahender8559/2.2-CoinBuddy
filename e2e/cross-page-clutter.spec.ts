@@ -56,7 +56,11 @@ test('Insights removes fake clickable savings advice and duplicate security badg
 });
 
 test('first-use flow reaches the spotlight tour without backup-password clutter', async ({ page }) => {
-  const errors = await prepare(page);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+
+  await page.goto('/');
   await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
