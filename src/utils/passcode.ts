@@ -14,6 +14,12 @@ async function derivePbkdf2(passcode: string, salt: Uint8Array): Promise<string>
   return toHex(new Uint8Array(bits));
 }
 
+
+/** True when a persisted value is already a supported one-way passcode hash. */
+export function isPasscodeHash(stored: string | null): boolean {
+  return stored?.startsWith('pbkdf2-sha256:') === true || stored?.startsWith('sha256:') === true;
+}
+
 /** Stored value format: pbkdf2-sha256:salt:hash. The PIN itself is never persisted. */
 export async function hashPasscode(passcode: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
