@@ -180,7 +180,7 @@ export function SharingPanel() {
     return (
       <div className="space-y-5">
         {backButton}
-        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <section className="v35-surface rounded-2xl p-4 sm:p-6">
           <div className="flex items-start gap-3">
             <Users className="mt-0.5 h-6 w-6 text-primary" />
             <div>
@@ -219,7 +219,7 @@ export function SharingPanel() {
     return (
       <div className="space-y-5">
         {backButton}
-        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <section className="v35-surface rounded-2xl p-4 sm:p-6">
           <div className="flex items-start gap-3">
             <WalletCards className="mt-0.5 h-6 w-6 text-primary" />
             <div>
@@ -303,7 +303,7 @@ export function SharingPanel() {
     return (
       <div className="space-y-5">
         {backButton}
-        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <section className="v35-surface rounded-2xl p-4 sm:p-6">
           <div className="flex items-start gap-3"><HandCoins className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-xl font-bold text-on-surface">Settle / reimburse</h2><p className="mt-1 text-sm text-on-surface-variant">Use this when money is returned after one person paid more than their fair share.</p></div></div>
           <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/5 p-4 text-sm text-on-surface-variant"><strong className="text-on-surface">Important:</strong> a reimbursement can change a bank balance, but CoinBuddy does not count it as salary/income or as a second expense.</div>
 
@@ -348,7 +348,7 @@ export function SharingPanel() {
     return (
       <div className="space-y-5">
         {backButton}
-        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <section className="v35-surface rounded-2xl p-4 sm:p-6">
           <div className="flex items-start gap-3"><Repeat2 className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-xl font-bold text-on-surface">Recurring shared bills</h2><p className="mt-1 text-sm text-on-surface-variant">Use this for rent, utilities or other household costs that repeat with the same expected responsibility split.</p></div></div>
           <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/5 p-4 text-sm text-on-surface-variant"><strong className="text-on-surface">What happens each cycle?</strong> CoinBuddy creates the shared obligation only. It does not invent a bank transaction. Real cash movement is recorded separately when someone actually pays.</div>
           <div className="mt-5 space-y-2">
@@ -368,7 +368,7 @@ export function SharingPanel() {
     return (
       <div className="space-y-5">
         {backButton}
-        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
+        <section className="v35-surface rounded-2xl p-4 sm:p-6">
           <div className="flex items-start gap-3"><Landmark className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-xl font-bold text-on-surface">Shared loans</h2><p className="mt-1 text-sm text-on-surface-variant">The bank loan stays whole. CoinBuddy separately tracks how much of the liability is yours and how each EMI is expected to be funded.</p></div></div>
           <div className="mt-5 grid gap-2 sm:grid-cols-2"><div className="rounded-2xl bg-surface-container p-4"><p className="text-xs font-bold text-primary">FULL LOAN</p><p className="mt-1 text-sm text-on-surface">The legal outstanding balance and amortization always remain the full lender values.</p></div><div className="rounded-2xl bg-surface-container p-4"><p className="text-xs font-bold text-primary">YOUR SHARE</p><p className="mt-1 text-sm text-on-surface">Personal exposure and EMI contribution are separate settings and may be different percentages.</p></div></div>
 
@@ -410,44 +410,80 @@ export function SharingPanel() {
   ];
 
   return (
-    <div className="space-y-6" data-testid="sharing-hub">
-      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-5 sm:p-6">
-        <div className="flex items-start gap-3"><ArrowRightLeft className="mt-0.5 h-6 w-6 text-primary" /><div><h2 className="text-xl font-bold text-on-surface">Sharing</h2><p className="mt-1 max-w-2xl text-sm text-on-surface-variant">Manage money shared with family or friends without mixing household responsibility with your personal cash flow.</p></div></div>
-
-        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-2xl bg-surface-container p-3"><p className="text-xs text-on-surface-variant">People</p><p className="mt-1 text-lg font-bold text-on-surface">{activePeople.length}</p></div>
-          <div className="rounded-2xl bg-surface-container p-3"><p className="text-xs text-on-surface-variant">You should receive</p><p className="mt-1 text-lg font-bold text-on-surface">{formatCurrency(sharingSummary.owedToMe)}</p></div>
-          <div className="rounded-2xl bg-surface-container p-3"><p className="text-xs text-on-surface-variant">You still owe</p><p className="mt-1 text-lg font-bold text-on-surface">{formatCurrency(sharingSummary.iOwe)}</p></div>
-          <div className="rounded-2xl bg-surface-container p-3"><p className="text-xs text-on-surface-variant">Recurring bills</p><p className="mt-1 text-lg font-bold text-on-surface">{sharingSummary.recurring}</p></div>
+    <div className="space-y-5" data-testid="sharing-hub">
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-on-surface sm:text-3xl">Sharing ✨</h1>
+          <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">Manage money shared with family and friends without mixing responsibility with your personal cash flow.</p>
         </div>
+      </header>
+
+      <section aria-label="Sharing summary" className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <article className="v35-surface rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center gap-2 text-primary"><Users className="h-4 w-4"/><span className="text-xs font-semibold">People</span></div>
+          <p className="mt-2.5 font-numeric text-xl font-semibold text-on-surface">{activePeople.length}</p>
+          <p className="mt-1 text-[11px] text-on-surface-variant">You + shared participants</p>
+        </article>
+        <article className="v35-surface rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center gap-2 text-[var(--cb-green)]"><HandCoins className="h-4 w-4"/><span className="text-xs font-semibold">You should receive</span></div>
+          <p className="mt-2.5 font-numeric text-lg font-semibold text-[var(--cb-green)] sm:text-xl">{formatCurrency(sharingSummary.owedToMe)}</p>
+          <p className="mt-1 text-[11px] text-on-surface-variant">Money others still owe you</p>
+        </article>
+        <article className="v35-surface rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center gap-2 text-[var(--cb-amber)]"><ArrowRightLeft className="h-4 w-4"/><span className="text-xs font-semibold">You owe</span></div>
+          <p className="mt-2.5 font-numeric text-lg font-semibold text-[var(--cb-amber)] sm:text-xl">{formatCurrency(sharingSummary.iOwe)}</p>
+          <p className="mt-1 text-[11px] text-on-surface-variant">Your unsettled responsibility</p>
+        </article>
+        <article className="v35-surface rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center gap-2 text-[var(--cb-purple)]"><Repeat2 className="h-4 w-4"/><span className="text-xs font-semibold">Active bills</span></div>
+          <p className="mt-2.5 font-numeric text-xl font-semibold text-on-surface">{sharingSummary.recurring}</p>
+          <p className="mt-1 text-[11px] text-on-surface-variant">Recurring shared obligations</p>
+        </article>
       </section>
 
       <section>
-        <div className="mb-3"><h3 className="font-bold text-on-surface">What do you want to do?</h3><p className="mt-1 text-sm text-on-surface-variant">Choose one task. CoinBuddy will show only the controls and explanation you need for it.</p></div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {actions.map(action => {
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-on-surface">What do you want to do?</h2>
+          <p className="mt-1 text-xs text-on-surface-variant sm:text-sm">Choose one task. Only the controls for that job will open.</p>
+        </div>
+
+        <div className="v35-surface overflow-hidden rounded-2xl">
+          {actions.map((action, index) => {
             const Icon = action.icon;
+            const tone = action.id === 'SETTLEMENTS'
+              ? 'text-[var(--cb-green)] bg-[var(--cb-green-soft)]'
+              : action.id === 'RECURRING'
+                ? 'text-[var(--cb-amber)] bg-[var(--cb-amber-soft)]'
+                : action.id === 'LOANS'
+                  ? 'text-[var(--cb-purple)] bg-[var(--cb-purple-soft)]'
+                  : 'text-primary bg-primary/10';
             return (
               <button
                 key={action.id}
                 type="button"
                 aria-label={`Open ${action.title}`}
                 onClick={() => setWorkspace(action.id)}
-                className={`group flex min-h-[112px] items-start gap-4 rounded-2xl border border-outline-variant/30 bg-surface-container-low p-4 text-left transition-colors hover:border-primary/35 hover:bg-primary/5 ${action.id === 'PEOPLE' ? 'sm:col-span-2' : ''}`}
+                className={`group flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-container-high/45 sm:min-h-[82px] sm:px-5 ${index < actions.length - 1 ? 'border-b border-outline-variant/20' : ''}`}
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></div>
-                <div className="min-w-0 flex-1"><p className="font-bold text-on-surface">{action.title}</p><p className="mt-1 text-sm leading-5 text-on-surface-variant">{action.description}</p></div>
-                <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-on-surface-variant transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-on-surface sm:text-[15px]">{action.title}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-on-surface-variant sm:text-sm">{action.description}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
               </button>
             );
           })}
         </div>
       </section>
 
-      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-        <p className="font-semibold text-on-surface">The simple rule</p>
-        <p className="mt-1 text-sm text-on-surface-variant">CoinBuddy keeps three things separate: <strong className="text-on-surface">what the expense cost</strong>, <strong className="text-on-surface">who actually paid</strong>, and <strong className="text-on-surface">who should ultimately bear the cost</strong>. That is why tracking family finances does not make you personally responsible for everything you record.</p>
-      </div>
+      <aside className="flex items-start gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-3.5 sm:p-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ArrowRightLeft className="h-4 w-4" /></span>
+        <div>
+          <p className="text-sm font-semibold text-on-surface">Keep cost, payment and responsibility separate</p>
+          <p className="mt-1 text-xs leading-5 text-on-surface-variant">Who recorded something does not decide who paid or who should ultimately bear the cost. CoinBuddy keeps those facts separate.</p>
+        </div>
+      </aside>
     </div>
   );
 }
