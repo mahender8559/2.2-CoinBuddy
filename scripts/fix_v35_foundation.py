@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# Early V3.5 source normalizations. These are intentionally safe to re-run on
+# later milestones after the fixed source has already been committed.
 manage_path = Path('src/components/ManageFinances.tsx')
 manage = manage_path.read_text()
 manage = manage.replace('\\n  useEffect(() => {', '\n  useEffect(() => {', 1)
@@ -10,19 +12,20 @@ tour = tour_path.read_text()
 start = tour.find('\\nfunction findVisibleTourTarget')
 if start != -1:
     end = tour.find('export const TOUR_STEPS', start)
-    if end == -1:
-        raise SystemExit('Tour helper end marker missing')
-    helper = tour[start:end].replace('\\n', '\n')
-    tour = tour[:start] + helper + tour[end:]
+    if end != -1:
+        helper = tour[start:end].replace('\\n', '\n')
+        tour = tour[:start] + helper + tour[end:]
 tour_path.write_text(tour)
 
+# Old test helpers from the first shell migration are upgraded only when still
+# present. Later V3.5 milestones may have already extended these helpers with
+# Sharing, Goals or Categories; in that case leave them untouched.
 legacy_open_tab = """async function openTab(page: Page, name: string) {
   const desktop = page.getByTitle(name);
   const mobile = page.getByRole('button', { name, exact: true });
   if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
 }
 """
-
 visibility_open_tab = """async function openTab(page: Page, name: string) {
   const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
   const desktopSidebar = page.getByTestId('desktop-sidebar');
@@ -41,7 +44,6 @@ visibility_open_tab = """async function openTab(page: Page, name: string) {
   await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 """
-
 stable_open_tab = """async function openTab(page: Page, name: string) {
   const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
   const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
@@ -60,7 +62,6 @@ stable_open_tab = """async function openTab(page: Page, name: string) {
   await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 """
-
 for filename in [
     'e2e/affordability-phase7.spec.ts',
     'e2e/demo-data-v33.spec.ts',
@@ -69,40 +70,14 @@ for filename in [
 ]:
     path = Path(filename)
     text = path.read_text()
-    if stable_open_tab not in text:
-        if visibility_open_tab in text:
-            text = text.replace(visibility_open_tab, stable_open_tab, 1)
-        elif legacy_open_tab in text:
-            text = text.replace(legacy_open_tab, stable_open_tab, 1)
-        else:
-            raise SystemExit(f'Navigation helper not found in {filename}')
+    if visibility_open_tab in text:
+        text = text.replace(visibility_open_tab, stable_open_tab, 1)
+    elif legacy_open_tab in text:
+        text = text.replace(legacy_open_tab, stable_open_tab, 1)
     path.write_text(text)
 
-# Once Manage is visible, scope its own Categories/Goals/Sharing controls to the
-# Manage surface so they do not collide with the global navigation labels.
-for filename in [
-    'e2e/affordability-phase7.spec.ts',
-    'e2e/demo-data-v33.spec.ts',
-    'e2e/v33-planning-reliability.spec.ts',
-]:
-    path = Path(filename)
-    text = path.read_text()
-    text = text.replace(
-        "await page.getByRole('button', { name: 'Goals', exact: true }).click();",
-        "await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();",
-    )
-    path.write_text(text)
-
-v34_path = Path('e2e/v34-shared-finances.spec.ts')
-v34 = v34_path.read_text().replace(
-    "await page.getByRole('button', { name: 'Sharing', exact: true }).click();",
-    "await page.getByTestId('page-manage').getByRole('button', { name: 'Sharing', exact: true }).click();",
-    1,
-)
-v34_path.write_text(v34)
-
-# Stabilize the smoke-suite navigation helper using the configured viewport,
-# not a momentary visibility check during React navigation/reload.
+# Stabilize the smoke-suite helper only if its first-generation visibility form
+# remains. Newer destination unions are intentionally left alone.
 ui_path = Path('e2e/ui-smoke.spec.ts')
 ui = ui_path.read_text()
 visibility_open_destination = """async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
@@ -141,6 +116,7 @@ if visibility_open_destination in ui:
     ui = ui.replace(visibility_open_destination, stable_open_destination, 1)
 ui_path.write_text(ui)
 
+# First-generation shell selectors are also upgraded only when they remain.
 shell_path = Path('e2e/v35-shell.spec.ts')
 shell = shell_path.read_text()
 shell = shell.replace(
@@ -159,9 +135,8 @@ shell = shell.replace(
 )
 shell_path.write_text(shell)
 
-# The locked V3.5 mobile IA intentionally provides exactly one global Add action
-# even while Manage is open. Keep the original anti-duplication intent by
-# checking for no page-local Add while allowing the single nav action.
+# The locked V3.5 mobile IA provides exactly one global Add action while Manage
+# is open. Apply this old anti-duplication migration only if needed.
 clutter_path = Path('e2e/cross-page-clutter.spec.ts')
 clutter = clutter_path.read_text()
 old = "await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);"
@@ -172,10 +147,8 @@ new = """const mobileNav = page.getByTestId('mobile-bottom-nav');
   } else {
     await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
   }"""
-if new not in clutter:
-    if old not in clutter:
-        raise SystemExit('cross-page Add expectation marker not found')
+if new not in clutter and old in clutter:
     clutter = clutter.replace(old, new, 1)
 clutter_path.write_text(clutter)
 
-print('Normalized V3.5 generated source and migrated navigation tests')
+print('Normalized V3.5 source and kept legacy migrations idempotent')
