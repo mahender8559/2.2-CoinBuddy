@@ -16,11 +16,20 @@ async function prepareApp(page: Page) {
   return runtimeErrors;
 }
 
-async function openTab(page: Page, name: string) {
-  const desktopButton = page.getByTitle(name);
-  const mobileButton = page.getByRole('button', { name, exact: true });
-  if (await desktopButton.isVisible()) await desktopButton.click();
-  else await mobileButton.click();
+async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
+  const desktopSidebar = page.getByTestId('desktop-sidebar');
+  if (await desktopSidebar.isVisible()) {
+    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  if (destination === 'Home' || destination === 'Activity') {
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function waitForActivatedServiceWorker(page: Page) {
@@ -33,17 +42,23 @@ async function waitForActivatedServiceWorker(page: Page) {
 test('primary navigation buttons work without runtime errors', async ({ page }) => {
   const errors = await prepareApp(page);
 
-  for (const tab of ['Manage', 'Activity', 'Insights', 'Settings', 'Dashboard']) {
-    await openTab(page, tab);
-    await expect(page).toHaveURL(new RegExp(`tab=${tab.toLowerCase()}`));
-  }
+  await openDestination(page, 'Accounts');
+  await expect(page).toHaveURL(/tab=manage/);
+  await openDestination(page, 'Activity');
+  await expect(page).toHaveURL(/tab=activity/);
+  await openDestination(page, 'Insights');
+  await expect(page).toHaveURL(/tab=insights/);
+  await openDestination(page, 'Settings');
+  await expect(page).toHaveURL(/tab=settings/);
+  await openDestination(page, 'Home');
+  await expect(page).toHaveURL(/tab=dashboard/);
 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
 test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
   const errors = await prepareApp(page);
-  await openTab(page, 'Manage');
+  await openDestination(page, 'Accounts');
 
   const payDown = page.getByRole('button', { name: 'Pay Down' }).first();
   await expect(payDown).toBeVisible();
@@ -74,10 +89,10 @@ test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
 
 test('interactive buttons expose an accessible name', async ({ page }) => {
   const errors = await prepareApp(page);
-  const tabs = ['Dashboard', 'Manage', 'Activity', 'Insights', 'Settings'];
+  const destinations: Array<'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings'> = ['Home', 'Accounts', 'Activity', 'Insights', 'Settings'];
 
-  for (const tab of tabs) {
-    await openTab(page, tab);
+  for (const destination of destinations) {
+    await openDestination(page, destination);
     const unnamed = await page.locator('button:visible').evaluateAll(buttons =>
       buttons
         .filter(button => {
@@ -86,13 +101,13 @@ test('interactive buttons expose an accessible name', async ({ page }) => {
         })
         .map(button => button.outerHTML.slice(0, 180)),
     );
-    expect(unnamed, `Unnamed buttons on ${tab}`).toEqual([]);
+    expect(unnamed, `Unnamed buttons on ${destination}`).toEqual([]);
   }
 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
-test('first tour spotlight and description match the add transaction button', async ({ page }) => {
+test('first tour spotlight and description match the visible add transaction button', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('coinbuddy_onboarding_seen', 'true');
     localStorage.removeItem('hasCompletedButtonTour');
@@ -100,7 +115,7 @@ test('first tour spotlight and description match the add transaction button', as
   });
   await page.goto('/');
 
-  const target = page.locator('[data-tour-id="tour-add-transaction"]');
+  const target = page.locator('[data-tour-id="tour-add-transaction"]:visible').first();
   const tooltip = page.getByRole('heading', { name: 'Add Transaction' }).locator('xpath=../../..');
   const spotlight = page.locator('div[style*="box-shadow"]').first();
 
