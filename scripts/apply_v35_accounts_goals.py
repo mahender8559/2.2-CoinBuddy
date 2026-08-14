@@ -34,6 +34,30 @@ text = text.replace('Categories & Goals</h1>', 'Categories</h1>', 1)
 text = text.replace('<GoalsPanel searchQuery={searchQuery} />', '<V35GoalsPanel searchQuery={searchQuery} />')
 path.write_text(text)
 
+# Keep the compact Goals design while retaining the explanatory affordabilty
+# semantics that existing users/tests rely on.
+goals_path = Path('src/components/V35GoalsPanel.tsx')
+goals = goals_path.read_text()
+goals = goals.replace(
+    '<button type="button" onClick={openNew} className="v35-focus-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-[0_0_24px_rgba(76,141,255,.18)]">',
+    '<button type="button" aria-label="Add goal" onClick={openNew} className="v35-focus-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-[0_0_24px_rgba(76,141,255,.18)]">',
+)
+goals = goals.replace(
+    '<h2 className="truncate text-base font-semibold text-on-surface">{goal.name} <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>',
+    '<h2 className="truncate text-base font-semibold text-on-surface"><span>{goal.name}</span> <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>',
+)
+old_progress = """                <p className=\"mt-4 text-xs leading-5 text-on-surface-variant\">{linked ? `Progress tracked from ${linked.name}.` : 'Progress uses manual saved amount and verified Goal-linked contributions.'}</p>\n"""
+new_progress = """                <p className=\"mt-4 text-xs leading-5 text-on-surface-variant\">{linked ? `Progress tracked from ${linked.name}.` : 'Progress uses manual saved amount and verified Goal-linked contributions.'}</p>\n                {goal.monthlyContribution > 0 ? <p className=\"mt-1 text-xs leading-5 text-on-surface-variant\">Planner protects {formatCurrency(goal.monthlyContribution)} each cycle for this goal.</p> : null}\n"""
+if new_progress not in goals:
+    if old_progress not in goals:
+        raise SystemExit('Goal progress copy marker not found')
+    goals = goals.replace(old_progress, new_progress, 1)
+goals = goals.replace(
+    '<span>{linked.name} can track this goal without being treated as liquid cash in affordability.</span>',
+    '<span>{linked.name} tracks progress only. It is excluded from affordability liquid cash and protected reserves.</span>',
+)
+goals_path.write_text(goals)
+
 # Categories remains a real destination and must stay reachable on desktop now
 # that the old three-way Manage segmented control is gone.
 nav_path = Path('src/components/Navigation.tsx')
@@ -84,5 +108,28 @@ for test_path in Path('e2e').glob('*.spec.ts'):
     test = test.replace(add_liability, add_liability_v35)
 
     test_path.write_text(test)
+
+# A compact account row intentionally hides secondary operations until expanded.
+ui_path = Path('e2e/ui-smoke.spec.ts')
+ui = ui_path.read_text()
+old_pay = """  const payDown = page.getByRole('button', { name: 'Pay Down' }).first();\n  await expect(payDown).toBeVisible();\n"""
+new_pay = """  const liabilityToggle = page.locator('[data-testid=\"account-group-loan\"] button[aria-expanded], [data-testid=\"account-group-card\"] button[aria-expanded]').first();\n  await expect(liabilityToggle).toBeVisible();\n  await liabilityToggle.click();\n  const payDown = page.getByRole('button', { name: 'Pay Down' }).first();\n  await expect(payDown).toBeVisible();\n"""
+if new_pay not in ui:
+    if old_pay not in ui:
+        raise SystemExit('Pay Down test marker not found')
+    ui = ui.replace(old_pay, new_pay, 1)
+ui_path.write_text(ui)
+
+# This regression starts directly on Manage, so route Categories through the
+# global V3.5 navigation instead of the removed local segmented control.
+clutter_path = Path('e2e/cross-page-clutter.spec.ts')
+clutter = clutter_path.read_text()
+old_categories_click = "  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();\n"
+new_categories_click = """  if (await mobileNav.isVisible()) {\n    await mobileNav.getByRole('button', { name: 'More', exact: true }).click();\n    await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Categories', exact: true }).click();\n  } else {\n    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Categories', exact: true }).click();\n  }\n"""
+if new_categories_click not in clutter:
+    if old_categories_click not in clutter:
+        raise SystemExit('Categories clutter test marker not found')
+    clutter = clutter.replace(old_categories_click, new_categories_click, 1)
+clutter_path.write_text(clutter)
 
 print('Applied V3.5 grouped Accounts + Goals and migrated navigation regressions')
