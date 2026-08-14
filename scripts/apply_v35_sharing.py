@@ -14,8 +14,6 @@ old_home_start = '  return (\n    <div className="space-y-6" data-testid="sharin
 start = text.find(old_home_start)
 if start == -1:
     raise SystemExit('Sharing home return marker not found')
-# This is the component's final return, so replace through the component close.
-end = len(text)
 
 new_home = r'''  return (
     <div className="space-y-5" data-testid="sharing-hub">
@@ -116,17 +114,17 @@ async function prepare(page: Page) {
 test('v3.5 Sharing presents one calm task hub', async ({ page }, testInfo: TestInfo) => {
   await prepare(page);
   await expect(page.getByTestId('sharing-hub')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sharing ✨' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sharing ✨', exact: true })).toBeVisible();
   await expect(page.getByText('You should receive', { exact: true })).toBeVisible();
   await expect(page.getByText('You owe', { exact: true })).toBeVisible();
   await expect(page.getByText('Active bills', { exact: true })).toBeVisible();
 
   for (const task of ['Shared expenses', 'Settle / reimburse', 'Recurring shared bills', 'Shared loans', 'People']) {
-    await expect(page.getByRole('button', { name: `Open ${task}` })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Open ${task}`, exact: true })).toBeVisible();
   }
 
-  await page.getByRole('button', { name: 'Open Shared expenses' }).click();
-  await expect(page.getByRole('heading', { name: 'Shared expenses' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Shared expenses', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Shared expenses', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Back to Sharing/ }).click();
   await expect(page.getByTestId('sharing-hub')).toBeVisible();
 
