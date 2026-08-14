@@ -1,9 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
-  const desktop = page.getByTitle(name);
-  const mobile = page.getByRole('button', { name, exact: true });
-  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const desktopSidebar = page.getByTestId('desktop-sidebar');
+  if (await desktopSidebar.isVisible()) {
+    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function loadDemo(page: Page) {
@@ -30,7 +42,7 @@ test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async 
   await loadDemo(page);
 
   await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Sharing', exact: true }).click();
+  await page.getByTestId('page-manage').getByRole('button', { name: 'Sharing', exact: true }).click();
 
   await expect(page.getByTestId('sharing-hub')).toBeVisible();
   await expect(page.getByText('What do you want to do?', { exact: true })).toBeVisible();

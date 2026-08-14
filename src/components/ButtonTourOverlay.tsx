@@ -11,6 +11,16 @@ export interface TourStep {
   content: string;
 }
 
+
+function findVisibleTourTarget(targetId: string): HTMLElement | null {
+  const elements = Array.from(document.querySelectorAll<HTMLElement>(`[data-tour-id="${targetId}"]`));
+  return elements.find(element => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+  }) ?? null;
+}
+
 export const TOUR_STEPS: TourStep[] = [
   { targetId: 'tour-add-transaction', tab: 'dashboard', title: 'Add Transaction', content: 'Use this button from Dashboard, Activity, or Insights to log income, expenses, or transfers.' },
   { targetId: 'tour-account-cards', tab: 'dashboard', title: 'Net Worth Breakdown', content: 'See total assets and liabilities that make up your current net worth.' },
@@ -33,7 +43,7 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
 
   const updateTargetRect = useCallback(() => {
     if (!step || !isButtonTourOpen) return;
-    const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
+    const el = findVisibleTourTarget(step.targetId);
     setTargetRect(el ? el.getBoundingClientRect() : null);
   }, [step, isButtonTourOpen]);
 
@@ -41,10 +51,10 @@ export function ButtonTourOverlay({ activeTab, setActiveTab }: { activeTab: Tab,
     if (!isButtonTourOpen || !step) return;
     if (activeTab !== step.tab) setActiveTab(step.tab);
     const checkAndScroll = () => {
-      const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
+      const el = findVisibleTourTarget(step.targetId);
       if (!el) {
         window.setTimeout(() => {
-          const retry = document.querySelector(`[data-tour-id="${step.targetId}"]`);
+          const retry = findVisibleTourTarget(step.targetId);
           if (retry) {
             retry.scrollIntoView({ behavior: 'smooth', block: 'center' });
             window.setTimeout(updateTargetRect, 350);

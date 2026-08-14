@@ -13,8 +13,10 @@ import { SharingPanel } from './SharingPanel';
 
 export function ManageFinances() {
   const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, personalExpenseRecords, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
-  
-  const [mainTab, setMainTab] = useState<'Accounts' | 'Categories' | 'Sharing'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
+
+  type ManageDestination = 'Accounts' | 'Categories' | 'Sharing' | 'Goals';
+  const requestedDestination = typeof window !== 'undefined' ? sessionStorage.getItem('coinbuddy_manage_destination') as ManageDestination | null : null;
+  const [mainTab, setMainTab] = useState<'Accounts' | 'Categories' | 'Sharing'>(() => isManageCategoriesOpen ? 'Categories' : requestedDestination === 'Sharing' ? 'Sharing' : requestedDestination === 'Categories' || requestedDestination === 'Goals' ? 'Categories' : 'Accounts');
   const mainTabSwipe = useHorizontalSwipe(() => {
     setMainTab(current => current === 'Accounts' ? 'Categories' : current === 'Categories' ? 'Sharing' : 'Accounts');
   });
@@ -41,7 +43,36 @@ export function ManageFinances() {
     document.addEventListener('openAddCategoryModal', handleOpenModal);
     return () => document.removeEventListener('openAddCategoryModal', handleOpenModal);
   }, []);
-  const [activeTab, setActiveTab] = useState<'Categories' | 'Goals'>('Categories');
+  const [activeTab, setActiveTab] = useState<'Categories' | 'Goals'>(() => requestedDestination === 'Goals' ? 'Goals' : 'Categories');
+
+  useEffect(() => {
+    const applyDestination = (destination: ManageDestination) => {
+      if (destination === 'Sharing') {
+        setMainTab('Sharing');
+      } else if (destination === 'Accounts') {
+        setMainTab('Accounts');
+      } else {
+        setMainTab('Categories');
+        setActiveTab(destination === 'Goals' ? 'Goals' : 'Categories');
+      }
+    };
+
+    if (requestedDestination) applyDestination(requestedDestination);
+    sessionStorage.removeItem('coinbuddy_manage_destination');
+
+    const handleDestination = (event: Event) => {
+      const destination = (event as CustomEvent<ManageDestination>).detail;
+      if (destination) applyDestination(destination);
+    };
+    document.addEventListener('coinbuddy:manage-destination', handleDestination);
+    return () => document.removeEventListener('coinbuddy:manage-destination', handleDestination);
+  }, []);
+
+  useEffect(() => {
+    const destination: ManageDestination = mainTab === 'Categories' && activeTab === 'Goals' ? 'Goals' : mainTab;
+    sessionStorage.setItem('coinbuddy_current_manage_destination', destination);
+    document.dispatchEvent(new CustomEvent<ManageDestination>('coinbuddy:manage-current', { detail: destination }));
+  }, [mainTab, activeTab]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);

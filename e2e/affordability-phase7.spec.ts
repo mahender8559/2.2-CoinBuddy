@@ -1,9 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
-  const desktop = page.getByTitle(name);
-  const mobile = page.getByRole('button', { name, exact: true });
-  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const desktopSidebar = page.getByTestId('desktop-sidebar');
+  if (await desktopSidebar.isVisible()) {
+    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function prepare(page: Page, preserveDatabase = false) {
@@ -115,7 +127,7 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   const errors = await prepare(page, false);
   await openTab(page, 'Manage');
   await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();
   await page.getByRole('button', { name: 'Add goal' }).click();
   await page.getByLabel('Goal name').fill('Laptop Fund');
   await page.getByLabel('Target amount').fill('80000');
@@ -128,7 +140,7 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await page.reload();
   await openTab(page, 'Manage');
   await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Goal Laptop Fund' })).toBeVisible();
 
   await openTab(page, 'Insights');

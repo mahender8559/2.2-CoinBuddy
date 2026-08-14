@@ -312,7 +312,7 @@ export default function App() {
       <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       
-      <main className="pt-20 min-h-screen md:pl-20">
+      <main className="pt-20 min-h-screen md:pl-20 xl:pl-60">
         <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-6 pb-28 md:pb-6">
           {integrityWarning && (
             <div className="mb-4 flex items-center gap-3 rounded-xl border border-error/50 bg-error/10 px-4 py-3 text-sm text-on-surface">

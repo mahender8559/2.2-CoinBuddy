@@ -1,0 +1,110 @@
+/* CoinBuddy V3.5 — Minimal Dark foundation */
+:root {
+  --cb-bg: #06101e;
+  --cb-bg-deep: #040b15;
+  --cb-surface-1: #0a1627;
+  --cb-surface-2: #0e1b2e;
+  --cb-surface-3: #132238;
+  --cb-surface-hover: #172941;
+  --cb-border: #203047;
+  --cb-border-soft: rgba(148, 163, 184, 0.12);
+  --cb-text: #f8fafc;
+  --cb-text-secondary: #c7d0dc;
+  --cb-text-muted: #94a3b8;
+  --cb-text-disabled: #64748b;
+  --cb-blue: #4c8dff;
+  --cb-blue-strong: #2878ff;
+  --cb-blue-soft: rgba(76, 141, 255, 0.14);
+  --cb-blue-glow: rgba(76, 141, 255, 0.26);
+  --cb-green: #22c55e;
+  --cb-green-soft: rgba(34, 197, 94, 0.13);
+  --cb-red: #ff6668;
+  --cb-red-soft: rgba(255, 102, 104, 0.13);
+  --cb-purple: #a855f7;
+  --cb-purple-soft: rgba(168, 85, 247, 0.14);
+  --cb-amber: #fbbf24;
+  --cb-amber-soft: rgba(251, 191, 36, 0.14);
+}
+
+.dark {
+  --background: var(--cb-bg);
+  --on-background: var(--cb-text);
+  --surface: var(--cb-bg);
+  --surface-dim: var(--cb-bg-deep);
+  --surface-bright: #16263b;
+  --surface-container-lowest: var(--cb-bg-deep);
+  --surface-container-low: var(--cb-surface-1);
+  --surface-container: var(--cb-surface-2);
+  --surface-container-high: var(--cb-surface-3);
+  --surface-container-highest: var(--cb-surface-hover);
+  --on-surface: var(--cb-text);
+  --on-surface-variant: var(--cb-text-muted);
+  --outline: #5f7189;
+  --outline-variant: var(--cb-border);
+  --surface-tint: var(--cb-blue);
+  --primary: var(--cb-blue);
+  --on-primary: #ffffff;
+  --primary-container: #153a72;
+  --on-primary-container: #dceaff;
+  --inverse-primary: #8eb6ff;
+  --secondary: #8da8cf;
+  --on-secondary: #081426;
+  --secondary-container: #142d4d;
+  --on-secondary-container: #d6e5ff;
+  --tertiary: var(--cb-purple);
+  --on-tertiary: #ffffff;
+  --tertiary-container: #40205f;
+  --on-tertiary-container: #f3e8ff;
+  --error: var(--cb-red);
+  --on-error: #ffffff;
+  --error-container: #531f2b;
+  --on-error-container: #ffe1e3;
+}
+
+.dark body {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(40, 120, 255, 0.10), transparent 38rem),
+    var(--cb-bg);
+}
+
+.v35-surface {
+  background: linear-gradient(180deg, rgba(14, 27, 46, 0.97), rgba(10, 22, 39, 0.97));
+  border: 1px solid var(--cb-border-soft);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.v35-surface-hover {
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.v35-surface-hover:hover {
+  border-color: rgba(76, 141, 255, 0.28);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+}
+
+.v35-blue-glow {
+  box-shadow: 0 0 28px var(--cb-blue-glow);
+}
+
+.v35-focus-ring:focus-visible {
+  outline: 2px solid var(--cb-blue);
+  outline-offset: 2px;
+}
+
+.v35-nav-safe {
+  padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
+}
+
+@media (max-width: 767px) {
+  /* V3.5 central bottom-nav Add replaces the legacy floating mobile Add button. */
+  main + button[data-tour-id="tour-add-transaction"] {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v35-surface-hover,
+  .v35-blue-glow {
+    transition: none !important;
+  }
+}

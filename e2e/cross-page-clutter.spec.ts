@@ -14,7 +14,13 @@ async function prepare(page: Page, tab = 'dashboard') {
 
 test('Manage does not expose duplicate or unwired add/market/sinking-fund controls', async ({ page }) => {
   const errors = await prepare(page, 'manage');
-  await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (await mobileNav.isVisible()) {
+    await expect(mobileNav.getByRole('button', { name: 'Add Transaction' })).toHaveCount(1);
+    await expect(page.getByTestId('page-manage').getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  } else {
+    await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  }
   await expect(page.getByText('Local Storage Encryption Active', { exact: true })).toHaveCount(0);
   // Market valuation is legitimate for Investment assets; it must not appear on loans.
   const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
