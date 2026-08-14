@@ -47,7 +47,7 @@ jobs:
       - name: Production build
         run: npm run build
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Full desktop and mobile browser regression
         run: npm run test:e2e
       - name: Upload V3.5 screen screenshots
