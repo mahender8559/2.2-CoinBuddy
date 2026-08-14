@@ -104,6 +104,7 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await paySheet.getByRole('button', { name: 'Update Floating Interest Rate', exact: true }).click();
   const rateSheet = page.getByTestId('loan-rate-sheet');
   await expectInsideViewport(page, rateSheet);
+  await rateSheet.locator('input[type="number"]').first().fill('9');
   await expect(rateSheet.getByText('Select Adjustment Strategy', { exact: true })).toBeVisible();
   await rateSheet.getByRole('button', { name: 'Cancel', exact: true }).click();
   await paySheet.getByRole('button', { name: 'Close payment', exact: true }).click();
