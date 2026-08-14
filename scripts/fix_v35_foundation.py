@@ -16,4 +16,44 @@ if start != -1:
     tour = tour[:start] + helper + tour[end:]
 tour_path.write_text(tour)
 
-print('Normalized V3.5 generated newlines')
+old_open_tab = """async function openTab(page: Page, name: string) {
+  const desktop = page.getByTitle(name);
+  const mobile = page.getByRole('button', { name, exact: true });
+  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+}
+"""
+
+new_open_tab = """async function openTab(page: Page, name: string) {
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const desktopSidebar = page.getByTestId('desktop-sidebar');
+  if (await desktopSidebar.isVisible()) {
+    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
+}
+"""
+
+for filename in [
+    'e2e/affordability-phase7.spec.ts',
+    'e2e/demo-data-v33.spec.ts',
+    'e2e/v33-planning-reliability.spec.ts',
+    'e2e/v34-shared-finances.spec.ts',
+]:
+    path = Path(filename)
+    text = path.read_text()
+    if new_open_tab in text:
+        continue
+    if old_open_tab not in text:
+        raise SystemExit(f'Legacy navigation helper not found in {filename}')
+    path.write_text(text.replace(old_open_tab, new_open_tab, 1))
+
+print('Normalized V3.5 generated source and migrated navigation tests')
