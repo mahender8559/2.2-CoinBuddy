@@ -14,9 +14,10 @@ import { EmiAdvocateBanner } from './EmiAdvocateBanner';
 import { BackupWarningBanner } from './BackupWarningBanner';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { getPersonalLiabilityExposure } from '../domain/loanSharing';
+import { getGoalCurrentAmount, getGoalProgressPercent } from '../domain/savingsGoals';
 
 export function Dashboard() {
-  const { transactions, personalExpenseRecords, loanSharingRules, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
+  const { transactions, personalExpenseRecords, loanSharingRules, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, savingsGoals, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
@@ -169,6 +170,14 @@ export function Dashboard() {
     return { name: c.name, currAmount, lastMonthAmount, increase: lastMonthAmount > 0 ? ((currAmount - lastMonthAmount) / lastMonthAmount) * 100 : 0 };
   }).filter(c => c.lastMonthAmount > 0 && c.increase > 20).sort((a, b) => b.increase - a.increase);
 
+  const firstName = profile.name?.trim().split(/\s+/)[0] || 'there';
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : 'Good evening';
+  const activeGoal = savingsGoals.find(goal => goal.isActive);
+  const activeGoalCurrent = activeGoal ? getGoalCurrentAmount(activeGoal, accounts, transactions) : 0;
+  const activeGoalProgress = activeGoal ? getGoalProgressPercent(activeGoal, accounts, transactions) : 0;
+  const cycleLabel = monthCycleDay > 1 ? `Current cycle · starts day ${monthCycleDay}` : 'Current month';
+
   return (
     <div data-testid="page-dashboard" className="w-full space-y-6 animate-fade-in pb-24 md:pb-0 relative">
       {/* Backup Warning Banner for Background Error Watchdog */}
@@ -177,173 +186,141 @@ export function Dashboard() {
       {/* Financial Advocate EMI Reminders Banner */}
       <EmiAdvocateBanner />
 
-      {/* Net Worth */}
-      <div className="flex flex-col items-center justify-center pt-8 pb-4">
-        <div className="mb-1 flex items-center gap-2">
-          <p className="text-sm text-on-surface-variant font-medium tracking-wide">Net Worth</p>
-        </div>
-        <h1 className="text-3xl sm:text-5xl font-bold text-on-surface font-numeric tracking-tight text-center numeric-wrap">
-          <AnimatedNumber value={netWorth} format={formatCurrency} />
-        </h1>
-      </div>
-
-      {/* Total Assets & Liabilities Cards */}
-      <div data-tour-id="tour-account-cards" className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 sm:gap-4 mobile-compact-grid">
-        <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm flex flex-col justify-center">
-           <div className="flex items-center gap-2 mb-2">
-             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-             <p className="text-sm text-on-surface-variant font-medium">Total Assets</p>
-             <TrendingUp className="w-4 h-4 text-emerald-500/50 ml-auto" />
-           </div>
-           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap"><AnimatedNumber value={totalAssets} format={formatCurrency} /></p>
-        </div>
-        <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm flex flex-col justify-center">
-           <div className="flex items-center gap-2 mb-2">
-             <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-             <p className="text-sm text-on-surface-variant font-medium">Total Liabilities</p>
-             <TrendingUp className="w-4 h-4 text-rose-500/50 transform rotate-180 ml-auto" />
-           </div>
-           <p className="text-xl sm:text-2xl font-bold font-numeric text-on-surface tracking-tight numeric-wrap"><AnimatedNumber value={totalLiabilities} format={formatCurrency} /></p>
-        </div>
-      </div>
-
-      {/* Cycle Income & Expenses Card */}
-      <div data-tour-id="tour-summary-widgets" className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm space-y-4">
-        <div className="flex flex-col min-[390px]:flex-row min-[390px]:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary tracking-wide">
-              {monthCycleDay > 1 ? `Cycle (Starts Day ${monthCycleDay})` : 'Monthly Cycle'}
-            </span>
-          </div>
-          <span className="text-xs text-on-surface-variant font-medium">
-            Net Cash Flow: <span className={cycleNet >= 0 ? 'text-emerald-500 font-bold font-numeric' : 'text-rose-500 font-bold font-numeric'}>{cycleNet >= 0 ? '+' : ''}{formatCurrency(cycleNet)}</span>
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 pt-1 mobile-compact-grid">
-          <div className="bg-surface-container/60 rounded-xl p-3.5 border border-outline-variant/5">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
-                <ArrowDownRight className="w-4 h-4" />
-              </div>
-              <p className="text-xs text-on-surface-variant font-medium">Cycle Income</p>
-            </div>
-            <p className="text-xl font-bold font-numeric text-emerald-500 tracking-tight">
-              <AnimatedNumber value={cycleIncome} format={formatCurrency} />
-            </p>
-          </div>
-
-          <div className="bg-surface-container/60 rounded-xl p-3.5 border border-outline-variant/5">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
-                <ArrowUpRight className="w-4 h-4" />
-              </div>
-              <p className="text-xs text-on-surface-variant font-medium">Cycle Expenses</p>
-            </div>
-            <p className="text-xl font-bold font-numeric text-rose-500 tracking-tight">
-              <AnimatedNumber value={cycleExpenses} format={formatCurrency} />
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Net Worth Growth Chart */}
-      <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant/10 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
+      <section aria-labelledby="v35-dashboard-title" className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-on-surface">Net Worth Growth</h2>
-            <p className="text-xs text-on-surface-variant">Last 6 Months</p>
+            <p className="text-sm font-medium text-primary">Your financial overview</p>
+            <h1 id="v35-dashboard-title" className="mt-1 text-2xl font-semibold tracking-tight text-on-surface sm:text-3xl">
+              {greeting}, {firstName} ✨
+            </h1>
+            <p className="mt-1 text-sm text-on-surface-variant">Here’s what your money looks like right now.</p>
           </div>
-          <div className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
-            growthPercentage >= 0 
-              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-              : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-          }`}>
-            {growthPercentage >= 0 ? <TrendingUp className="w-3.5 h-3.5 shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 shrink-0" />}
-            <span className="font-numeric tracking-tight">
-              {growthPercentage >= 0 ? '+' : ''}{growthPercentage.toFixed(1)}%
-            </span>
+          <div className="inline-flex min-h-10 w-fit items-center rounded-xl border border-outline-variant/40 bg-surface-container-low px-3 text-xs font-semibold text-on-surface-variant">
+            {cycleLabel}
           </div>
         </div>
-        <div className="h-44 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-primary, #6366f1)" stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor="var(--color-primary, #6366f1)" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <YAxis domain={[(dataMin: number) => Math.min(0, dataMin), (dataMax: number) => Math.max(0, dataMax)]} hide />
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: 'currentColor', fontSize: 11 }}
-                className="text-on-surface-variant"
-                dy={6}
-              />
-              <Tooltip 
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="bg-surface-container-highest text-on-surface text-xs rounded-xl p-2.5 shadow-lg border border-outline-variant/20 space-y-0.5">
-                        <p className="font-semibold text-on-surface-variant">{data.name}</p>
-                        <p className="font-numeric font-bold text-primary text-sm">{formatCurrency(data.value)}</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <ReferenceLine 
-                y={0} 
-                stroke="rgba(255, 255, 255, 0.25)" 
-                strokeDasharray="3 3" 
-                label={{ 
-                  value: '₹0 Level', 
-                  fill: 'rgba(255, 255, 255, 0.45)', 
-                  fontSize: 10, 
-                  position: 'insideBottomLeft' 
-                }} 
-              />
-              <Area type="monotone" dataKey="value" stroke="var(--color-primary, #6366f1)" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" baseValue={0} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
-      {/* Pending Verifications */}
-      <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden">
-        <div className="p-5 flex justify-between items-center border-b border-outline-variant/10">
-          <h2 className="text-lg font-bold text-on-surface">Needs confirmation</h2>
-        </div>
-        <div className="divide-y divide-outline-variant/10">
-          {pendingTxs.slice(0, 2).map((tx) => (
-            <div key={tx.id} className="p-5 flex items-start justify-between hover:bg-surface-container-high transition-colors">
-              <div className="flex items-start gap-4 flex-grow min-w-0">
-                <div className="flex-grow min-w-0">
-                  <p className="font-medium text-on-surface break-words whitespace-pre-wrap">{tx.title}</p>
-                  <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-0.5">{tx.subtitle || 'Verification'} • Recurring</p>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,.85fr)]">
+          <article className="v35-surface overflow-hidden rounded-2xl p-5 sm:p-6" aria-label="Net Worth overview">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-on-surface-variant">Net Worth</p>
+                <p className="mt-2 text-3xl font-semibold text-on-surface sm:text-4xl lg:text-[42px]">
+                  <AnimatedNumber value={netWorth} format={formatCurrency} />
+                </p>
+                <div className={`mt-2 inline-flex items-center gap-1.5 text-xs font-semibold ${growthPercentage >= 0 ? 'text-[var(--cb-green)]' : 'text-[var(--cb-red)]'}`}>
+                  {growthPercentage >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                  <span>{growthPercentage >= 0 ? '+' : ''}{growthPercentage.toFixed(1)}% over the visible history</span>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center items-end gap-2 sm:gap-4 shrink-0 pl-2">
-                <p className="font-semibold text-on-surface font-numeric"><AnimatedNumber value={tx.amount} format={formatCurrency} /></p>
-                <button
-                  onClick={() => { setPendingConfirmTx(tx); setPendingConfirmDate(tx.date); }}
-                  className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Review
-                </button>
-              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${growthPercentage >= 0 ? 'bg-[var(--cb-green-soft)] text-[var(--cb-green)]' : 'bg-[var(--cb-red-soft)] text-[var(--cb-red)]'}`}>
+                {growthPercentage >= 0 ? 'Growing' : 'Down'}
+              </span>
             </div>
-          ))}
-          {pendingTxs.length === 0 && (
-            <div className="p-5 text-center text-sm text-on-surface-variant">Nothing needs confirmation.</div>
-          )}
+
+            <div className="mt-5 h-48 w-full sm:h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 8, right: 6, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="v35NetWorthGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--cb-blue)" stopOpacity={0.34}/>
+                      <stop offset="95%" stopColor="var(--cb-blue)" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <YAxis domain={[(dataMin: number) => Math.min(0, dataMin), (dataMax: number) => Math.max(0, dataMax)]} hide />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--cb-text-muted)', fontSize: 11 }} dy={6} />
+                  <Tooltip
+                    cursor={{ stroke: 'rgba(76,141,255,.24)', strokeDasharray: '3 3' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const datum = payload[0].payload;
+                      return (
+                        <div className="rounded-xl border border-outline-variant/40 bg-surface-container-high px-3 py-2 text-xs shadow-xl">
+                          <p className="text-on-surface-variant">{datum.name}</p>
+                          <p className="mt-0.5 font-numeric font-semibold text-on-surface">{formatCurrency(datum.value)}</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <ReferenceLine y={0} stroke="rgba(148,163,184,.16)" strokeDasharray="3 3" />
+                  <Area type="monotone" dataKey="value" stroke="var(--cb-blue)" strokeWidth={2.5} fill="url(#v35NetWorthGradient)" baseValue={0} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
+
+          <div className="grid grid-cols-2 gap-3" data-tour-id="tour-account-cards">
+            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-[var(--cb-green)]"><PiggyBank className="h-4 w-4"/><span className="text-xs font-semibold">Assets</span></div>
+              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={totalAssets} format={formatCurrency} /></p>
+              <p className="mt-1 text-[11px] text-on-surface-variant">What you own</p>
+            </article>
+            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-[var(--cb-red)]"><CreditCard className="h-4 w-4"/><span className="text-xs font-semibold">Liabilities</span></div>
+              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={totalLiabilities} format={formatCurrency} /></p>
+              <p className="mt-1 text-[11px] text-on-surface-variant">Your exposure</p>
+            </article>
+            <article className="v35-surface rounded-2xl p-4 sm:p-5" data-tour-id="tour-summary-widgets">
+              <div className="flex items-center gap-2 text-[var(--cb-green)]"><ArrowDownRight className="h-4 w-4"/><span className="text-xs font-semibold">Income</span></div>
+              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={cycleIncome} format={formatCurrency} /></p>
+              <p className="mt-1 text-[11px] text-on-surface-variant">This cycle</p>
+            </article>
+            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-[var(--cb-red)]"><ArrowUpRight className="h-4 w-4"/><span className="text-xs font-semibold">Expenses</span></div>
+              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={cycleExpenses} format={formatCurrency} /></p>
+              <p className={`mt-1 text-[11px] font-medium ${cycleNet >= 0 ? 'text-[var(--cb-green)]' : 'text-[var(--cb-red)]'}`}>{cycleNet >= 0 ? '+' : ''}{formatCurrency(cycleNet)} net cash flow</p>
+            </article>
+          </div>
         </div>
-      </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <article className="v35-surface rounded-2xl p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2"><Target className="h-5 w-5 text-primary"/><h2 className="text-base font-semibold text-on-surface">Goal Progress</h2></div>
+              {activeGoal ? <span className="text-sm font-semibold text-primary">{Math.round(activeGoalProgress)}%</span> : null}
+            </div>
+            {activeGoal ? (
+              <div className="mt-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-on-surface">{activeGoal.name}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">{formatCurrency(activeGoalCurrent)} of {formatCurrency(activeGoal.targetAmount)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-highest">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, activeGoalProgress))}%` }} />
+                </div>
+                <p className="mt-3 text-xs text-on-surface-variant">{activeGoal.linkedAccountId ? 'Progress follows the linked account.' : 'Progress follows your verified goal contributions.'}</p>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-dashed border-outline-variant/40 p-4 text-sm text-on-surface-variant">No active goal yet. Add one from Goals when you’re ready.</div>
+            )}
+          </article>
+
+          <article className="v35-surface overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant/20 px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-2"><Bell className="h-5 w-5 text-[var(--cb-amber)]"/><h2 className="text-base font-semibold text-on-surface">Needs Attention</h2></div>
+              {pendingTxs.length > 0 ? <span className="rounded-full bg-[var(--cb-amber-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--cb-amber)]">{pendingTxs.length}</span> : null}
+            </div>
+            <div className="divide-y divide-outline-variant/20">
+              {pendingTxs.slice(0, 3).map(tx => (
+                <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--cb-amber-soft)] text-[var(--cb-amber)]"><AlertTriangle className="h-4 w-4"/></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-on-surface">{tx.title}</p>
+                    <p className="mt-0.5 truncate text-xs text-on-surface-variant">{tx.subtitle || 'Needs confirmation'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-numeric text-sm font-semibold text-on-surface">{formatCurrency(tx.amount)}</p>
+                    <button onClick={() => { setPendingConfirmTx(tx); setPendingConfirmDate(tx.date); }} className="mt-1 min-h-0 text-xs font-semibold text-primary hover:text-primary/80">Review</button>
+                  </div>
+                </div>
+              ))}
+              {pendingTxs.length === 0 ? <div className="px-5 py-6 text-sm text-on-surface-variant sm:px-6">You’re all caught up. Nothing needs confirmation.</div> : null}
+            </div>
+          </article>
+        </div>
+      </section>
 
       {/* Pending Confirmation Modal */}
       {pendingConfirmTx && (
