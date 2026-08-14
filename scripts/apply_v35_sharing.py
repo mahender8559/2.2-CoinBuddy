@@ -12,8 +12,6 @@ text = text.replace(
 
 old_home_start = '  return (\n    <div className="space-y-6" data-testid="sharing-hub">'
 start = text.find(old_home_start)
-if start == -1:
-    raise SystemExit('Sharing home return marker not found')
 
 new_home = r'''  return (
     <div className="space-y-5" data-testid="sharing-hub">
@@ -95,7 +93,11 @@ new_home = r'''  return (
 }
 '''
 
-text = text[:start] + new_home
+if start != -1:
+    text = text[:start] + new_home
+elif 'data-testid="sharing-hub"' not in text or 'Sharing ✨' not in text:
+    raise SystemExit('Sharing home is neither legacy nor V3.5')
+
 path.write_text(text)
 
 Path('e2e/v35-sharing.spec.ts').write_text(r'''import { expect, test, type Page, type TestInfo } from '@playwright/test';
