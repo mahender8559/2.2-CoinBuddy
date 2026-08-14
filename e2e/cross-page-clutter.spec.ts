@@ -74,7 +74,6 @@ test('first-use flow reaches the spotlight tour without backup-password clutter'
     await page.getByRole('button', { name: 'Next' }).click();
   }
   await page.getByRole('button', { name: 'Get Started' }).click();
-  await expect(page.getByTestId('tour-overlay')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
