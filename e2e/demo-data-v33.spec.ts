@@ -19,7 +19,7 @@ async function prepare(page: Page) {
   return errors;
 }
 
-test('demo data loads a realistic v3.3 showcase and investment Goal stays non-liquid', async ({ page }) => {
+test('demo data loads a realistic v3.4 showcase and investment Goal stays non-liquid', async ({ page }) => {
   const errors = await prepare(page);
   const demoButton = page.getByRole('button', { name: /Load demo data/i });
   await expect(demoButton).toBeVisible();

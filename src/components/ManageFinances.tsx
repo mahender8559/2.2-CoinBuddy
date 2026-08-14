@@ -8,14 +8,15 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { getCategorySpend } from '../utils/budget';
 import { CurrencyInput } from './CurrencyInput';
 import { GoalsPanel } from './GoalsPanel';
+import { SharingPanel } from './SharingPanel';
 
 
 export function ManageFinances() {
-  const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
+  const { categories, accounts, addCategory, updateCategory, deleteCategory, formatCurrency, transactions, personalExpenseRecords, getCurrencySymbol, isDateInCurrentCycle, isManageCategoriesOpen, setManageCategoriesOpen } = useAppContext();
   
-  const [mainTab, setMainTab] = useState<'Accounts' | 'Categories'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
+  const [mainTab, setMainTab] = useState<'Accounts' | 'Categories' | 'Sharing'>(() => isManageCategoriesOpen ? 'Categories' : 'Accounts');
   const mainTabSwipe = useHorizontalSwipe(() => {
-    setMainTab(current => current === 'Accounts' ? 'Categories' : 'Accounts');
+    setMainTab(current => current === 'Accounts' ? 'Categories' : current === 'Categories' ? 'Sharing' : 'Accounts');
   });
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export function ManageFinances() {
 
   const getSpent = (catId: string, catName: string) => {
     const category = categories.find(item => item.id === catId || item.name === catName);
-    return category ? getCategorySpend(category, transactions, isDateInCurrentCycle) : 0;
+    return category ? getCategorySpend(category, transactions, isDateInCurrentCycle, personalExpenseRecords) : 0;
   };
 
 
@@ -96,7 +97,7 @@ export function ManageFinances() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
+    <div data-testid="page-manage" className="w-full space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
       
       {/* Top Segmented Control matching the mockup */}
       <div className="flex justify-center mb-8">
@@ -113,11 +114,19 @@ export function ManageFinances() {
           >
             Categories
           </button>
+          <button
+            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${mainTab === 'Sharing' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
+            onClick={() => setMainTab('Sharing')}
+          >
+            Sharing
+          </button>
         </div>
       </div>
 
       {mainTab === 'Accounts' ? (
         <Cards />
+      ) : mainTab === 'Sharing' ? (
+        <SharingPanel />
       ) : (
         <>
           <div className="mb-8 flex items-center gap-3">

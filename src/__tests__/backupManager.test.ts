@@ -135,7 +135,7 @@ describe('Backup & Encryption Engine Suite', () => {
       const upgraded = upgradeBackupData(mockV1Backup);
 
       expect(upgraded).toBeDefined();
-      expect(upgraded.schemaVersion).toBe('coinbuddy-ledger-v3');
+      expect(upgraded.schemaVersion).toBe('coinbuddy-ledger-v4');
       expect(validateLedgerImport(upgraded)).toBeNull();
       expect(upgraded.lastUpdated).toBeDefined();
       expect(upgraded.currency).toBe('$');

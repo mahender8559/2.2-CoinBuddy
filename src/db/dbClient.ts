@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
-import { Account, Category, CreditCardInfo, Event, LoanRevision, RecurrenceFrequency, RecurringRule, Transaction, Widget } from '../types';
+import { Account, Category, CreditCardInfo, Event, LoanRevision, RecurrenceFrequency, RecurringRule, Transaction, Widget, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution } from '../types';
 import { calculateEmiSplit } from '../utils/emi';
 import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
@@ -426,6 +426,11 @@ function hydrateDemoData(raw: any): any {
     currency_code: data.currency ?? 'INR',
     month_cycle_day: Number(data.monthCycleDay ?? 25),
   }];
+  data.sharedObligations = (Array.isArray(data.sharedObligations) ? data.sharedObligations : []).map((item: any) => ({ ...item, dueDate: resolveDemoRelativeDate(item.dueOffsetDays, true) ?? item.dueDate, createdAt: resolveDemoRelativeDate(item.createdOffsetDays, false) ?? item.createdAt }));
+  data.sharedPayments = (Array.isArray(data.sharedPayments) ? data.sharedPayments : []).map((item: any) => ({ ...item, paidAt: resolveDemoRelativeDate(item.paidOffsetDays, false) ?? item.paidAt }));
+  data.sharedSettlements = (Array.isArray(data.sharedSettlements) ? data.sharedSettlements : []).map((item: any) => ({ ...item, settledAt: resolveDemoRelativeDate(item.settledOffsetDays, false) ?? item.settledAt }));
+  data.sharedObligationTemplates = (Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : []).map((item: any) => ({ ...item, nextDueDate: resolveDemoRelativeDate(item.nextDueOffsetDays, true) ?? item.nextDueDate, createdAt: resolveDemoRelativeDate(item.createdOffsetDays, false) ?? item.createdAt }));
+  data.externalLoanContributions = (Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : []).map((item: any) => ({ ...item, paidAt: resolveDemoRelativeDate(item.paidOffsetDays, false) ?? item.paidAt }));
   return data;
 }
 
@@ -594,7 +599,7 @@ export async function deleteTransactionRow(driver: SqlJsDatabaseDriver, id: stri
 }
 
 export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
-  await driver.execute(`DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
+  await driver.execute(`DELETE FROM external_loan_contributions; DELETE FROM shared_settlements; DELETE FROM shared_payments; DELETE FROM shared_responsibilities; DELETE FROM shared_template_responsibilities; DELETE FROM loan_contribution_rules; DELETE FROM loan_sharing_rules; DELETE FROM shared_obligations; DELETE FROM shared_obligation_templates; DELETE FROM people; DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
 }
 
 export async function createRecurringRule(
@@ -825,6 +830,16 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     const widgets: Widget[] = Array.isArray(data.widgets) ? data.widgets : [];
     const loanRevisions: LoanRevision[] = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
     const recurringRules: RecurringRule[] = Array.isArray(data.recurringRules) ? data.recurringRules : [];
+    const people: Person[] = Array.isArray(data.people) ? data.people : [];
+    const sharedObligations: SharedObligation[] = Array.isArray(data.sharedObligations) ? data.sharedObligations : [];
+    const sharedResponsibilities: SharedResponsibility[] = Array.isArray(data.sharedResponsibilities) ? data.sharedResponsibilities : [];
+    const sharedPayments: SharedPayment[] = Array.isArray(data.sharedPayments) ? data.sharedPayments : [];
+    const sharedSettlements: SharedSettlement[] = Array.isArray(data.sharedSettlements) ? data.sharedSettlements : [];
+    const loanSharingRules: LoanSharingRule[] = Array.isArray(data.loanSharingRules) ? data.loanSharingRules : [];
+    const loanContributionRules: LoanContributionRule[] = Array.isArray(data.loanContributionRules) ? data.loanContributionRules : [];
+    const sharedObligationTemplates: SharedObligationTemplate[] = Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : [];
+    const sharedTemplateResponsibilities: SharedTemplateResponsibility[] = Array.isArray(data.sharedTemplateResponsibilities) ? data.sharedTemplateResponsibilities : [];
+    const externalLoanContributions: ExternalLoanContribution[] = Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : [];
     const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
     executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]));
@@ -841,6 +856,20 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     executePreparedRows(driver, `INSERT INTO credit_cards (id, account_id, due_amount, due_date, billing_cycle_day) VALUES (?, ?, ?, ?, ?);`, creditCards.map(card => [card.id, card.id, card.dueAmount ?? 0, card.dueDate ?? '', card.billingCycleDay ?? 1]));
     executePreparedRows(driver, `INSERT INTO widgets (id, type, target_id) VALUES (?, ?, ?);`, widgets.map(widget => [widget.id, widget.type, widget.targetId]));
     executePreparedRows(driver, `INSERT INTO loan_revisions (id, account_id, effective_date, new_interest_rate, new_emi, new_tenure_months, payment_frequency) VALUES (?, ?, ?, ?, ?, ?, ?);`, loanRevisions.map(revision => [revision.id, revision.accountId, revision.effectiveDate, revision.newInterestRate, revision.newEmi, revision.newTenureMonths, revision.paymentFrequency ?? null]));
+
+    // v3.4 normalized shared-finance records. These rows describe responsibility,
+    // external funding and settlements; none of them are synthesized ledger cash.
+    executePreparedRows(driver, `INSERT INTO people (id, name, relationship, is_self, is_archived, created_at) VALUES (?, ?, ?, ?, ?, ?);`, people.map(person => [person.id, person.name, person.relationship ?? null, person.isSelf ? 1 : 0, person.isArchived ? 1 : 0, (person as any).createdAt ?? new Date().toISOString()]));
+    executePreparedRows(driver, `INSERT INTO shared_obligation_templates (id, title, total_amount, category_id, frequency, next_due_date, is_active, settlement_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`, sharedObligationTemplates.map(item => [item.id, item.title, Math.abs(Number(item.totalAmount)), item.categoryId ?? null, item.frequency, item.nextDueDate, item.isActive ? 1 : 0, item.settlementMode ?? 'TRACK', item.createdAt ?? new Date().toISOString()]));
+    executePreparedRows(driver, `INSERT INTO shared_template_responsibilities (id, template_id, person_id, amount) VALUES (?, ?, ?, ?);`, sharedTemplateResponsibilities.map(item => [item.id, item.templateId, item.personId, Math.abs(Number(item.amount))]));
+    executePreparedRows(driver, `INSERT INTO shared_obligations (id, title, kind, total_amount, category_id, due_date, template_id, transaction_id, liability_account_id, recurring_rule_id, settlement_mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, sharedObligations.map(item => [item.id, item.title, item.kind, Math.abs(Number(item.totalAmount)), item.categoryId ?? null, item.dueDate ?? null, item.templateId ?? null, item.transactionId ?? null, item.liabilityAccountId ?? null, item.recurringRuleId ?? null, item.settlementMode ?? 'TRACK', item.status ?? 'OPEN', item.createdAt ?? new Date().toISOString()]));
+    executePreparedRows(driver, `INSERT INTO shared_responsibilities (id, obligation_id, person_id, amount) VALUES (?, ?, ?, ?);`, sharedResponsibilities.map(item => [item.id, item.obligationId, item.personId, Math.abs(Number(item.amount))]));
+    executePreparedRows(driver, `INSERT INTO shared_payments (id, obligation_id, person_id, transaction_id, amount, source, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?);`, sharedPayments.map(item => [item.id, item.obligationId, item.personId, item.transactionId ?? null, Math.abs(Number(item.amount)), item.source, item.paidAt]));
+    executePreparedRows(driver, `INSERT INTO shared_settlements (id, obligation_id, from_person_id, to_person_id, transaction_id, amount, settled_at) VALUES (?, ?, ?, ?, ?, ?, ?);`, sharedSettlements.map(item => [item.id, item.obligationId ?? null, item.fromPersonId, item.toPersonId, item.transactionId ?? null, Math.abs(Number(item.amount)), item.settledAt]));
+    executePreparedRows(driver, `INSERT INTO loan_sharing_rules (account_id, personal_responsibility_percent, is_shared) VALUES (?, ?, ?);`, loanSharingRules.map(item => [item.accountId, Number(item.personalResponsibilityPercent), item.isShared ? 1 : 0]));
+    executePreparedRows(driver, `INSERT INTO loan_contribution_rules (id, account_id, person_id, mode, value, is_active) VALUES (?, ?, ?, ?, ?, ?);`, loanContributionRules.map(item => [item.id, item.accountId, item.personId, item.mode, Number(item.value), item.isActive ? 1 : 0]));
+    executePreparedRows(driver, `INSERT INTO external_loan_contributions (id, account_id, person_id, adjustment_transaction_id, amount, principal_amount, interest_amount, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`, externalLoanContributions.map(item => [item.id, item.accountId, item.personId, item.adjustmentTransactionId ?? null, Number(item.amount), Number(item.principalAmount), Number(item.interestAmount), item.paidAt]));
+
     if (userConfig) {
       await upsertUserConfig(driver, {
         currency: userConfig.currency_code ?? data.currency ?? 'INR',

@@ -23,6 +23,9 @@ export function AddAccountModal() {
     transactions,
     accounts,
     recurringRules,
+    people,
+    loanSharingRules,
+    loanContributionRules,
     getCurrencySymbol
   } = useAppContext();
   
@@ -55,6 +58,10 @@ export function AddAccountModal() {
   const [tenureMonths, setTenureMonths] = useState('');
   const [loanStartDate, setLoanStartDate] = useState('');
   const [isEmiManualOverride, setIsEmiManualOverride] = useState(false);
+  const [isSharedLoan, setIsSharedLoan] = useState(false);
+  const [personalResponsibilityPercent, setPersonalResponsibilityPercent] = useState('100');
+  const [contributionMode, setContributionMode] = useState<'PERCENT' | 'FIXED'>('PERCENT');
+  const [contributionValues, setContributionValues] = useState<Record<string, string>>({});
   
   // Interest-Only Loan fields
   const [monthlyInterestRate, setMonthlyInterestRate] = useState('');
@@ -121,6 +128,12 @@ export function AddAccountModal() {
         setLateFeeFixedAmount(editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : (editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : ''));
         setLateFeeInterestRate(editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : (editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : ''));
         setGracePeriodDays(editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : (editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : '0'));
+        const sharing = loanSharingRules.find(rule => rule.accountId === editingAccount.id && rule.isShared);
+        const contributions = loanContributionRules.filter(rule => rule.accountId === editingAccount.id && rule.isActive);
+        setIsSharedLoan(Boolean(sharing));
+        setPersonalResponsibilityPercent(String(sharing?.personalResponsibilityPercent ?? 100));
+        setContributionMode(contributions[0]?.mode ?? 'PERCENT');
+        setContributionValues(Object.fromEntries(contributions.map(rule => [rule.personId, String(rule.value)])));
         setIsEmiManualOverride(false);
       }
     } else if (addAccountModalType) {
@@ -150,9 +163,13 @@ export function AddAccountModal() {
       setLateFeeFixedAmount('');
       setLateFeeInterestRate('');
       setGracePeriodDays('0');
+      setIsSharedLoan(false);
+      setPersonalResponsibilityPercent('100');
+      setContributionMode('PERCENT');
+      setContributionValues({});
       setIsEmiManualOverride(false);
     }
-  }, [addAccountModalType, editingAccount, editingCreditCard, recurringRules]);
+  }, [addAccountModalType, editingAccount, editingCreditCard, recurringRules, loanSharingRules, loanContributionRules]);
 
   // Auto-set interestCalculationType when liabilityType changes
   useEffect(() => {
@@ -264,6 +281,23 @@ export function AddAccountModal() {
       } else if (liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan' || liabilityType === 'Other') {
         const numP = Math.abs(Number(originalPrincipal) || numBalance);
         const finalInterestCalcType = liabilityType === 'Interest-Only Loan' ? 'INTEREST_ONLY' : interestCalculationType;
+        const activePeople = people.filter(person => !person.isArchived);
+        const sharingContributions = activePeople.map(person => ({
+          personId: person.id,
+          mode: contributionMode,
+          value: Math.max(0, Number(contributionValues[person.id] || 0)),
+          isActive: isSharedLoan,
+        })).filter(rule => !isSharedLoan || rule.value > 0);
+        const responsibilityPercent = Number(personalResponsibilityPercent);
+        if (isSharedLoan) {
+          if (activePeople.length < 2) { showError('Add at least one other person in Manage → Sharing before configuring a shared loan.'); return; }
+          if (!Number.isFinite(responsibilityPercent) || responsibilityPercent < 0 || responsibilityPercent > 100) { showError('Your liability responsibility must be between 0% and 100%.'); return; }
+          const contributionTotal = sharingContributions.reduce((sum, rule) => sum + rule.value, 0);
+          if (contributionMode === 'PERCENT' && Math.abs(contributionTotal - 100) > 0.01) { showError('EMI contribution percentages must add up to 100%.'); return; }
+          if (contributionMode === 'FIXED' && Math.abs(contributionTotal - Math.abs(Number(monthlyEMI) || 0)) > 0.01) { showError('Fixed EMI contributions must add up to the full loan payment.'); return; }
+          if (!sharingContributions.some(rule => people.find(person => person.id === rule.personId)?.isSelf)) { showError('Set your own EMI contribution before saving the shared loan.'); return; }
+        }
+        const loanSharing = { isShared: isSharedLoan, personalResponsibilityPercent: isSharedLoan ? responsibilityPercent : 100, contributions: isSharedLoan ? sharingContributions : [] };
         const loanData = {
           name,
           type: 'liability' as const,
@@ -291,16 +325,16 @@ export function AddAccountModal() {
             showError(getErrorMessage(err, 'Failed to update account type'));
             return;
           }
-          addAccount(loanData);
+          addAccount(loanData, { loanSharing });
         } else if (editingAccount) {
           try {
-            updateAccount(editingAccount.id, loanData);
+            updateAccount(editingAccount.id, loanData, { loanSharing });
           } catch (err: unknown) {
             showError(getErrorMessage(err, 'Failed to update account'));
             return;
           }
         } else {
-          addAccount(loanData);
+          addAccount(loanData, { loanSharing });
         }
       } else {
         const otherData = {
@@ -814,6 +848,19 @@ export function AddAccountModal() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-4 space-y-3">
+                <label className="flex items-start justify-between gap-4 cursor-pointer">
+                  <span><span className="block text-sm font-bold text-on-surface">Shared / family loan</span><span className="mt-1 block text-xs text-on-surface-variant">Keep one real loan and split responsibility between family contributors.</span></span>
+                  <input type="checkbox" checked={isSharedLoan} onChange={event => setIsSharedLoan(event.target.checked)} className="mt-1 h-5 w-5 accent-primary" />
+                </label>
+                {isSharedLoan && <div className="space-y-4 border-t border-outline-variant/20 pt-4">
+                  <label className="block"><span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Your liability responsibility (%)</span><input type="number" min="0" max="100" step="0.01" value={personalResponsibilityPercent} onChange={event => setPersonalResponsibilityPercent(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-2.5 font-numeric text-on-surface" /><span className="mt-1 block text-[11px] text-on-surface-variant">Used for your personal net-worth exposure. It can differ from who pays the EMI this month.</span></label>
+                  <div><div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">EMI contribution</span><div className="flex rounded-lg border border-outline-variant/30 p-0.5">{(['PERCENT','FIXED'] as const).map(mode => <button key={mode} type="button" onClick={() => { setContributionMode(mode); setContributionValues({}); }} className={`rounded-md px-2 py-1 text-[10px] font-bold ${contributionMode === mode ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}>{mode === 'PERCENT' ? '%' : getCurrencySymbol()}</button>)}</div></div>
+                    <div className="space-y-2">{people.filter(person => !person.isArchived).map(person => <label key={person.id} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-xl bg-surface-container p-3"><span className="text-sm font-semibold text-on-surface">{person.name}{person.isSelf ? ' (you)' : ''}</span><input type="number" min="0" step="0.01" value={contributionValues[person.id] || ''} onChange={event => setContributionValues(current => ({ ...current, [person.id]: event.target.value }))} placeholder={contributionMode === 'PERCENT' ? '0 %' : '0'} className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-2 text-right font-numeric text-on-surface" /></label>)}</div>
+                  </div>
+                </div>}
               </div>
 
               {/* Financial Advocate Mode: Penalty Terms Section */}

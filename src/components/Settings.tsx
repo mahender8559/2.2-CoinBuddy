@@ -103,7 +103,7 @@ export function Settings() {
       const report = await verifyDataIntegrity();
       setIntegrityReport(report);
       if (report.isHealthy) {
-        showAlert('Integrity Verified', 'All checks passed: SQLite structure, foreign keys, ledger balances, net worth, recurring schedules, Investment SIP links, credit-card links, category classifications, Goals, and stored settings.');
+        showAlert('Integrity Verified', 'All checks passed: SQLite structure, foreign keys, ledger balances, net worth, recurring schedules, shared obligations/settlements, shared loans, Investment SIP links, credit-card links, category classifications, Goals, and stored settings.');
         return;
       }
       const errors = report.issues.filter(issue => issue.severity === 'error');
@@ -141,7 +141,7 @@ export function Settings() {
   }
 
   return (
-    <div className="space-y-8 pb-24 md:pb-0 max-w-3xl mx-auto animate-fade-in relative">
+    <div data-testid="page-settings" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in relative">
       {/* Alert Modal */}
       
       {alertConfig.isOpen && (
@@ -485,7 +485,7 @@ export function Settings() {
           </button>
         </div>
         <div className="mt-3 flex justify-center">
-          <button type="button" onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.3 sample covering accounts, cards, loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary" title="Replace this device's ledger with sample CoinBuddy data">
+          <button type="button" onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.4 sample covering accounts, cards, shared household expenses, reimbursements, shared loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary" title="Replace this device's ledger with sample CoinBuddy data">
             <RefreshCw className="h-3.5 w-3.5" /> Load demo data
           </button>
         </div>
@@ -497,7 +497,7 @@ export function Settings() {
           <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-background" />
           </div>
-          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.3</span>
+          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.4</span>
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
         </div>
 

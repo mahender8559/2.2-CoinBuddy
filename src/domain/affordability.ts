@@ -5,7 +5,14 @@ import type {
   CreditCardInfo,
   RecurringRule,
   Transaction,
+  Person,
+  LoanSharingRule,
+  LoanContributionRule,
+  SharedObligationTemplate,
+  SharedTemplateResponsibility,
 } from '../types';
+import { getMyExpectedLoanContribution } from './loanSharing';
+import { getSelfPerson } from './sharedFinances';
 import { advanceRecurringDate } from './recurring';
 import { normalizeAffordabilityClass } from './categoryAffordability';
 
@@ -32,6 +39,11 @@ export interface AffordabilityInput {
   recurringRules: RecurringRule[];
   categories: Category[];
   creditCards?: CreditCardInfo[];
+  people?: Person[];
+  loanSharingRules?: LoanSharingRule[];
+  loanContributionRules?: LoanContributionRule[];
+  sharedObligationTemplates?: SharedObligationTemplate[];
+  sharedTemplateResponsibilities?: SharedTemplateResponsibility[];
   settings: AffordabilityProjectionSettings;
   purchaseAmount: number;
 }
@@ -329,12 +341,46 @@ function projectRecurringRules(
   return projected;
 }
 
+function projectSharedTemplateCommitments(
+  templates: SharedObligationTemplate[],
+  responsibilities: SharedTemplateResponsibility[],
+  people: Person[],
+  categories: Category[],
+  asOfDate: string,
+  endDate: string,
+  accumulator: ProjectionAccumulator,
+): void {
+  const me = getSelfPerson(people);
+  if (!me) return;
+  for (const template of templates) {
+    if (!template.isActive) continue;
+    const amount = responsibilities.filter(row => row.templateId === template.id && row.personId === me.id).reduce((sum, row) => sum + nonNegative(row.amount), 0);
+    if (amount <= 0) continue;
+    let dueDate = template.nextDueDate;
+    let guard = 0;
+    while (dueDate < asOfDate && guard++ < 240) dueDate = advanceRecurringDate(dueDate, template.frequency);
+    while (dueDate <= endDate && guard++ < 240) {
+      const classification = categoryClass(template.categoryId, categories);
+      if (classification === 'SAVINGS') accumulator.scheduledSavings += amount;
+      else {
+        accumulator.expectedExpenses += amount;
+        accumulator.expensesByClass[classification] += amount;
+      }
+      accumulator.occurrenceCount += 1;
+      dueDate = advanceRecurringDate(dueDate, template.frequency);
+    }
+  }
+}
+
 function projectLoanFallbacks(
   accounts: Account[],
   creditCardIds: Set<string>,
   asOfDate: string,
   endDate: string,
   accumulator: ProjectionAccumulator,
+  people: Person[] = [],
+  loanSharingRules: LoanSharingRule[] = [],
+  loanContributionRules: LoanContributionRule[] = [],
 ): void {
   for (const account of accounts) {
     if (
@@ -352,7 +398,8 @@ function projectLoanFallbacks(
     }
     while (dueDate <= endDate && guard++ < 240) {
       const explicitPayment = liabilityPaymentForDate(accumulator, account.id, dueDate);
-      const remainingEmi = Math.max(0, nonNegative(account.monthlyEMI) - explicitPayment);
+      const personalEmi = getMyExpectedLoanContribution(account, people, loanSharingRules, loanContributionRules);
+      const remainingEmi = Math.max(0, personalEmi - explicitPayment);
       addCommittedFallbackExpense(accumulator, remainingEmi);
       dueDate = advanceRecurringDate(dueDate, account.paymentFrequency ?? 'MONTHLY');
     }
@@ -426,13 +473,9 @@ export function projectAffordability(input: AffordabilityInput): AffordabilityRe
     addCommittedFallbackExpense(accumulator, remainingOutstanding);
   }
 
-  projectLoanFallbacks(
-    accounts,
-    creditCardIds,
-    input.asOfDate,
-    input.endDate,
-    accumulator,
-  );
+  projectSharedTemplateCommitments(input.sharedObligationTemplates ?? [], input.sharedTemplateResponsibilities ?? [], input.people ?? [], input.categories, input.asOfDate, input.endDate, accumulator);
+
+  projectLoanFallbacks(accounts, creditCardIds, input.asOfDate, input.endDate, accumulator, input.people, input.loanSharingRules, input.loanContributionRules);
 
   const plannedSavingsTarget = nonNegative(input.settings.plannedSavingsTarget);
   const plannedSavings = Math.max(plannedSavingsTarget, accumulator.scheduledSavings);

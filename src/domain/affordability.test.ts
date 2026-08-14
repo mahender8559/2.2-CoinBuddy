@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Account, Category, CreditCardInfo, RecurringRule, Transaction } from '../types';
+import type { Account, Category, CreditCardInfo, LoanContributionRule, LoanSharingRule, Person, RecurringRule, Transaction } from '../types';
 import { projectAffordability } from './affordability';
 
 const bank = (id: string, balance: number): Account => ({ id, name: id, type: 'asset', balance, group: 'Bank Account' });
@@ -125,6 +125,21 @@ describe('projectAffordability', () => {
     const loan = liability('loan', 100000, { monthlyEMI: 5000, nextEMIDate: '2026-09-05', paymentFrequency: 'MONTHLY' });
     const result = run({ accounts: [bank('bank', 40000), loan] });
     expect(result.expectedExpenses).toBe(5000);
+  });
+
+  it('uses only the users configured share for an automatic shared-loan EMI fallback', () => {
+    const loan = liability('loan', 100000, { monthlyEMI: 20000, nextEMIDate: '2026-09-05', paymentFrequency: 'MONTHLY' });
+    const people: Person[] = [
+      { id: 'me', name: 'Me', isSelf: true, isArchived: false },
+      { id: 'brother', name: 'Brother', isSelf: false, isArchived: false },
+    ];
+    const loanSharingRules: LoanSharingRule[] = [{ accountId: 'loan', personalResponsibilityPercent: 50, isShared: true }];
+    const loanContributionRules: LoanContributionRule[] = [
+      { id: 'mine', accountId: 'loan', personId: 'me', mode: 'PERCENT', value: 60, isActive: true },
+      { id: 'his', accountId: 'loan', personId: 'brother', mode: 'PERCENT', value: 40, isActive: true },
+    ];
+    const result = run({ accounts: [bank('bank', 40000), loan], people, loanSharingRules, loanContributionRules });
+    expect(result.expectedExpenses).toBe(12000);
   });
 
   it('ignores opening balances and accounting adjustments in future spending', () => {

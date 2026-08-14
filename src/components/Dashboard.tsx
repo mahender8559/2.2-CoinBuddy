@@ -13,15 +13,16 @@ import { Transaction } from '../types';
 import { EmiAdvocateBanner } from './EmiAdvocateBanner';
 import { BackupWarningBanner } from './BackupWarningBanner';
 import { isCashFlowTransaction } from '../domain/ledgerRules';
+import { getPersonalLiabilityExposure } from '../domain/loanSharing';
 
 export function Dashboard() {
-  const { transactions, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
+  const { transactions, personalExpenseRecords, loanSharingRules, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
   const [pendingConfirmError, setPendingConfirmError] = useState<string>('');
   const totalAssets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
-  const totalLiabilities = useMemo(() => accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + a.balance, 0), [accounts]);
+  const totalLiabilities = useMemo(() => accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + getPersonalLiabilityExposure(a, loanSharingRules), 0), [accounts, loanSharingRules]);
   
   // Calculate historical Net Worth points for past 6 months/cycles based on actual transactions
   const getCycleBounds = (cycleOffset: number, cycleDay: number) => {
@@ -142,15 +143,15 @@ export function Dashboard() {
 
   const cycleNet = cycleIncome - cycleExpenses;
 
-  const expenses = currentMonthTxs
-    .filter(t => {
-      if (t.type !== 'expense') return false;
-      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === t.category || c.id === t.category);
+  const expenses = personalExpenseRecords
+    .filter(record => {
+      if (!isDateInCurrentCycle(record.date)) return false;
+      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === record.category || c.id === record.category);
       return catObj?.group !== 'Savings';
     })
-    .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
+    .reduce((acc, record) => acc + Math.abs(record.amount), 0);
     
-  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, getCycleDetails);
+  const { budget: totalMonthlyBudget, progress: budgetProgress } = getBudgetSummary(categories, transactions, getCycleDetails, personalExpenseRecords);
   const budgetStatus = budgetProgress <= 100 ? 'ON TRACK' : 'OVER BUDGET';
 
   const thirtyDaysAgo = new Date();
@@ -160,17 +161,16 @@ export function Dashboard() {
 
   const spikedCategories = categories.filter(c => c.type !== 'income' && c.group !== 'Savings').map(c => {
     const catTag = `#${c.name.toLowerCase().replace(/\s+/g, '')}`;
-    const currAmount = currentMonthTxs.filter(t => t.type === 'expense' && (t.category === catTag || t.category === c.id)).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const lastMonthAmount = transactions.filter(t => {
-      const d = new Date(t.date);
-      return !t.isOpeningBalance && d >= sixtyDaysAgo && d < thirtyDaysAgo && isCashFlowTransaction(t) && t.type === 'expense' && (t.category === catTag || t.category === c.id);
-    }).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
+    const currAmount = personalExpenseRecords.filter(record => isDateInCurrentCycle(record.date) && (record.category === catTag || record.category === c.id)).reduce((sum, record) => sum + Math.abs(record.amount), 0);
+    const lastMonthAmount = personalExpenseRecords.filter(record => {
+      const d = new Date(record.date);
+      return d >= sixtyDaysAgo && d < thirtyDaysAgo && (record.category === catTag || record.category === c.id);
+    }).reduce((sum, record) => sum + Math.abs(record.amount), 0);
     return { name: c.name, currAmount, lastMonthAmount, increase: lastMonthAmount > 0 ? ((currAmount - lastMonthAmount) / lastMonthAmount) * 100 : 0 };
   }).filter(c => c.lastMonthAmount > 0 && c.increase > 20).sort((a, b) => b.increase - a.increase);
 
   return (
-    <div className="space-y-6 animate-fade-in pb-24 md:pb-0 max-w-lg mx-auto relative">
+    <div data-testid="page-dashboard" className="w-full space-y-6 animate-fade-in pb-24 md:pb-0 relative">
       {/* Backup Warning Banner for Background Error Watchdog */}
       <BackupWarningBanner />
 

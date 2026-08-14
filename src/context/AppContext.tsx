@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution, RecurrenceFrequency } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -54,6 +54,24 @@ import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } f
 import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
 import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { SAVINGS_GOALS_KEY, normalizeSavingsGoal, normalizeSavingsGoals } from '../domain/savingsGoals';
+import { buildPersonalExpenseRecords, type PersonalExpenseRecord } from '../domain/personalSpending';
+import {
+  ensureSelfPerson,
+  loadSharedFinanceState,
+  createPerson as createSharedPersonRow,
+  archivePerson as archiveSharedPersonRow,
+  createSharedObligation as createSharedObligationRow,
+  addSharedPayment as addSharedPaymentRow,
+  addSharedSettlement as addSharedSettlementRow,
+  setLoanSharingRule as setLoanSharingRuleRow,
+  replaceLoanContributionRules,
+  createSharedObligationTemplate as createSharedObligationTemplateRow,
+  generateDueSharedObligations,
+  addSharedSettlementWithBalanceAdjustment,
+  addExternalLoanContribution,
+  setSharedObligationTemplateActive,
+  type SharedFinanceState,
+} from '../db/sharedFinanceRepository';
 
 export type UndoRedoCommand = {
   entityType: 'account' | 'transaction';
@@ -62,6 +80,7 @@ export type UndoRedoCommand = {
   newState: AccountUndoState | Transaction | null;
 };
 export type AccountUndoState = { account: Account; openingTx: Transaction | null };
+type LoanSharingSaveConfig = { isShared: boolean; personalResponsibilityPercent: number; contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>> };
 type LedgerImportData = {
   accounts?: Account[];
   transactions?: Transaction[];
@@ -74,6 +93,16 @@ type LedgerImportData = {
   recurringRules?: RecurringRule[];
   affordabilitySettings?: AffordabilitySettings;
   savingsGoals?: SavingsGoal[];
+  people?: Person[];
+  sharedObligations?: SharedObligation[];
+  sharedResponsibilities?: SharedResponsibility[];
+  sharedPayments?: SharedPayment[];
+  sharedSettlements?: SharedSettlement[];
+  loanSharingRules?: LoanSharingRule[];
+  loanContributionRules?: LoanContributionRule[];
+  sharedObligationTemplates?: SharedObligationTemplate[];
+  sharedTemplateResponsibilities?: SharedTemplateResponsibility[];
+  externalLoanContributions?: ExternalLoanContribution[];
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -96,8 +125,8 @@ interface AppContextType {
   getAccountBalance: (accountId: string) => number;
   accounts: Account[];
   calculateEmiSplit?: (balance: number, annualRate: number, emi: number) => { interestAmount: number; principalAmount: number };
-  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
-  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string }) => void;
+  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
+  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
   deleteAccount: (id: string) => void;
   editingAccount: Account | null;
   setEditingAccount: (account: Account | null) => void;
@@ -120,6 +149,26 @@ interface AppContextType {
   addSavingsGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
   updateSavingsGoal: (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<boolean>;
   deleteSavingsGoal: (id: string) => Promise<boolean>;
+  people: Person[];
+  sharedObligations: SharedObligation[];
+  sharedResponsibilities: SharedResponsibility[];
+  sharedPayments: SharedPayment[];
+  sharedSettlements: SharedSettlement[];
+  loanSharingRules: LoanSharingRule[];
+  loanContributionRules: LoanContributionRule[];
+  sharedObligationTemplates: SharedObligationTemplate[];
+  sharedTemplateResponsibilities: SharedTemplateResponsibility[];
+  externalLoanContributions: ExternalLoanContribution[];
+  personalExpenseRecords: PersonalExpenseRecord[];
+  addSharedPerson: (name: string, relationship?: string) => Promise<boolean>;
+  archiveSharedPerson: (id: string) => Promise<boolean>;
+  createSharedExpense: (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }>; repeatFrequency?: RecurrenceFrequency }) => Promise<boolean>;
+  recordSharedPayment: (payment: Omit<SharedPayment, 'id'>) => Promise<boolean>;
+  recordSharedSettlement: (settlement: Omit<SharedSettlement, 'id'>) => Promise<boolean>;
+  configureLoanSharing: (accountId: string, personalResponsibilityPercent: number, contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>>) => Promise<boolean>;
+  settleSharedBalance: (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }) => Promise<boolean>;
+  recordExternalLoanPayment: (input: { accountId: string; personId: string; amount: number; paidAt: string }) => Promise<boolean>;
+  setSharedTemplateActive: (templateId: string, isActive: boolean) => Promise<boolean>;
   updateRecurringRule: (rule: RecurringRule) => Promise<boolean>;
   deleteRecurringRule: (id: string) => Promise<boolean>;
   skipRecurringRule: (id: string) => Promise<boolean>;
@@ -375,6 +424,22 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const [accountRecords, setAccountRecords] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [creditCardRecords, setCreditCardRecords] = useState<CreditCardInfo[]>([]);
+  const EMPTY_SHARED_FINANCE: SharedFinanceState = { people: [], obligations: [], responsibilities: [], payments: [], settlements: [], loanSharingRules: [], loanContributionRules: [], obligationTemplates: [], templateResponsibilities: [], externalLoanContributions: [] };
+  const [sharedFinance, setSharedFinance] = useState<SharedFinanceState>(EMPTY_SHARED_FINANCE);
+  const people = sharedFinance.people;
+  const sharedObligations = sharedFinance.obligations;
+  const sharedResponsibilities = sharedFinance.responsibilities;
+  const sharedPayments = sharedFinance.payments;
+  const sharedSettlements = sharedFinance.settlements;
+  const loanSharingRules = sharedFinance.loanSharingRules;
+  const loanContributionRules = sharedFinance.loanContributionRules;
+  const sharedObligationTemplates = sharedFinance.obligationTemplates;
+  const sharedTemplateResponsibilities = sharedFinance.templateResponsibilities;
+  const externalLoanContributions = sharedFinance.externalLoanContributions;
+  const personalExpenseRecords = useMemo(
+    () => buildPersonalExpenseRecords(transactions, people, sharedObligations, sharedResponsibilities),
+    [transactions, people, sharedObligations, sharedResponsibilities],
+  );
 
   // `balance` remains on the UI types for backwards compatibility, but records
   // deliberately retain no balance value. Only the ledger projection below may
@@ -399,7 +464,11 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   );
   const totalAssets = typeof totalAssetsRes === 'number' ? totalAssetsRes : 0;
   const totalLiabilitiesRes = safeCompute(() =>
-    accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => sum + getSafeNumericValue(a.balance), 0),
+    accounts.filter(a => a.type === 'liability' && !a.is_archived).reduce((sum, a) => {
+      const sharing = loanSharingRules.find(rule => rule.accountId === a.id && rule.isShared);
+      const responsibility = sharing ? Math.max(0, Math.min(100, sharing.personalResponsibilityPercent)) / 100 : 1;
+      return sum + getSafeNumericValue(a.balance) * responsibility;
+    }, 0),
     SAFE_MATH_ERRORS.DRIFT
   );
   const totalLiabilities = typeof totalLiabilitiesRes === 'number' ? totalLiabilitiesRes : 0;
@@ -467,6 +536,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const refreshStateFromDatabase = async (driver: SqlJsDatabaseDriver) => {
     const state = await loadStateFromDatabase(driver);
     setStateFromDbState(state);
+  };
+
+  const refreshSharedFinance = async (driver: SqlJsDatabaseDriver) => {
+    setSharedFinance(await loadSharedFinanceState(driver));
   };
 
   const verifyDataIntegrity = async (): Promise<DataIntegrityAuditResult> => {
@@ -539,6 +612,102 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
+
+  const persistSharedAction = async (action: () => Promise<unknown>): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await action();
+      await persistDatabase(dbDriver);
+      await refreshSharedFinance(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('Shared finance persistence failed:', error);
+      await refreshSharedFinance(dbDriver).catch(() => undefined);
+      window.alert(`Your shared-finance change was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+  const addSharedPerson = async (name: string, relationship?: string): Promise<boolean> =>
+    persistSharedAction(() => createSharedPersonRow(dbDriver!, { name, relationship }));
+
+  const archiveSharedPerson = async (id: string): Promise<boolean> =>
+    persistSharedAction(() => archiveSharedPersonRow(dbDriver!, id));
+
+  const createSharedExpense = async (input: { title: string; totalAmount: number; categoryId?: string; dueDate?: string; transactionId?: string; allocations: Array<{ personId: string; amount: number }>; trackedPaymentAmount?: number; externalPayments?: Array<{ personId: string; amount: number }>; repeatFrequency?: RecurrenceFrequency }): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const me = people.find(person => person.isSelf && !person.isArchived);
+    if (!me) return false;
+    const now = new Date().toISOString();
+    const initialPayments: Array<Omit<SharedPayment, 'id' | 'obligationId'>> = [];
+    if ((input.trackedPaymentAmount ?? 0) > 0) initialPayments.push({ personId: me.id, transactionId: input.transactionId, amount: input.trackedPaymentAmount!, source: 'TRACKED', paidAt: now });
+    for (const payment of input.externalPayments ?? []) if (payment.amount > 0) initialPayments.push({ personId: payment.personId, amount: payment.amount, source: 'EXTERNAL', paidAt: now });
+    return persistSharedAction(async () => {
+      await dbDriver.execute('BEGIN TRANSACTION');
+      try {
+        await createSharedObligationRow(dbDriver, { title: input.title, kind: 'EXPENSE', totalAmount: input.totalAmount, categoryId: input.categoryId, dueDate: input.dueDate, transactionId: input.transactionId, settlementMode: 'TRACK' }, input.allocations, initialPayments, false);
+        if (input.repeatFrequency) {
+          const baseDate = input.dueDate || toLocalDateKey(new Date());
+          await createSharedObligationTemplateRow(dbDriver, { title: input.title, totalAmount: input.totalAmount, categoryId: input.categoryId, frequency: input.repeatFrequency, nextDueDate: advanceRecurringDate(baseDate, input.repeatFrequency), settlementMode: 'TRACK' }, input.allocations, false);
+        }
+        await dbDriver.execute('COMMIT');
+      } catch (error) {
+        await dbDriver.execute('ROLLBACK');
+        throw error;
+      }
+    });
+  };
+
+  const recordSharedPayment = async (payment: Omit<SharedPayment, 'id'>): Promise<boolean> =>
+    persistSharedAction(() => addSharedPaymentRow(dbDriver!, payment));
+
+  const recordSharedSettlement = async (settlement: Omit<SharedSettlement, 'id'>): Promise<boolean> =>
+    persistSharedAction(() => addSharedSettlementRow(dbDriver!, settlement));
+
+  const configureLoanSharing = async (accountId: string, personalResponsibilityPercent: number, contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>>): Promise<boolean> =>
+    persistSharedAction(async () => {
+      await setLoanSharingRuleRow(dbDriver!, { accountId, personalResponsibilityPercent, isShared: true });
+      await replaceLoanContributionRules(dbDriver!, accountId, contributions);
+    });
+
+
+  const settleSharedBalance = async (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await addSharedSettlementWithBalanceAdjustment(dbDriver, input);
+      await persistDatabase(dbDriver);
+      await refreshStateFromDatabase(dbDriver);
+      await refreshSharedFinance(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('Shared settlement failed:', error);
+      window.alert(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+  const recordExternalLoanPayment = async (input: { accountId: string; personId: string; amount: number; paidAt: string }): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await addExternalLoanContribution(dbDriver, input);
+      await persistDatabase(dbDriver);
+      await refreshStateFromDatabase(dbDriver);
+      await refreshSharedFinance(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('External loan contribution failed:', error);
+      window.alert(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+
+  const setSharedTemplateActive = async (templateId: string, isActive: boolean): Promise<boolean> =>
+    persistSharedAction(async () => {
+      await setSharedObligationTemplateActive(dbDriver!, templateId, isActive);
+      if (isActive) await generateDueSharedObligations(dbDriver!);
+    });
+
   useEffect(() => {
     let mounted = true;
     initializeDatabase()
@@ -552,6 +721,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           await persistDatabase(driver);
         }
         await refreshStateFromDatabase(driver);
+        await ensureSelfPerson(driver, 'Me');
+        await generateDueSharedObligations(driver);
+        await refreshSharedFinance(driver);
         const integrity = await auditDatabaseIntegrity(driver);
         if (integrity.hasCriticalIssues) setIntegrityWarning(`Data integrity warning: ${integrity.issues.filter(issue => issue.severity === 'error').length} critical issue(s) detected. Open Settings → Verify Data Integrity for details.`);
         const settings = await loadAppSettings(driver);
@@ -1061,7 +1233,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
+  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
@@ -1122,7 +1294,12 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         try {
           await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
           await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
+          }
           await dbDriver.execute('COMMIT');
+          if (options.loanSharing) await refreshSharedFinance(dbDriver);
         } catch (error) {
           await dbDriver.execute('ROLLBACK');
           throw error;
@@ -1131,7 +1308,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string } = {}) => {
+  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
 
@@ -1173,6 +1350,11 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
           await updateAccountRow(dbDriver, mergedAccount);
           await updateOpeningBalance(dbDriver, id, account.balance);
           await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+            await refreshSharedFinance(dbDriver);
+          }
         });
       }
     } else {
@@ -1207,13 +1389,17 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       setAccountRecords(accs => accs.map(a => a.id === id ? { ...account, id, balance: 0 } : a));
       setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
 
+      const mergedAccount = { ...account, id, balance: 0 };
       if (dbDriver) {
         persistDbAction(async () => {
-          await updateAccountRow(dbDriver, { ...account, id, balance: 0 });
-          if (newOpeningTx) {
-            await insertTransactionRow(dbDriver, newOpeningTx);
+          await updateAccountRow(dbDriver, mergedAccount);
+          if (newOpeningTx) await insertTransactionRow(dbDriver, newOpeningTx);
+          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+          if (account.type === 'liability' && options.loanSharing) {
+            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+            await refreshSharedFinance(dbDriver);
           }
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...account, id }, options.sipSourceAccountId);
         });
       }
     }
@@ -1521,6 +1707,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     setLoanRevisions([]);
     setRecurringRules([]);
     setSavingsGoals([]);
+    setSharedFinance(EMPTY_SHARED_FINANCE);
     setAffordabilitySettingsState({ ...DEFAULT_AFFORDABILITY_SETTINGS });
     setIntegrityWarning(null);
     clearStacks();
@@ -1546,6 +1733,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setWidgets(refreshed.widgets);
       setLoanRevisions(refreshed.loanRevisions);
       setRecurringRules(refreshed.recurringRules);
+      await ensureSelfPerson(dbDriver, 'Me');
+      await refreshSharedFinance(dbDriver);
       const restoredAppSettings = await loadAppSettings(dbDriver);
       setAffordabilitySettingsState(normalizeAffordabilitySettings(restoredAppSettings[AFFORDABILITY_SETTINGS_KEY]));
       setSavingsGoals(normalizeSavingsGoals(restoredAppSettings[SAVINGS_GOALS_KEY]));
@@ -1577,7 +1766,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
   };
 
   const exportLedgerData = () => ({
-    schemaVersion: 'coinbuddy-ledger-v3',
+    schemaVersion: 'coinbuddy-ledger-v4',
     exportedAt: new Date().toISOString(),
     accounts,
     transactions,
@@ -1589,6 +1778,16 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     recurringRules,
     affordabilitySettings,
     savingsGoals,
+    people,
+    sharedObligations,
+    sharedResponsibilities,
+    sharedPayments,
+    sharedSettlements,
+    loanSharingRules,
+    loanContributionRules,
+    sharedObligationTemplates,
+    sharedTemplateResponsibilities,
+    externalLoanContributions,
     currency,
   });
 
@@ -1618,7 +1817,9 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, balancesVisible, toggleBalancesVisible: () => setBalancesVisible(visible => !visible), formatCurrency, getCurrencySymbol,
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
-      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
+      transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
+      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
+      updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,

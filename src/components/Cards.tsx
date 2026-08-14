@@ -92,7 +92,7 @@ export function Cards() {
   };
 
   return (
-    <div className="space-y-10 pb-24 md:pb-0 animate-fade-in max-w-3xl mx-auto">
+    <div data-testid="page-accounts" className="w-full space-y-10 pb-24 md:pb-0 animate-fade-in">
       {deleteError && (
         <div className="bg-rose-500/10 text-rose-400 p-4 rounded-2xl flex items-start gap-3 border border-rose-500/20">
           <Trash2 className="w-5 h-5 shrink-0 mt-0.5" />
