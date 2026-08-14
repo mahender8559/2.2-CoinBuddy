@@ -32,17 +32,21 @@ test('v3.5 lock screen preserves hashed PIN unlock behavior in a compact respons
     await setPasscodeDialog.getByRole('button', { name: digit, exact: true }).click();
   }
   await expect(setPasscodeDialog).toHaveCount(0);
-  await expect(passcodeSwitch).toHaveAttribute('aria-checked', 'true');
 
-  // Wait for the hashed setting to be persisted by the existing settings effect,
-  // then reload to exercise the real locked startup path.
-  await page.waitForTimeout(400);
-  await page.reload();
-
+  // The existing security model locks immediately as soon as a passcode exists.
   const lockScreen = page.getByTestId('locked-app-screen');
   await expect(lockScreen).toBeVisible();
   await expect(lockScreen.getByRole('heading', { name: 'CoinBuddy is locked', exact: true })).toBeVisible();
   await expect(lockScreen.getByText('Enter your 4-digit PIN', { exact: true })).toBeVisible();
+
+  // Unlock once, then reload. Seeing the lock screen again after reload proves
+  // the hashed PIN was persisted by the existing SQLite settings effect.
+  await enterPin(page, '1234');
+  await expect(lockScreen).toHaveCount(0);
+  await expect(page.getByTestId('page-settings')).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.reload();
+  await expect(lockScreen).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-lock-screen.png'), fullPage: false });
 
   const bounds = await lockScreen.locator('section').boundingBox();
