@@ -14,6 +14,7 @@ import { WalletSummaryModal } from './components/WalletSummaryModal';
 import { PayCardModal } from './components/PayCardModal';
 import { ManageFinances } from './components/ManageFinances';
 import { OnboardingModal } from './components/OnboardingModal';
+import { ExitConfirmSheet } from './components/ExitConfirmSheet';
 import { ButtonTourOverlay } from './components/ButtonTourOverlay';
 import { GoogleSignInGate } from './components/GoogleSignInGate';
 import { useAppContext } from './context/AppContext';
@@ -25,6 +26,7 @@ const GOOGLE_LOGIN_ENABLED = false;
 
 export default function App() {
   const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
+  const [isExitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
     return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
@@ -151,12 +153,12 @@ export default function App() {
       }
 
       if (e.state && e.state.exitPrompt) {
-        if (window.confirm('Do you want to exit the app?')) {
-          window.history.back();
-        } else {
-          window.history.pushState({ tab: 'dashboard' }, '', '?tab=dashboard');
-          setActiveTab('dashboard');
-        }
+        // Reinsert a same-document guard while the custom confirmation is open.
+        // This mirrors the blocking behavior of the old native confirm: pressing
+        // Back again cannot silently skip the confirmation and leave the app.
+        window.history.pushState({ exitConfirm: true }, '', '?tab=dashboard');
+        setActiveTab('dashboard');
+        setExitConfirmOpen(true);
       } else if (e.state && e.state.tab) {
         setActiveTab(e.state.tab as Tab);
       }
@@ -165,6 +167,19 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [activeTab, isAddModalOpen, addAccountModalType, isWalletModalOpen, payCardModalState.isOpen, isManageCategoriesOpen, setAddModalOpen, setAddAccountModalType, setWalletModalOpen, setPayCardModalState, setManageCategoriesOpen]);
+
+  const handleStayInApp = () => {
+    setExitConfirmOpen(false);
+    window.history.replaceState({ tab: 'dashboard' }, '', '?tab=dashboard');
+    setActiveTab('dashboard');
+  };
+
+  const handleExitApp = () => {
+    setExitConfirmOpen(false);
+    // Current entry is the temporary exitConfirm guard and the preceding entry
+    // is exitPrompt. Move across both to preserve the old confirmed-exit result.
+    window.history.go(-2);
+  };
 
   const [pinEntry, setPinEntry] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -350,6 +365,7 @@ export default function App() {
         </button>
       )}
 
+      <ExitConfirmSheet open={isExitConfirmOpen} onStay={handleStayInApp} onExit={handleExitApp} />
       <OnboardingModal />
       <ButtonTourOverlay activeTab={activeTab} setActiveTab={handleTabChange} />
       <AddTransactionModal />
