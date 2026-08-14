@@ -36,8 +36,13 @@ jobs:
         run: python scripts/fix_v35_activity_tests.py
       - name: Apply V3.5 Sharing redesign
         run: python scripts/apply_v35_sharing.py
-      - name: Apply V3.5 Accounts and Goals redesign
-        run: python scripts/apply_v35_accounts_goals.py
+      - name: Preserve V3.5 Accounts and Goals redesign
+        run: |
+          if test -f src/components/V35AccountsPanel.tsx && test -f src/components/V35GoalsPanel.tsx && grep -q "<V35AccountsPanel" src/components/ManageFinances.tsx && grep -q "<V35GoalsPanel" src/components/ManageFinances.tsx; then
+            echo 'V3.5 Accounts and Goals already committed; skipping migration.'
+          else
+            python scripts/apply_v35_accounts_goals.py
+          fi
       - name: Preserve V3.5 Insights and Settings redesign
         run: |
           if grep -q 'Settings & Manage ⚙️' src/components/Settings.tsx && grep -q 'advanced-insights-content' src/components/Insights.tsx; then
