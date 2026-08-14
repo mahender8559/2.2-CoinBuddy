@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { calculateEmiSplit } from '../utils/emi';
 import { UpdateLoanRateModal } from './UpdateLoanRateModal';
 import { CurrencyInput } from './CurrencyInput';
+import { V35ModalFrame } from './ui/V35ModalFrame';
 
 export function PayCardModal() {
   const { payCardModalState, setPayCardModalState, creditCards, accounts, payCreditCard, payLiability, formatCurrency, getCurrencySymbol } = useAppContext();
@@ -160,8 +161,7 @@ export function PayCardModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3 sm:p-4">
-      <div data-testid="pay-modal" className="bg-surface-container rounded-3xl w-full max-w-md p-4 sm:p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative overflow-hidden my-auto max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto">
+    <V35ModalFrame size="md" testId="pay-modal" panelClassName="overflow-y-auto p-5 sm:p-6">
         
         {/* Celebration Overlay */}
         <AnimatePresence>
@@ -242,17 +242,17 @@ export function PayCardModal() {
           type="button"
           aria-label="Close payment"
           onClick={() => setPayCardModalState({ isOpen: false, cardId: null })}
-          className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+          className="v35-focus-ring absolute right-4 top-3 flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface sm:top-4"
         >
           <X className="w-5 h-5" />
         </button>
         
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-500">
-            <CreditCard className="w-6 h-6" />
+        <div className="mb-5 flex items-center gap-3 pr-11">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cb-green-soft)] text-[var(--cb-green)]">
+            <CreditCard className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-on-surface">Pay {selectedCard ? 'Credit Card' : 'Liability'}</h2>
+            <h2 className="text-lg font-semibold text-on-surface sm:text-xl">Pay {selectedCard ? 'Credit Card' : 'Liability'}</h2>
             <p className="text-xs text-on-surface-variant">{name}</p>
           </div>
         </div>
@@ -456,7 +456,7 @@ export function PayCardModal() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/20">
                   <label className="block text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
                     Principal Amount
@@ -510,7 +510,7 @@ export function PayCardModal() {
             type="submit"
             disabled={activeAssetAccounts.length === 0 || !fromAccountId}
             data-testid="confirm-payment"
-            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 mt-2"
+            className="v35-focus-ring mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--cb-green)] px-4 text-sm font-semibold text-white transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles className="w-5 h-5" /> Confirm & Pay Down
           </button>
@@ -521,7 +521,6 @@ export function PayCardModal() {
           onClose={() => setIsRateUpdateOpen(false)}
           account={selectedLiability || null}
         />
-      </div>
-    </div>
+    </V35ModalFrame>
   );
 }
