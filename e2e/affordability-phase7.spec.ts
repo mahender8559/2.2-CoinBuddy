@@ -53,11 +53,13 @@ test('clean-ledger affordability setup survives reload and does not silently dem
   await expect(page.getByText('HDFC Salary Account', { exact: true })).toHaveCount(0);
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
   await expect(page.getByText('Can I Afford It?', { exact: true })).toBeVisible();
   await page.reload();
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Can I Afford It?', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
@@ -66,6 +68,7 @@ test('clean-ledger affordability setup survives reload and does not silently dem
 test('category financial behavior can be changed and persists after reload', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByRole('button', { name: 'Review categories' }).click();
   const groceries = page.getByLabel('Groceries affordability behavior');
   await groceries.selectOption('IRREGULAR');
@@ -75,6 +78,7 @@ test('category financial behavior can be changed and persists after reload', asy
 
   await page.reload();
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByRole('button', { name: 'Review categories' }).click();
   await expect(page.getByLabel('Groceries affordability behavior')).toHaveValue('IRREGULAR');
   await assertNoDocumentOverflow(page);
@@ -111,6 +115,7 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
 test('money inputs use selected-currency grouping and affordability cards do not overflow mobile', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
 
   const amount = page.getByLabel('Amount', { exact: true });
   await amount.fill('100000');
@@ -142,6 +147,7 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await expect(page.getByRole('article', { name: 'Goal Laptop Fund' })).toBeVisible();
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
   const goalProtection = page.getByText('Goals protection:', { exact: true }).locator('..');

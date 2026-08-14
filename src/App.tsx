@@ -6,7 +6,7 @@ import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { BackupAutomationService } from './components/BackupAutomationService';
 import { Activity } from './components/Activity';
-import { Insights } from './components/Insights';
+import { V35Insights } from './components/V35Insights';
 import { Settings } from './components/Settings';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { AddAccountModal } from './components/AddAccountModal';
@@ -324,7 +324,7 @@ export default function App() {
           {activeTab === 'dashboard' && <Dashboard />}
           {activeTab === 'activity' && <Activity />}
           {activeTab === 'manage' && <ManageFinances />}
-          {activeTab === 'insights' && <Insights />}
+          {activeTab === 'insights' && <V35Insights />}
           {activeTab === 'settings' && <Settings />}
         </div>
       </main>

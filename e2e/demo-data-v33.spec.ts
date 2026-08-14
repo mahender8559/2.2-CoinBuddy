@@ -49,6 +49,7 @@ test('demo data loads a realistic v3.4 showcase and investment Goal stays non-li
   await expect(emergency).toContainText(/excluded from affordability liquid cash and protected reserves/i);
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
   await expect(page.getByText('Projected free cash', { exact: true })).toBeVisible();
 

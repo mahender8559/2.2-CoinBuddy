@@ -31,6 +31,7 @@ async function prepare(page: Page) {
 test('v3.3 shows Upcoming Money and expandable affordability sources', async ({ page }) => {
   const errors = await prepare(page);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
   await expect(page.getByText('Projected free cash', { exact: true })).toBeVisible();
   await page.getByLabel('Amount', { exact: true }).fill('1000');

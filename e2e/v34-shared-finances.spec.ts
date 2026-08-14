@@ -85,10 +85,11 @@ test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async 
   await expect(loan).toContainText(/Direct lender payments/i);
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
 
   await openTab(page, 'Settings');
-  await expect(page.getByText('Coin Buddy V3.4', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings & Manage ⚙️', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Verify Data Integrity/i }).click();
   await expect(page.getByText('Integrity Verified', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
