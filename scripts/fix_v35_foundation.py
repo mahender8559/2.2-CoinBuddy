@@ -56,4 +56,22 @@ for filename in [
         raise SystemExit(f'Legacy navigation helper not found in {filename}')
     path.write_text(text.replace(old_open_tab, new_open_tab, 1))
 
+shell_path = Path('e2e/v35-shell.spec.ts')
+shell = shell_path.read_text()
+shell = shell.replace(
+    "await page.getByRole('button', { name: 'More' }).click();",
+    "await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More' }).click();",
+)
+shell = shell.replace(
+    "await page.getByRole('button', { name: 'Accounts' }).click();\n    await expect(page.getByTestId('page-accounts')).toBeVisible();\n\n    await page.getByRole('button', { name: 'Sharing' }).click();",
+    "await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Accounts' }).click();\n    await expect(page.getByTestId('page-accounts')).toBeVisible();\n\n    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Sharing' }).click();",
+    1,
+)
+shell = shell.replace(
+    "await page.getByRole('button', { name: 'Sharing' }).click();\n    await expect(page.getByText('What do you want to do?')).toBeVisible();\n    await page.getByRole('button', { name: 'Accounts' }).click();",
+    "await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Sharing' }).click();\n    await expect(page.getByText('What do you want to do?')).toBeVisible();\n    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Accounts' }).click();",
+    1,
+)
+shell_path.write_text(shell)
+
 print('Normalized V3.5 generated source and migrated navigation tests')
