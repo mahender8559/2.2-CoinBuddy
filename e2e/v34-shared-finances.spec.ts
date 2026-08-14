@@ -9,7 +9,7 @@ async function openTab(page: Page, name: string) {
   }
 
   const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Home' || destination === 'Activity') {
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
     await mobileNav.getByRole('button', { name: destination, exact: true }).click();
     return;
   }
@@ -41,8 +41,7 @@ test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async 
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await loadDemo(page);
 
-  await openTab(page, 'Manage');
-  await page.getByTestId('page-manage').getByRole('button', { name: 'Sharing', exact: true }).click();
+  await openTab(page, 'Sharing');
 
   await expect(page.getByTestId('sharing-hub')).toBeVisible();
   await expect(page.getByText('What do you want to do?', { exact: true })).toBeVisible();

@@ -9,7 +9,7 @@ async function openTab(page: Page, name: string) {
   }
 
   const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Home' || destination === 'Activity') {
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
     await mobileNav.getByRole('button', { name: destination, exact: true }).click();
     return;
   }
@@ -127,9 +127,7 @@ test('money inputs use selected-currency grouping and affordability cards do not
 
 test('real Goals persist and feed affordability protection', async ({ page }) => {
   const errors = await prepare(page, false);
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await page.getByRole('button', { name: 'Add goal' }).click();
   await page.getByLabel('Goal name').fill('Laptop Fund');
   await page.getByLabel('Target amount').fill('80000');
@@ -140,9 +138,7 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await expect(laptopGoal).toContainText(/Planner protects.*5,000/i);
 
   await page.reload();
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await expect(page.getByRole('article', { name: 'Goal Laptop Fund' })).toBeVisible();
 
   await openTab(page, 'Insights');
@@ -157,7 +153,8 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
 test('investment SIP setup creates a recurring transfer rule', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Add Asset' }).click();
+  await page.getByRole('button', { name: 'Add account', exact: false }).click();
+  await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add Asset', exact: true })).toBeVisible();
   await page.getByPlaceholder('e.g. Primary Checking').fill('Emergency Fund');
   await page.getByRole('button', { name: 'Investment', exact: true }).click();

@@ -9,7 +9,7 @@ async function openTab(page: Page, name: string) {
   }
 
   const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Home' || destination === 'Activity') {
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
     await mobileNav.getByRole('button', { name: destination, exact: true }).click();
     return;
   }
@@ -43,9 +43,7 @@ test('demo data loads a realistic v3.4 showcase and investment Goal stays non-li
   await expect(page.getByText('SIP: Liquid Mutual Fund', { exact: true })).toBeVisible();
   await expect(page.getByText('Investment SIP', { exact: true })).toBeVisible();
 
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByTestId('page-manage').getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   const emergency = page.getByRole('article', { name: 'Goal Emergency Fund' });
   await expect(emergency).toContainText('Liquid Mutual Fund');
   await expect(emergency).toContainText(/excluded from affordability liquid cash and protected reserves/i);

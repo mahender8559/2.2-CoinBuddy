@@ -57,6 +57,7 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
     { key: 'home', label: 'Home', icon: Home, active: activeTab === 'dashboard', action: () => setActiveTab('dashboard') },
     { key: 'activity', label: 'Activity', icon: ReceiptText, active: activeTab === 'activity', action: () => setActiveTab('activity') },
     { key: 'accounts', label: 'Accounts', icon: WalletCards, active: activeTab === 'manage' && manageDestination === 'Accounts', action: () => openManage('Accounts'), group: 'Money' },
+    { key: 'categories', label: 'Categories', icon: Tags, active: activeTab === 'manage' && manageDestination === 'Categories', action: () => openManage('Categories') },
     { key: 'goals', label: 'Goals', icon: Target, active: activeTab === 'manage' && manageDestination === 'Goals', action: () => openManage('Goals') },
     { key: 'insights', label: 'Insights', icon: LineChart, active: activeTab === 'insights', action: () => setActiveTab('insights') },
     { key: 'sharing', label: 'Sharing', icon: UsersRound, active: activeTab === 'manage' && manageDestination === 'Sharing', action: () => openManage('Sharing'), group: 'Shared' },

@@ -16,14 +16,14 @@ async function prepareApp(page: Page) {
   return runtimeErrors;
 }
 
-async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
+async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings' | 'Sharing') {
   const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
   if (isDesktop) {
     await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
 
-  if (destination === 'Home' || destination === 'Activity') {
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
     await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
@@ -60,6 +60,9 @@ test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
   const errors = await prepareApp(page);
   await openDestination(page, 'Accounts');
 
+  const liabilityToggle = page.locator('[data-testid="account-group-loan"] button[aria-expanded], [data-testid="account-group-card"] button[aria-expanded]').first();
+  await expect(liabilityToggle).toBeVisible();
+  await liabilityToggle.click();
   const payDown = page.getByRole('button', { name: 'Pay Down' }).first();
   await expect(payDown).toBeVisible();
   await payDown.click();

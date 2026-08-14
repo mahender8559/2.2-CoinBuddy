@@ -3,11 +3,10 @@ import { useAppContext } from '../context/AppContext';
 import { X, Trash2, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Edit2, ShieldCheck, Plus, Search, GraduationCap, Target, Heart, Plane, Code, Smartphone, Coffee, Music, Film, Book, Camera, Droplet, Sun, Moon, Map, Activity, Gift, Crosshair, MapPin } from 'lucide-react';
 import { AffordabilityClass, Category } from '../types';
 import { icons } from '../icons';
-import { Cards } from './Cards';
-import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { V35AccountsPanel } from './V35AccountsPanel';
 import { getCategorySpend } from '../utils/budget';
 import { CurrencyInput } from './CurrencyInput';
-import { GoalsPanel } from './GoalsPanel';
+import { V35GoalsPanel } from './V35GoalsPanel';
 import { SharingPanel } from './SharingPanel';
 
 
@@ -17,9 +16,6 @@ export function ManageFinances() {
   type ManageDestination = 'Accounts' | 'Categories' | 'Sharing' | 'Goals';
   const requestedDestination = typeof window !== 'undefined' ? sessionStorage.getItem('coinbuddy_manage_destination') as ManageDestination | null : null;
   const [mainTab, setMainTab] = useState<'Accounts' | 'Categories' | 'Sharing'>(() => isManageCategoriesOpen ? 'Categories' : requestedDestination === 'Sharing' ? 'Sharing' : requestedDestination === 'Categories' || requestedDestination === 'Goals' ? 'Categories' : 'Accounts');
-  const mainTabSwipe = useHorizontalSwipe(() => {
-    setMainTab(current => current === 'Accounts' ? 'Categories' : current === 'Categories' ? 'Sharing' : 'Accounts');
-  });
 
   useEffect(() => {
     if (isManageCategoriesOpen) {
@@ -128,41 +124,19 @@ export function ManageFinances() {
   };
 
   return (
-    <div data-testid="page-manage" className="w-full space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>
+    <div data-testid="page-manage" className="w-full space-y-6 animate-fade-in pb-safe touch-pan-y">
       
-      {/* Top Segmented Control matching the mockup */}
-      <div className="flex justify-center mb-8">
-        <div className="flex bg-surface-container rounded-xl p-1 w-full max-w-sm border border-outline-variant/30">
-          <button 
-            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${mainTab === 'Accounts' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-            onClick={() => setMainTab('Accounts')}
-          >
-            Accounts
-          </button>
-          <button 
-            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${mainTab === 'Categories' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-            onClick={() => setMainTab('Categories')}
-          >
-            Categories
-          </button>
-          <button
-            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${mainTab === 'Sharing' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-            onClick={() => setMainTab('Sharing')}
-          >
-            Sharing
-          </button>
-        </div>
-      </div>
-
       {mainTab === 'Accounts' ? (
-        <Cards />
+        <V35AccountsPanel />
       ) : mainTab === 'Sharing' ? (
         <SharingPanel />
+      ) : (activeTab as 'Categories' | 'Goals') === 'Goals' ? (
+        <V35GoalsPanel searchQuery={searchQuery} />
       ) : (
         <>
           <div className="mb-8 flex items-center gap-3">
             <ShieldCheck className="w-8 h-8 text-primary" />
-            <h1 className="text-2xl font-bold text-primary-container-on">Categories & Goals</h1>
+            <h1 className="text-2xl font-bold text-primary-container-on">Categories</h1>
           </div>
 
           {activeTab === 'Categories' && (
@@ -248,7 +222,7 @@ export function ManageFinances() {
           <button onClick={() => { setEditingId(null); setEditName(''); setEditIcon('ShoppingBag'); setEditType('expense'); setEditAffordabilityClass('NORMAL'); setEditBudget(0); setEditIsRollover(false); setIsEditingModalOpen(true); }} className="w-full bg-transparent border border-dashed border-outline-variant/50 hover:bg-surface-container-high hover:border-primary/50 text-on-surface font-semibold py-6 rounded-2xl transition-colors flex flex-col items-center justify-center gap-3 group"><div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary/20 transition-colors"><Plus className="w-5 h-5 group-hover:text-primary" /></div><span className="text-xs tracking-wider uppercase font-bold text-on-surface-variant group-hover:text-primary transition-colors">ADD CATEGORY</span></button>
         </div>
       ) : (
-        <GoalsPanel searchQuery={searchQuery} />
+        <V35GoalsPanel searchQuery={searchQuery} />
       )}
 
       {activeTab === 'Categories' && isEditingModalOpen && (

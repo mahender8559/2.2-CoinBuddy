@@ -119,7 +119,7 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
           <h1 className="text-2xl font-bold tracking-tight text-on-surface sm:text-3xl">Goals</h1>
           <p className="mt-1 text-sm text-on-surface-variant">Turn future plans into visible progress without mixing them with spendable cash.</p>
         </div>
-        <button type="button" onClick={openNew} className="v35-focus-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-[0_0_24px_rgba(76,141,255,.18)]"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add goal</span><span className="sm:hidden">Add</span></button>
+        <button type="button" aria-label="Add goal" onClick={openNew} className="v35-focus-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-[0_0_24px_rgba(76,141,255,.18)]"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add goal</span><span className="sm:hidden">Add</span></button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -149,7 +149,7 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                   <IconBadge icon={Icon} tone={complete ? 'green' : goal.type === 'TRAVEL' ? 'purple' : goal.type === 'EMERGENCY_FUND' ? 'green' : 'blue'} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-semibold text-on-surface">{goal.name} <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>
+                      <h2 className="truncate text-base font-semibold text-on-surface"><span>{goal.name}</span> <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>
                       {complete ? <StatusPill tone="positive">Completed</StatusPill> : !goal.isActive ? <StatusPill>Paused</StatusPill> : null}
                     </div>
                     <p className="mt-0.5 text-xs text-on-surface-variant">{GOAL_TYPE_LABELS[goal.type]}{goal.targetDate ? ` · Target ${new Date(`${goal.targetDate}T12:00:00`).toLocaleDateString()}` : ''}</p>
@@ -175,7 +175,8 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                 </div>
 
                 <p className="mt-4 text-xs leading-5 text-on-surface-variant">{linked ? `Progress tracked from ${linked.name}.` : 'Progress uses manual saved amount and verified Goal-linked contributions.'}</p>
-                {linked && !linkedIsLiquid ? <div className="mt-3 flex gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs leading-5 text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{linked.name} can track this goal without being treated as liquid cash in affordability.</span></div> : null}
+                {goal.monthlyContribution > 0 ? <p className="mt-1 text-xs leading-5 text-on-surface-variant">Planner protects {formatCurrency(goal.monthlyContribution)} each cycle for this goal.</p> : null}
+                {linked && !linkedIsLiquid ? <div className="mt-3 flex gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs leading-5 text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{linked.name} tracks progress only. It is excluded from affordability liquid cash and protected reserves.</span></div> : null}
                 {goal.protectLinkedBalance && linkedIsLiquid && linked ? <div className="mt-3 flex gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs leading-5 text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>This linked liquid balance is protected as an affordability reserve.</span></div> : null}
               </article>
             );
