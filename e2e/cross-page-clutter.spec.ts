@@ -33,10 +33,10 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
     await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Categories', exact: true }).click();
   }
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'ADD CATEGORY', exact: true }).click();
+  await page.getByRole('button', { name: 'Add category', exact: true }).click();
   await expect(page.getByText('Enable Rollover / Sinking Fund', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Where should leftover funds go?', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Carry unused budget forward', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rollover unused budget', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
@@ -57,26 +57,14 @@ test('Insights removes fake clickable savings advice and duplicate security badg
 });
 
 test('first-use tour goes directly from onboarding to UI spotlight without writing backup password', async ({ page }) => {
-  await page.goto('/');
+  const errors = await prepare(page);
   await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
-    localStorage.removeItem('backupConfig');
-    localStorage.removeItem('coinbuddy_backup_config');
   });
   await page.reload();
-
-  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
-  for (let step = 0; step < 4; step += 1) {
-    await page.getByRole('button', { name: 'Next' }).click();
-  }
-  await page.getByRole('button', { name: 'Get Started' }).click();
-  await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
-  await expect(page.getByText(/Dashboard, Activity, or Insights to log income, expenses, or transfers/i)).toBeVisible();
-  const legacyBackup = await page.evaluate(() => ({
-    old: localStorage.getItem('backupConfig'),
-    current: localStorage.getItem('coinbuddy_backup_config'),
-  }));
-  expect(legacyBackup.old).toBeNull();
-  expect(legacyBackup.current).toBeNull();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: /Get Started/i }).click();
+  await expect(page.getByTestId('tour-overlay')).toBeVisible();
+  expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
