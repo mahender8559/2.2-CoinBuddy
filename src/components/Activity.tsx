@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import type { ComponentType, SVGProps, PointerEvent as ReactPointerEvent } from 'react';
-import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown, Layers } from 'lucide-react';
+import { Search, Filter, ShieldCheck, Sparkles, Database, Utensils, Banknote, Car, Briefcase, ShoppingBag, Plus, Zap, Home, Trash2, Check, X, ArrowRightLeft, ArrowUpDown, Layers, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -29,6 +29,8 @@ export function Activity() {
   }, true);
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>('All');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [isPendingPanelOpen, setIsPendingPanelOpen] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isEventPickerOpen, setEventPickerOpen] = useState(false);
@@ -187,219 +189,263 @@ const unassignSelectedEvents = () => {
     })
     .reduce((acc, curr) => acc + Math.abs(curr.amount), 0);
 
+  const transactionGroups = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const groups = new Map<string, { label: string; transactions: typeof filteredTransactions }>();
+    filteredTransactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      const label = day.getTime() === today.getTime()
+        ? 'Today'
+        : day.getTime() === yesterday.getTime()
+          ? 'Yesterday'
+          : day.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: day.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+      const existing = groups.get(key);
+      if (existing) existing.transactions.push(transaction);
+      else groups.set(key, { label, transactions: [transaction] });
+    });
+    return Array.from(groups.values());
+  }, [filteredTransactions]);
+
+  const hasAdvancedFilters = selectedAccountFilter !== 'All' || selectedEventFilter !== 'All' || selectedCycle !== 'all' || selectedCategoryFilter !== null || selectedSort !== 'date-desc';
+  const clearAdvancedFilters = () => {
+    setSelectedAccountFilter('All');
+    setSelectedEventFilter('All');
+    setSelectedCycle('all');
+    setSelectedCategoryFilter(null);
+    setSelectedSort('date-desc');
+  };
+
   return (
-    <div data-testid="page-activity" className="w-full space-y-6 pb-24 md:pb-0 animate-fade-in">
-      {/* Header with Select */} 
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-on-surface">Activity Logger</h2>
-        <button 
+    <div data-testid="page-activity" className="w-full space-y-4 pb-24 md:pb-0 animate-fade-in">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-on-surface sm:text-3xl">Activity</h1>
+          <p className="mt-1 hidden text-sm text-on-surface-variant sm:block">Track every money movement without the clutter.</p>
+        </div>
+        <button
           onClick={() => {
             setIsSelectionMode(!isSelectionMode);
             if (isSelectionMode) setSelectedIds(new Set());
           }}
-          className="text-primary font-medium hover:bg-primary/10 px-4 py-2 rounded-xl transition-colors"
+          className="v35-focus-ring min-h-10 rounded-xl px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
         >
           {isSelectionMode ? 'Cancel' : 'Select'}
         </button>
       </div>
 
-      {pendingTransactions.length > 0 && (
-        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
-          <h3 className="font-semibold text-on-surface">Needs confirmation</h3>
-          <p className="mt-1 text-sm text-on-surface-variant">Recurring entries stay out of balances until you confirm they happened.</p>
-          <div className="mt-3 space-y-3">
-            {pendingTransactions.map(tx => (
-              <div key={tx.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface p-3 dark:bg-surface-container-low">
-                <span className="min-w-32 flex-1 text-sm font-medium">{tx.title} · {formatCurrency(tx.amount)}</span>
-                <input aria-label={`Confirmation date for ${tx.title}`} type="date" value={approvalDates[tx.id] ?? tx.date.slice(0, 10)} onChange={e => setApprovalDates(prev => ({ ...prev, [tx.id]: e.target.value }))} />
-                <button className="rounded-lg bg-primary px-3 text-sm font-medium text-on-primary" onClick={() => {
-                  const outcome = approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10));
-                  setApprovalErrors(previous => ({ ...previous, [tx.id]: outcome.success ? '' : (outcome.error || 'This scheduled transaction cannot be confirmed yet.') }));
-                }}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
-                <button className="rounded-lg border border-outline px-3 text-sm" onClick={() => { rejectTransaction(tx.id); setApprovalErrors(previous => ({ ...previous, [tx.id]: '' })); }}>Skip</button>
-                {approvalErrors[tx.id] && <span role="alert" className="basis-full text-xs font-medium text-error">{approvalErrors[tx.id]} The item remains pending until it can be confirmed.</span>}
-              </div>
-            ))}
+      <section className="space-y-3">
+        <div className="flex gap-2">
+          <div data-tour-id="tour-transaction-search" className="relative min-w-0 flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-on-surface-variant" />
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="v35-focus-ring h-12 w-full rounded-xl border border-outline-variant/35 bg-surface-container-low pl-10 pr-3 text-sm text-on-surface placeholder:text-on-surface-variant/70 outline-none transition-colors focus:border-primary/60"
+            />
+          </div>
+          <button
+            data-tour-id="tour-transaction-filters"
+            type="button"
+            aria-label="Advanced filters"
+            aria-expanded={isFilterPanelOpen}
+            onClick={() => setIsFilterPanelOpen(current => !current)}
+            className={`v35-focus-ring relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-colors ${isFilterPanelOpen || hasAdvancedFilters ? 'border-primary/35 bg-primary/12 text-primary' : 'border-outline-variant/35 bg-surface-container-low text-on-surface-variant hover:text-on-surface'}`}
+          >
+            <Filter className="h-5 w-5" />
+            {hasAdvancedFilters ? <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" /> : null}
+          </button>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide touch-pan-y" {...typeFilterSwipe}>
+          {typeFilters.map(type => (
+            <button
+              key={type}
+              onClick={() => setSelectedTypeFilter(type)}
+              className={`v35-focus-ring min-h-9 whitespace-nowrap rounded-full border px-3.5 text-xs font-semibold transition-colors ${selectedTypeFilter === type ? 'border-primary/30 bg-primary text-on-primary' : 'border-outline-variant/35 bg-surface-container-low text-on-surface-variant hover:text-on-surface'}`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {isFilterPanelOpen && (
+        <section aria-label="Advanced transaction filters" className="v35-surface rounded-2xl p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-on-surface">Filters</h2>
+              <p className="mt-0.5 text-xs text-on-surface-variant">Narrow the list without crowding Activity.</p>
+            </div>
+            {hasAdvancedFilters ? <button type="button" onClick={clearAdvancedFilters} className="min-h-0 text-xs font-semibold text-primary">Reset</button> : null}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="text-xs font-medium text-on-surface-variant">Cycle
+              <select value={selectedCycle} onChange={(event) => setSelectedCycle(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm text-on-surface outline-none focus:border-primary/60">
+                {availableCycles.map(cycle => <option key={cycle.key} value={cycle.key}>{cycle.label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-on-surface-variant">Account
+              <select value={selectedAccountFilter} onChange={(event) => setSelectedAccountFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm text-on-surface outline-none focus:border-primary/60">
+                <option value="All">All Accounts</option>
+                {accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-on-surface-variant">Event
+              <select aria-label="Filter transactions by event" value={selectedEventFilter} onChange={(event) => setSelectedEventFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm text-on-surface outline-none focus:border-primary/60">
+                <option value="All">All Events</option>
+                <option value="__none__">No Event</option>
+                {events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-on-surface-variant">Category
+              <select value={selectedCategoryFilter || ''} onChange={(event) => setSelectedCategoryFilter(event.target.value || null)} className="mt-1.5 w-full rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm text-on-surface outline-none focus:border-primary/60">
+                <option value="">All Categories</option>
+                {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-on-surface-variant">Sort
+              <select value={selectedSort} onChange={(event) => setSelectedSort(event.target.value as typeof selectedSort)} className="mt-1.5 w-full rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm text-on-surface outline-none focus:border-primary/60">
+                <option value="date-desc">Date (Latest)</option>
+                <option value="date-asc">Date (Oldest)</option>
+                <option value="amount-desc">Amount (Highest)</option>
+                <option value="amount-asc">Amount (Lowest)</option>
+                <option value="notes-asc">Title (A to Z)</option>
+                <option value="notes-desc">Title (Z to A)</option>
+              </select>
+            </label>
           </div>
         </section>
       )}
 
-      {/* Type Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide touch-pan-y" {...typeFilterSwipe}>
-        {typeFilters.map(type => (
+      {pendingTransactions.length > 0 && (
+        <section className="v35-surface overflow-hidden rounded-2xl border-[rgba(251,191,36,.20)]">
           <button
-            key={type}
-            onClick={() => setSelectedTypeFilter(type)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${selectedTypeFilter === type ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface hover:bg-surface-variant'}`}
+            type="button"
+            aria-expanded={isPendingPanelOpen}
+            aria-controls="pending-confirmations"
+            onClick={() => setIsPendingPanelOpen(current => !current)}
+            className="v35-focus-ring flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left"
           >
-            {type}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--cb-amber-soft)] text-[var(--cb-amber)]">
+              <Check className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                Needs confirmation
+                <span className="rounded-full bg-[var(--cb-amber-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--cb-amber)]">{pendingTransactions.length}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-on-surface-variant">Scheduled items are waiting for your confirmation.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-on-surface-variant transition-transform ${isPendingPanelOpen ? 'rotate-180' : ''}`} />
           </button>
-        ))}
-      </div>
+          {isPendingPanelOpen ? (
+            <div id="pending-confirmations" className="divide-y divide-outline-variant/20 border-t border-outline-variant/20">
+              {pendingTransactions.map(tx => (
+                <div key={tx.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
+                  <span className="min-w-0 text-sm font-medium text-on-surface">{tx.title} · <span className="font-numeric">{formatCurrency(tx.amount)}</span></span>
+                  <input aria-label={`Confirmation date for ${tx.title}`} type="date" value={approvalDates[tx.id] ?? tx.date.slice(0, 10)} onChange={event => setApprovalDates(previous => ({ ...previous, [tx.id]: event.target.value }))} className="rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm" />
+                  <button className="rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary" onClick={() => {
+                    const outcome = approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10));
+                    setApprovalErrors(previous => ({ ...previous, [tx.id]: outcome.success ? '' : (outcome.error || 'This scheduled transaction cannot be confirmed yet.') }));
+                  }}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
+                  <button className="rounded-xl border border-outline-variant/40 px-3 text-xs font-semibold text-on-surface-variant" onClick={() => { rejectTransaction(tx.id); setApprovalErrors(previous => ({ ...previous, [tx.id]: '' })); }}>Skip</button>
+                  {approvalErrors[tx.id] ? <span role="alert" className="text-xs font-medium text-error sm:col-span-4">{approvalErrors[tx.id]} The item remains pending until it can be confirmed.</span> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      )}
 
-      {/* Account Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          onClick={() => setSelectedAccountFilter('All')}
-          className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${selectedAccountFilter === 'All' ? 'bg-surface-variant text-on-surface border border-outline-variant' : 'bg-transparent text-on-surface border border-outline-variant/50 hover:bg-surface-container'}`}
-        >
-          All Accounts
-        </button>
-        {accounts.map(acc => (
-           <button
-            key={acc.id}
-            onClick={() => setSelectedAccountFilter(acc.id)}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${selectedAccountFilter === acc.id ? 'bg-surface-variant text-on-surface border border-outline-variant' : 'bg-transparent text-on-surface border border-outline-variant/50 hover:bg-surface-container'}`}
-          >
-            {acc.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Search & Filter */}
-      <section className="flex flex-col md:flex-row items-center gap-3">
-        <div data-tour-id="tour-transaction-search" className="relative flex-grow w-full md:w-auto">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-on-surface-variant" />
-          <input 
-            type="text" 
-            placeholder="Search title, category, account or amount..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-container border border-outline-variant/30 rounded-2xl py-3.5 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-          />
+      <section className="hidden grid-cols-2 gap-3 sm:grid">
+        <div className="v35-surface rounded-2xl p-4">
+          <p className="text-xs font-semibold text-on-surface-variant">Total Outflow</p>
+          <p className="mt-2 font-numeric text-xl font-semibold text-[var(--cb-red)]">{formatCurrency(outflow)}</p>
         </div>
-        
-        <div data-tour-id="tour-transaction-filters" className="flex flex-wrap gap-3 w-full md:w-auto">
-          <select 
-            value={selectedCycle}
-            onChange={(e) => setSelectedCycle(e.target.value)}
-            className="bg-surface-container py-3.5 px-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors shrink-0 text-on-surface focus:outline-none focus:border-primary/50 flex-1 md:flex-none"
-          >
-            {availableCycles.map(c => (
-              <option key={c.key} value={c.key}>{c.label}</option>
-            ))}
-          </select>
-          <div className="relative flex-1 md:flex-none min-w-[130px]">
-            <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
-            <select 
-              value={selectedSort}
-              onChange={(e) => setSelectedSort(e.target.value as typeof selectedSort)}
-              className="w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none"
-            >
-              <option value="date-desc">Date (Latest)</option>
-              <option value="date-asc">Date (Oldest)</option>
-              <option value="amount-desc">Amount (Highest)</option>
-              <option value="amount-asc">Amount (Lowest)</option>
-              <option value="notes-asc">Title (A to Z)</option>
-              <option value="notes-desc">Title (Z to A)</option>
-            </select>
-          </div>
-          <div className="relative flex-1 md:flex-none min-w-[150px]">
-            <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
-            <select
-              aria-label="Filter transactions by event"
-              value={selectedEventFilter}
-              onChange={(e) => setSelectedEventFilter(e.target.value)}
-              className="w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none"
-            >
-              <option value="All">All Events</option>
-              <option value="__none__">No Event</option>
-              {events.map(event => (
-                <option key={event.id} value={event.id}>{event.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="relative flex-1 md:flex-none min-w-[140px]">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
-            <select 
-              value={selectedCategoryFilter || ''}
-              onChange={(e) => setSelectedCategoryFilter(e.target.value || null)}
-              className="w-full bg-surface-container py-3.5 pl-9 pr-4 rounded-2xl border border-outline-variant/30 hover:bg-surface-container-high transition-colors text-on-surface focus:outline-none focus:border-primary/50 appearance-none"
-            >
-              <option value="">All Categories</option>
-              {categories.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+        <div className="v35-surface rounded-2xl p-4">
+          <p className="text-xs font-semibold text-on-surface-variant">Savings Contributed</p>
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <p className="font-numeric text-xl font-semibold text-[var(--cb-green)]">{formatCurrency(totalSavings)}</p>
+            <Sparkles className="h-4 w-4 text-[var(--cb-green)]" />
           </div>
         </div>
       </section>
 
-      {/* Summary */}
-      <section className="grid grid-cols-2 gap-4">
-        <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/30">
-          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Outflow (Total)</p>
-          <p className="text-2xl font-bold text-on-surface font-numeric">{formatCurrency(outflow)}</p>
-        </div>
-        <div className="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 flex flex-col justify-between">
-          <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">Savings Contributed</p>
-          <div className="flex items-end justify-between">
-            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-numeric">{formatCurrency(totalSavings)}</p>
-            <Sparkles className="w-5 h-5 text-emerald-500 opacity-80 mb-1" />
-          </div>
-        </div>
-      </section>
-      {/* Transactions */}
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-3 ml-1">All Transactions</h2>
-          <div className="space-y-3">
-            {filteredTransactions.map((tx, idx) => {
-              const Icon = icons[tx.icon as keyof typeof icons] || ShoppingBag;
-              const isIncome = tx.type === 'income';
-              const isTransfer = tx.type === 'transfer';
-              const isBalanceAdjustment = tx.transaction_type === 'BALANCE_ADJUSTMENT';
-              let color = 'secondary';
-              if (isIncome) color = 'primary';
-              if (isTransfer) color = 'tertiary';
-              
-              let accountContext = '';
-              if (isTransfer) {
-                const fromName = accounts.find(a => a.id === tx.fromAccountId)?.name || 'Unknown';
-                const toName = accounts.find(a => a.id === tx.toAccountId)?.name || 'Unknown';
-                accountContext = `${fromName} → ${toName}`;
-              } else {
-                accountContext = accounts.find(a => a.id === tx.account)?.name || tx.account || '';
-              }
-              
-              return (
-                <TransactionRow 
-                  key={tx.id}
-                  icon={isTransfer ? ArrowRightLeft : Icon} 
-                  title={tx.title} 
-                  eventName={events.find(event => event.id === tx.eventId)?.name}
-                  subtitle={accountContext ? `${tx.subtitle} • ${accountContext}` : tx.subtitle} 
-                  amount={formatCurrency(tx.amount)} 
-                  tag={tx.isOpeningBalance ? 'Opening Balance' : tx.category} 
-                  color={color} 
-                  isIncome={isIncome}
-                  isTransfer={isTransfer}
-                  isPending={tx.is_verified === 0}
-                  type={tx.type}
-                  onDelete={tx.isOpeningBalance ? undefined : () => deleteTransaction(tx.id)}
-                  onEdit={tx.isOpeningBalance || isBalanceAdjustment ? undefined : () => {
-                    setEditingTransaction(tx);
-                    setAddModalOpen(true);
-                  }}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={selectedIds.has(tx.id)}
-onToggleSelect={() => toggleSelection(tx.id)}
-onLongPress={() => {
-  setSelectedIds(previous => new Set(previous).add(tx.id));
-  setIsSelectionMode(true);
-}}
-                  tourId={idx === 0 ? "tour-transaction-actions" : undefined}
-                />
-              );
-            })}
+      <div className="space-y-4">
+        {transactionGroups.map((group, groupIndex) => (
+          <section key={`${group.label}-${groupIndex}`} className="v35-surface overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 px-4 py-2.5">
+              <h2 className="text-sm font-semibold text-on-surface">{group.label}</h2>
+              <span className="text-xs text-on-surface-variant">{group.transactions.length}</span>
+            </div>
+            <div className="[&>div:last-child]:border-b-0">
+              {group.transactions.map((tx, txIndex) => {
+                const Icon = icons[tx.icon as keyof typeof icons] || ShoppingBag;
+                const isIncome = tx.type === 'income';
+                const isTransfer = tx.type === 'transfer';
+                const isBalanceAdjustment = tx.transaction_type === 'BALANCE_ADJUSTMENT';
+                let color = 'secondary';
+                if (isIncome) color = 'primary';
+                if (isTransfer) color = 'tertiary';
 
-            {filteredTransactions.length === 0 && (
-              <div className="text-center text-on-surface-variant py-8 bg-surface-container rounded-2xl">
-                No transactions found for this cycle.
-              </div>
-            )}
+                let accountContext = '';
+                if (isTransfer) {
+                  const fromName = accounts.find(account => account.id === tx.fromAccountId)?.name || 'Unknown';
+                  const toName = accounts.find(account => account.id === tx.toAccountId)?.name || 'Unknown';
+                  accountContext = `${fromName} → ${toName}`;
+                } else {
+                  accountContext = accounts.find(account => account.id === tx.account)?.name || tx.account || '';
+                }
+
+                return (
+                  <TransactionRow
+                    key={tx.id}
+                    icon={isTransfer ? ArrowRightLeft : Icon}
+                    title={tx.title}
+                    eventName={events.find(event => event.id === tx.eventId)?.name}
+                    subtitle={accountContext ? `${tx.subtitle} • ${accountContext}` : tx.subtitle}
+                    amount={formatCurrency(tx.amount)}
+                    tag={tx.isOpeningBalance ? 'Opening Balance' : tx.category}
+                    color={color}
+                    isIncome={isIncome}
+                    isTransfer={isTransfer}
+                    isPending={tx.is_verified === 0}
+                    type={tx.type}
+                    onDelete={tx.isOpeningBalance ? undefined : () => deleteTransaction(tx.id)}
+                    onEdit={tx.isOpeningBalance || isBalanceAdjustment ? undefined : () => {
+                      setEditingTransaction(tx);
+                      setAddModalOpen(true);
+                    }}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.has(tx.id)}
+                    onToggleSelect={() => toggleSelection(tx.id)}
+                    onLongPress={() => {
+                      setSelectedIds(previous => new Set(previous).add(tx.id));
+                      setIsSelectionMode(true);
+                    }}
+                    tourId={groupIndex === 0 && txIndex === 0 ? 'tour-transaction-actions' : undefined}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
+
+        {filteredTransactions.length === 0 && (
+          <div className="v35-surface rounded-2xl px-5 py-10 text-center">
+            <Search className="mx-auto h-6 w-6 text-on-surface-variant" />
+            <p className="mt-3 text-sm font-medium text-on-surface">No transactions found</p>
+            <p className="mt-1 text-xs text-on-surface-variant">Try clearing a filter or searching for something else.</p>
           </div>
-        </div>
+        )}
       </div>
 
 {isEventPickerOpen && (
@@ -578,19 +624,19 @@ return (
       if (isSelectionMode) onToggleSelect();
       else if (onEdit) onEdit();
     }}
-      className={`bg-surface-container-low hover:bg-surface-container transition-colors p-4 rounded-2xl flex items-start gap-4 cursor-pointer border ${isSelected ? 'border-primary' : 'border-transparent'} hover:border-outline-variant/30 group`}
+      className={`group flex cursor-pointer items-center gap-3 border-b px-3.5 py-3.5 transition-colors sm:px-4 ${isSelected ? 'border-primary/40 bg-primary/8' : 'border-outline-variant/20 bg-transparent hover:bg-surface-container-high/45'}`}
     >
       {isSelectionMode && (
         <div className={`w-6 h-6 rounded border flex items-center justify-center shrink-0 mt-3 transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-outline-variant/50'}`}>
           {isSelected && <Check className="w-4 h-4 text-on-primary" />}
         </div>
       )}
-      <div className={`w-12 h-12 rounded-full mt-0.5 ${c.bg} flex items-center justify-center shrink-0`}>
-        <Icon className={`w-6 h-6 ${c.text}`} />
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.bg}`}>
+        <Icon className={`h-5 w-5 ${c.text}`} />
       </div>
-      <div className="flex-grow min-w-0 pt-1">
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-semibold text-on-surface break-words whitespace-pre-wrap leading-tight">{title}</h3>
+          <h3 className="truncate text-sm font-semibold leading-tight text-on-surface">{title}</h3>
           {isPending && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Pending</span>}
         </div>
         {eventName && (
@@ -599,13 +645,13 @@ return (
             <span>{eventName}</span>
           </p>
         )}
-        <p className="text-xs text-on-surface-variant break-words whitespace-pre-wrap mt-1">
+        <p className="mt-1 truncate text-xs text-on-surface-variant">
           {subtitle} {type && <span className="capitalize opacity-80">• {type}</span>}
         </p>
       </div>
-      <div className="text-right shrink-0 flex items-start gap-3 pt-1">
+      <div className="flex shrink-0 items-start gap-2 text-right">
         <div className="text-right">
-          <p className={`font-bold font-numeric ${isIncome ? 'text-primary' : 'text-on-surface'}`}>{isIncome ? '+' : ''}{amount}</p>
+          <p className={`font-numeric text-sm font-semibold ${isIncome ? 'text-[var(--cb-green)]' : isTransfer ? 'text-[var(--cb-purple)]' : 'text-[var(--cb-red)]'}`}>{isIncome ? '+' : isTransfer ? '' : '-'}{amount.replace(/^[-+]/, '')}</p>
           {tag && (
             <div className="mt-1.5 flex justify-end">
               <span className="inline-block px-2 py-0.5 rounded-md text-[10px] bg-surface-variant text-on-surface-variant font-bold uppercase tracking-wider text-right break-words max-w-[150px]">
@@ -631,23 +677,6 @@ return (
           </div>
         )}
       </div>
-      {/* Mobile visible delete and edit */}
-      {!isSelectionMode && (
-        <div className="flex flex-col gap-1 md:hidden">
-          {onDelete && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-1.5 text-error bg-error/10 rounded-lg shrink-0"
-              title="Delete Transaction"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

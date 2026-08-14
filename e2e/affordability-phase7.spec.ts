@@ -98,6 +98,8 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   await openTab(page, 'Activity');
   const pending = page.getByText(/Transfer: HDFC Salary Account to Cash Wallet/).first();
   await expect(pending).toBeVisible();
+  const pendingToggle = page.getByRole('button', { name: /Needs confirmation/ }).first();
+  if (await pendingToggle.getAttribute('aria-expanded') === 'false') await pendingToggle.click();
   await page.getByRole('button', { name: 'Transferred ✓' }).first().click();
   await expect(page.getByRole('alert')).toContainText(/Insufficient funds in HDFC Salary Account/i);
   await expect(pending).toBeVisible();

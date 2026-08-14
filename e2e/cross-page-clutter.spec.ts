@@ -37,6 +37,7 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
 
 test('Activity sort labels and row actions do not present duplicate edit controls', async ({ page }) => {
   const errors = await prepare(page, 'activity');
+  await page.getByRole('button', { name: 'Advanced filters' }).click();
   await expect(page.getByRole('option', { name: 'Title (A to Z)' })).toHaveCount(1);
   await expect(page.getByRole('option', { name: 'Notes (A to Z)' })).toHaveCount(0);
   await expect(page.getByTitle('Edit Transaction')).toHaveCount(0);
