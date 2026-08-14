@@ -22,7 +22,6 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
     await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
   }
   await expect(page.getByText('Local Storage Encryption Active', { exact: true })).toHaveCount(0);
-  // Market valuation is legitimate for Investment assets; it must not appear on loans.
   const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
   await expect(loanCard.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
 
@@ -56,15 +55,22 @@ test('Insights removes fake clickable savings advice and duplicate security badg
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
-test('first-use tour goes directly from onboarding to UI spotlight without writing backup password', async ({ page }) => {
+test('first-use flow reaches the spotlight tour without backup-password clutter', async ({ page }) => {
   const errors = await prepare(page);
   await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
+    localStorage.removeItem('coinbuddy_backup_config');
   });
   await page.reload();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.getByRole('button', { name: /Get Started/i }).click();
+
+  await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
+  await expect(page.getByText(/backup password/i)).toHaveCount(0);
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: 'Next' }).click();
+  }
+  await page.getByRole('button', { name: 'Get Started' }).click();
   await expect(page.getByTestId('tour-overlay')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
