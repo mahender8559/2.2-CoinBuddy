@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays, CreditCard, PieChart as PieIcon, ShieldCheck, Sparkles, Target, TrendingUp, WalletCards } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays, CreditCard, PieChart as PieIcon, ShieldCheck, Sparkles, Target, WalletCards } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAppContext } from '../context/AppContext';
 import { AnimatedNumber } from './AnimatedNumber';
@@ -49,7 +49,8 @@ export function V35Insights() {
     const totals = new Map<string, number>();
     personalExpenseRecords.filter(record => isDateInCurrentCycle(record.date)).forEach(record => {
       const category = categories.find(item => item.id === record.category || `#${item.name.toLowerCase().replace(/\s+/g, '')}` === record.category);
-      const name = category?.name ?? record.category.replace(/^#/, '') || 'Other';
+      const fallbackName = record.category.replace(/^#/, '') || 'Other';
+      const name = category?.name ?? fallbackName;
       totals.set(name, (totals.get(name) ?? 0) + Math.abs(record.amount));
     });
     return [...totals.entries()]
