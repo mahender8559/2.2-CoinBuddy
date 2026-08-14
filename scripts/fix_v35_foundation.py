@@ -16,18 +16,37 @@ if start != -1:
     tour = tour[:start] + helper + tour[end:]
 tour_path.write_text(tour)
 
-old_open_tab = """async function openTab(page: Page, name: string) {
+legacy_open_tab = """async function openTab(page: Page, name: string) {
   const desktop = page.getByTitle(name);
   const mobile = page.getByRole('button', { name, exact: true });
   if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
 }
 """
 
-new_open_tab = """async function openTab(page: Page, name: string) {
+visibility_open_tab = """async function openTab(page: Page, name: string) {
   const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
   const desktopSidebar = page.getByTestId('desktop-sidebar');
   if (await desktopSidebar.isVisible()) {
     await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
+}
+"""
+
+stable_open_tab = """async function openTab(page: Page, name: string) {
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
 
@@ -50,14 +69,17 @@ for filename in [
 ]:
     path = Path(filename)
     text = path.read_text()
-    if new_open_tab not in text:
-        if old_open_tab not in text:
-            raise SystemExit(f'Legacy navigation helper not found in {filename}')
-        text = text.replace(old_open_tab, new_open_tab, 1)
+    if stable_open_tab not in text:
+        if visibility_open_tab in text:
+            text = text.replace(visibility_open_tab, stable_open_tab, 1)
+        elif legacy_open_tab in text:
+            text = text.replace(legacy_open_tab, stable_open_tab, 1)
+        else:
+            raise SystemExit(f'Navigation helper not found in {filename}')
     path.write_text(text)
 
 # Once Manage is visible, scope its own Categories/Goals/Sharing controls to the
-# Manage surface so they do not collide with the new global navigation labels.
+# Manage surface so they do not collide with the global navigation labels.
 for filename in [
     'e2e/affordability-phase7.spec.ts',
     'e2e/demo-data-v33.spec.ts',
@@ -78,6 +100,46 @@ v34 = v34_path.read_text().replace(
     1,
 )
 v34_path.write_text(v34)
+
+# Stabilize the smoke-suite navigation helper using the configured viewport,
+# not a momentary visibility check during React navigation/reload.
+ui_path = Path('e2e/ui-smoke.spec.ts')
+ui = ui_path.read_text()
+visibility_open_destination = """async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
+  const desktopSidebar = page.getByTestId('desktop-sidebar');
+  if (await desktopSidebar.isVisible()) {
+    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  if (destination === 'Home' || destination === 'Activity') {
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
+}
+"""
+stable_open_destination = """async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  if (destination === 'Home' || destination === 'Activity') {
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
+}
+"""
+if visibility_open_destination in ui:
+    ui = ui.replace(visibility_open_destination, stable_open_destination, 1)
+ui_path.write_text(ui)
 
 shell_path = Path('e2e/v35-shell.spec.ts')
 shell = shell_path.read_text()
