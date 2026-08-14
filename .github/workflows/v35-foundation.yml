@@ -69,10 +69,16 @@ jobs:
           else
             python scripts/apply_v35_forms_modals.py
           fi
-      - name: Anchor shared V3.5 modals to viewport
-        run: python scripts/apply_v35_modal_portal.py
-      - name: Apply V3.5 secondary dialog refresh
-        run: python scripts/apply_v35_secondary_dialogs.py
+      - name: Preserve V3.5 secondary dialogs
+        run: |
+          if grep -q 'createPortal' src/components/ui/V35ModalFrame.tsx && grep -q 'profile-edit-sheet' src/components/EditProfileModal.tsx && grep -q 'onboarding-sheet' src/components/OnboardingModal.tsx && grep -q 'widget-config-sheet' src/components/WidgetModal.tsx; then
+            echo 'V3.5 secondary dialogs already committed; skipping migration.'
+          else
+            python scripts/apply_v35_modal_portal.py
+            python scripts/apply_v35_secondary_dialogs.py
+          fi
+      - name: Apply V3.5 exit confirmation
+        run: python scripts/apply_v35_exit_confirmation.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
@@ -109,12 +115,13 @@ jobs:
             test-results/**/v35-profile-sheet.png
             test-results/**/v35-onboarding-sheet.png
             test-results/**/v35-widget-sheet.png
+            test-results/**/v35-exit-confirmation.png
           if-no-files-found: warn
-      - name: Commit verified V3.5 secondary dialogs
+      - name: Commit verified V3.5 exit confirmation
         if: success()
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/components/ui/V35ModalFrame.tsx src/components/EditProfileModal.tsx src/components/OnboardingModal.tsx src/components/WidgetModal.tsx e2e/v35-secondary-dialogs.spec.ts
-          git diff --cached --quiet || git commit -m "feat: refresh CoinBuddy v3.5 secondary dialogs [skip ci]"
+          git add src/App.tsx src/components/ExitConfirmSheet.tsx e2e/v35-exit-confirmation.spec.ts
+          git diff --cached --quiet || git commit -m "feat: add CoinBuddy v3.5 in-app exit confirmation [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
