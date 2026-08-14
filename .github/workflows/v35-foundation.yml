@@ -26,8 +26,10 @@ jobs:
           cache: npm
       - name: Stabilize migrated responsive tests
         run: python scripts/fix_v35_foundation.py
-      - name: Refine mobile shell and Dashboard fidelity
+      - name: Preserve mobile shell and Dashboard fidelity
         run: python scripts/refine_v35_dashboard.py
+      - name: Apply V3.5 Activity redesign
+        run: python scripts/apply_v35_activity.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
@@ -42,18 +44,20 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Full desktop and mobile browser regression
         run: npm run test:e2e
-      - name: Upload V3.5 dashboard screenshots
+      - name: Upload V3.5 screen screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v35-dashboard-refined-screenshots
-          path: test-results/**/v35-dashboard.png
+          name: v35-dashboard-activity-screenshots
+          path: |
+            test-results/**/v35-dashboard.png
+            test-results/**/v35-activity.png
           if-no-files-found: warn
-      - name: Commit verified V3.5 mobile fidelity refinement
+      - name: Commit verified V3.5 Activity milestone
         if: success()
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/App.tsx src/components/Header.tsx src/components/Navigation.tsx src/components/Dashboard.tsx e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts
-          git diff --cached --quiet || git commit -m "refine: align v3.5 mobile dashboard with locked UI [skip ci]"
+          git add src/components/Activity.tsx e2e/v35-activity.spec.ts e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts
+          git diff --cached --quiet || git commit -m "feat: redesign CoinBuddy v3.5 Activity [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
