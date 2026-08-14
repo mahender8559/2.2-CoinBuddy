@@ -41,12 +41,12 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser regression
-        run: npx playwright test e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/v34-shared-finances.spec.ts
+        run: npx playwright test e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/v34-shared-finances.spec.ts e2e/cross-page-clutter.spec.ts
       - name: Commit verified V3.5 foundation
         if: success()
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/main.tsx src/v35.css src/App.tsx src/components/Header.tsx src/components/Navigation.tsx src/components/ManageFinances.tsx src/components/ButtonTourOverlay.tsx src/components/ui/V35.tsx e2e/v35-shell.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts
+          git add src/main.tsx src/v35.css src/App.tsx src/components/Header.tsx src/components/Navigation.tsx src/components/ManageFinances.tsx src/components/ButtonTourOverlay.tsx src/components/ui/V35.tsx e2e/v35-shell.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts e2e/cross-page-clutter.spec.ts
           git diff --cached --quiet || git commit -m "feat: establish CoinBuddy v3.5 app shell [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
