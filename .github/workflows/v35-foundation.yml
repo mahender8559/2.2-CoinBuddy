@@ -30,6 +30,10 @@ jobs:
         run: python scripts/refine_v35_dashboard.py
       - name: Apply V3.5 Activity redesign
         run: python scripts/apply_v35_activity.py
+      - name: Refine V3.5 Activity density
+        run: python scripts/refine_v35_activity.py
+      - name: Adapt Activity anti-clutter regression
+        run: python scripts/fix_v35_activity_tests.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
@@ -48,7 +52,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v35-dashboard-activity-screenshots
+          name: v35-dashboard-activity-refined-screenshots
           path: |
             test-results/**/v35-dashboard.png
             test-results/**/v35-activity.png
@@ -58,6 +62,6 @@ jobs:
         run: |
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
-          git add src/components/Activity.tsx e2e/v35-activity.spec.ts e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts
+          git add src/components/Activity.tsx e2e/v35-activity.spec.ts e2e/cross-page-clutter.spec.ts e2e/v35-shell.spec.ts e2e/ui-smoke.spec.ts e2e/affordability-phase7.spec.ts e2e/demo-data-v33.spec.ts e2e/v33-planning-reliability.spec.ts e2e/v34-shared-finances.spec.ts
           git diff --cached --quiet || git commit -m "feat: redesign CoinBuddy v3.5 Activity [skip ci]"
           git push origin HEAD:feature/v3.5-ui-refresh
