@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
   const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
-  const desktopSidebar = page.getByTestId('desktop-sidebar');
-  if (await desktopSidebar.isVisible()) {
-    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
 

@@ -10,7 +10,7 @@ export function Header({ onLogout, showLogout = true }: HeaderProps) {
   const { setWalletModalOpen, canUndo, canRedo, handleUndo, handleRedo, balancesVisible, toggleBalancesVisible } = useAppContext();
 
   return (
-    <header data-testid="app-header" className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-outline-variant/35 bg-background/88 px-4 backdrop-blur-xl md:px-6 xl:px-8">
+    <header data-testid="app-header" className="fixed inset-x-0 top-0 z-50 hidden h-16 items-center justify-between md:flex border-b border-outline-variant/35 bg-background/88 px-4 backdrop-blur-xl md:px-6 xl:px-8">
       <div className="flex min-w-0 items-center gap-2.5">
         <img src="/logo.png" alt="CoinBuddy" className="h-9 w-9 rounded-xl object-cover ring-1 ring-primary/25" />
         <div className="flex min-w-0 items-center gap-2">

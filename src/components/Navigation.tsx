@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight } from 'lucide-react';
+import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight, Wallet, Eye, EyeOff } from 'lucide-react';
 import { Tab } from '../types';
 import { useAppContext } from '../context/AppContext';
 
@@ -17,7 +17,7 @@ const getCurrentManageDestination = (): ManageDestination => {
 };
 
 export function Navigation({ activeTab, setActiveTab }: NavProps) {
-  const { setEditingTransaction, setAddModalOpen } = useAppContext();
+  const { setEditingTransaction, setAddModalOpen, balancesVisible, toggleBalancesVisible, setWalletModalOpen } = useAppContext();
   const [moreOpen, setMoreOpen] = useState(false);
   const [manageDestination, setManageDestination] = useState<ManageDestination>(getCurrentManageDestination);
 
@@ -132,6 +132,8 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
                 { label: 'Categories', icon: Tags, action: () => openManage('Categories') },
                 { label: 'Goals', icon: Target, action: () => openManage('Goals') },
                 { label: 'Insights', icon: LineChart, action: () => { setMoreOpen(false); setActiveTab('insights'); } },
+                { label: 'Wallet Summary', icon: Wallet, action: () => { setMoreOpen(false); setWalletModalOpen(true); } },
+                { label: balancesVisible ? 'Hide balances' : 'Show balances', icon: balancesVisible ? EyeOff : Eye, action: () => { toggleBalancesVisible(); setMoreOpen(false); } },
                 { label: 'Settings', icon: Settings, action: () => { setMoreOpen(false); setActiveTab('settings'); } },
               ].map(({ label, icon: Icon, action }) => (
                 <button key={label} onClick={action} className="v35-focus-ring flex min-h-14 w-full items-center gap-3 border-b border-outline-variant/20 px-4 text-left last:border-b-0 hover:bg-surface-container-high">

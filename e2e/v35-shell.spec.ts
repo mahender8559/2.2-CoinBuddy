@@ -15,6 +15,7 @@ test('v3.5 shell exposes intentional mobile and desktop navigation', async ({ pa
   if (width < 768) {
     await expect(page.getByTestId('mobile-bottom-nav')).toBeVisible();
     await expect(page.getByTestId('desktop-sidebar')).toBeHidden();
+    await expect(page.getByTestId('app-header')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Add Transaction' })).toBeVisible();
 
     await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More' }).click();
@@ -27,6 +28,7 @@ test('v3.5 shell exposes intentional mobile and desktop navigation', async ({ pa
   } else {
     await expect(page.getByTestId('desktop-sidebar')).toBeVisible();
     await expect(page.getByTestId('mobile-bottom-nav')).toBeHidden();
+    await expect(page.getByTestId('app-header')).toBeVisible();
     await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Sharing' }).click();
     await expect(page.getByText('What do you want to do?')).toBeVisible();
     await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Accounts' }).click();

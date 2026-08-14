@@ -187,21 +187,21 @@ export function Dashboard() {
       <EmiAdvocateBanner />
 
       <section aria-labelledby="v35-dashboard-title" className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-primary">Your financial overview</p>
-            <h1 id="v35-dashboard-title" className="mt-1 text-2xl font-semibold tracking-tight text-on-surface sm:text-3xl">
+            <h1 id="v35-dashboard-title" className="text-xl font-semibold tracking-tight text-on-surface sm:text-3xl">
               {greeting}, {firstName} ✨
             </h1>
-            <p className="mt-1 text-sm text-on-surface-variant">Here’s what your money looks like right now.</p>
+            <p className="mt-1 hidden text-sm text-on-surface-variant sm:block">Here’s what your money looks like right now.</p>
           </div>
-          <div className="inline-flex min-h-10 w-fit items-center rounded-xl border border-outline-variant/40 bg-surface-container-low px-3 text-xs font-semibold text-on-surface-variant">
-            {cycleLabel}
+          <div className="inline-flex min-h-9 shrink-0 items-center rounded-xl border border-outline-variant/40 bg-surface-container-low px-2.5 text-[11px] font-semibold text-on-surface-variant sm:min-h-10 sm:px-3 sm:text-xs">
+            <span className="sm:hidden">{monthCycleDay > 1 ? `Cycle · ${monthCycleDay}` : 'This month'}</span>
+            <span className="hidden sm:inline">{cycleLabel}</span>
           </div>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,.85fr)]">
-          <article className="v35-surface overflow-hidden rounded-2xl p-5 sm:p-6" aria-label="Net Worth overview">
+          <article className="v35-surface overflow-hidden rounded-2xl p-4 sm:p-6" aria-label="Net Worth overview">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-on-surface-variant">Net Worth</p>
@@ -218,7 +218,7 @@ export function Dashboard() {
               </span>
             </div>
 
-            <div className="mt-5 h-48 w-full sm:h-56">
+            <div className="mt-3 h-32 w-full sm:mt-5 sm:h-48 xl:h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 8, right: 6, left: 0, bottom: 0 }}>
                   <defs>
@@ -250,24 +250,24 @@ export function Dashboard() {
           </article>
 
           <div className="grid grid-cols-2 gap-3" data-tour-id="tour-account-cards">
-            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+            <article className="v35-surface rounded-2xl p-3.5 sm:p-5">
               <div className="flex items-center gap-2 text-[var(--cb-green)]"><PiggyBank className="h-4 w-4"/><span className="text-xs font-semibold">Assets</span></div>
-              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={totalAssets} format={formatCurrency} /></p>
+              <p className="mt-2.5 text-base font-semibold text-on-surface sm:mt-3 sm:text-xl"><AnimatedNumber value={totalAssets} format={formatCurrency} /></p>
               <p className="mt-1 text-[11px] text-on-surface-variant">What you own</p>
             </article>
-            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+            <article className="v35-surface rounded-2xl p-3.5 sm:p-5">
               <div className="flex items-center gap-2 text-[var(--cb-red)]"><CreditCard className="h-4 w-4"/><span className="text-xs font-semibold">Liabilities</span></div>
-              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={totalLiabilities} format={formatCurrency} /></p>
+              <p className="mt-2.5 text-base font-semibold text-on-surface sm:mt-3 sm:text-xl"><AnimatedNumber value={totalLiabilities} format={formatCurrency} /></p>
               <p className="mt-1 text-[11px] text-on-surface-variant">Your exposure</p>
             </article>
-            <article className="v35-surface rounded-2xl p-4 sm:p-5" data-tour-id="tour-summary-widgets">
+            <article className="v35-surface rounded-2xl p-3.5 sm:p-5" data-tour-id="tour-summary-widgets">
               <div className="flex items-center gap-2 text-[var(--cb-green)]"><ArrowDownRight className="h-4 w-4"/><span className="text-xs font-semibold">Income</span></div>
-              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={cycleIncome} format={formatCurrency} /></p>
+              <p className="mt-2.5 text-base font-semibold text-on-surface sm:mt-3 sm:text-xl"><AnimatedNumber value={cycleIncome} format={formatCurrency} /></p>
               <p className="mt-1 text-[11px] text-on-surface-variant">This cycle</p>
             </article>
-            <article className="v35-surface rounded-2xl p-4 sm:p-5">
+            <article className="v35-surface rounded-2xl p-3.5 sm:p-5">
               <div className="flex items-center gap-2 text-[var(--cb-red)]"><ArrowUpRight className="h-4 w-4"/><span className="text-xs font-semibold">Expenses</span></div>
-              <p className="mt-3 text-lg font-semibold text-on-surface sm:text-xl"><AnimatedNumber value={cycleExpenses} format={formatCurrency} /></p>
+              <p className="mt-2.5 text-base font-semibold text-on-surface sm:mt-3 sm:text-xl"><AnimatedNumber value={cycleExpenses} format={formatCurrency} /></p>
               <p className={`mt-1 text-[11px] font-medium ${cycleNet >= 0 ? 'text-[var(--cb-green)]' : 'text-[var(--cb-red)]'}`}>{cycleNet >= 0 ? '+' : ''}{formatCurrency(cycleNet)} net cash flow</p>
             </article>
           </div>

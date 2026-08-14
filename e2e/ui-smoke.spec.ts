@@ -17,9 +17,9 @@ async function prepareApp(page: Page) {
 }
 
 async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings') {
-  const desktopSidebar = page.getByTestId('desktop-sidebar');
-  if (await desktopSidebar.isVisible()) {
-    await desktopSidebar.getByRole('button', { name: destination, exact: true }).click();
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
 
