@@ -1,0 +1,161 @@
+name: Normalize and verify desktop layout
+
+on:
+  push:
+    branches:
+      - feature/v3.4-shared-finances
+
+permissions:
+  contents: write
+
+jobs:
+  normalize-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v3.4-shared-finances
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Normalize main-page desktop canvas
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          replacements = {
+            'src/App.tsx': [
+              ('<div className="w-full mx-auto px-3 sm:px-5 py-4 sm:py-6 pb-28 md:pb-6">',
+               '<div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-6 pb-28 md:pb-6">'),
+            ],
+            'src/components/Dashboard.tsx': [
+              ('<div className="space-y-6 animate-fade-in pb-24 md:pb-0 max-w-lg mx-auto relative">',
+               '<div data-testid="page-dashboard" className="w-full space-y-6 animate-fade-in pb-24 md:pb-0 relative">'),
+            ],
+            'src/components/Activity.tsx': [
+              ('<div className="space-y-6 pb-24 md:pb-0 animate-fade-in">',
+               '<div data-testid="page-activity" className="w-full space-y-6 pb-24 md:pb-0 animate-fade-in">'),
+            ],
+            'src/components/ManageFinances.tsx': [
+              ('<div className="space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>',
+               '<div data-testid="page-manage" className="w-full space-y-6 animate-fade-in pb-safe touch-pan-y" {...mainTabSwipe}>'),
+            ],
+            'src/components/Cards.tsx': [
+              ('<div className="space-y-10 pb-24 md:pb-0 animate-fade-in max-w-3xl mx-auto">',
+               '<div data-testid="page-accounts" className="w-full space-y-10 pb-24 md:pb-0 animate-fade-in">'),
+            ],
+            'src/components/Settings.tsx': [
+              ('<div className="space-y-8 pb-24 md:pb-0 max-w-3xl mx-auto animate-fade-in relative">',
+               '<div data-testid="page-settings" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in relative">'),
+            ],
+            'src/components/Insights.tsx': [
+              ('<div className="space-y-8 pb-24 md:pb-0 animate-fade-in">',
+               '<div data-testid="page-insights" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in">'),
+            ],
+          }
+
+          for filename, pairs in replacements.items():
+            path = Path(filename)
+            text = path.read_text()
+            for old, new in pairs:
+              if old not in text:
+                raise SystemExit(f'Expected layout marker not found in {filename}: {old}')
+              text = text.replace(old, new, 1)
+            path.write_text(text)
+
+          test_path = Path('e2e/layout-consistency.spec.ts')
+          test_path.write_text(r'''import { expect, test, type Page, type TestInfo } from '@playwright/test';
+
+async function prepare(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
+    localStorage.setItem('hasCompletedButtonTour', 'true');
+  });
+}
+
+async function measure(page: Page, route: string, testId: string) {
+  await page.goto(`/?tab=${route}`);
+  const root = page.getByTestId(testId);
+  await expect(root).toBeVisible();
+  const box = await root.boundingBox();
+  expect(box, `${route} root should have a rendered box`).not.toBeNull();
+  return box!;
+}
+
+async function capture(page: Page, testInfo: TestInfo, name: string) {
+  await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: false });
+}
+
+test('main pages share one responsive canvas', async ({ page }, testInfo) => {
+  await prepare(page);
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+
+  const dashboard = await measure(page, 'dashboard', 'page-dashboard');
+  await capture(page, testInfo, 'dashboard-layout');
+  const activity = await measure(page, 'activity', 'page-activity');
+  await capture(page, testInfo, 'activity-layout');
+
+  await page.goto('/?tab=manage');
+  await expect(page.getByTestId('page-manage')).toBeVisible();
+  await expect(page.getByTestId('page-accounts')).toBeVisible();
+  const accounts = (await page.getByTestId('page-accounts').boundingBox())!;
+  await capture(page, testInfo, 'accounts-layout');
+
+  const insights = await measure(page, 'insights', 'page-insights');
+  const settings = await measure(page, 'settings', 'page-settings');
+  await capture(page, testInfo, 'settings-layout');
+
+  const boxes = [dashboard, activity, accounts, insights, settings];
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+  if ((viewport?.width ?? 0) >= 768) {
+    const widths = boxes.map(box => box.width);
+    const spread = Math.max(...widths) - Math.min(...widths);
+    expect(spread, `desktop page width spread was ${spread}px`).toBeLessThanOrEqual(2);
+    expect(Math.min(...widths)).toBeGreaterThan((viewport?.width ?? 0) * 0.75);
+  } else {
+    for (const box of boxes) {
+      expect(box.width).toBeLessThanOrEqual((viewport?.width ?? 0) - 16);
+      expect(box.width).toBeGreaterThan((viewport?.width ?? 0) - 48);
+    }
+  }
+});
+''')
+          PY
+
+      - run: npm ci
+      - name: Dependency audit
+        run: npm audit
+      - name: TypeScript
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Production/PWA build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Desktop and mobile browser regression
+        run: npm run test:e2e
+      - name: Upload layout screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-consistency-screenshots
+          path: test-results/**/**-layout.png
+          if-no-files-found: warn
+      - name: Commit verified layout normalization
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add src/App.tsx src/components/Dashboard.tsx src/components/Activity.tsx src/components/ManageFinances.tsx src/components/Cards.tsx src/components/Settings.tsx src/components/Insights.tsx e2e/layout-consistency.spec.ts
+          git commit -m "fix: unify desktop page layout widths"
+          git push origin HEAD:feature/v3.4-shared-finances
