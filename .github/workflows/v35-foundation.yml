@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - name: Apply V3.5 foundation
         run: python scripts/apply_v35_foundation.py
+      - name: Normalize generated source
+        run: python scripts/fix_v35_foundation.py
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit
