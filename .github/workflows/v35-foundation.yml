@@ -5,6 +5,10 @@ on:
     branches:
       - feature/v3.5-ui-refresh
 
+concurrency:
+  group: coinbuddy-v35-ui-refresh
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
