@@ -52,8 +52,13 @@ jobs:
           fi
       - name: Adapt legacy Insights regressions
         run: python scripts/fix_v35_insights_tests.py
-      - name: Apply V3.5 Categories and Transaction Details
-        run: python scripts/apply_v35_categories_transaction_details.py
+      - name: Preserve V3.5 Categories and Transaction Details
+        run: |
+          if test -f src/components/V35CategoriesPanel.tsx && test -f src/components/V35TransactionDetail.tsx && grep -q "V35TransactionDetail" src/components/Activity.tsx && grep -q "<V35CategoriesPanel" src/components/ManageFinances.tsx; then
+            echo 'V3.5 Categories and Transaction Details already committed; skipping migration.'
+          else
+            python scripts/apply_v35_categories_transaction_details.py
+          fi
       - name: Apply V3.5 forms and modal system
         run: python scripts/apply_v35_forms_modals.py
       - name: Install dependencies
