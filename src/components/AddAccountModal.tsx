@@ -1,6 +1,6 @@
-import { useState, FormEvent, useEffect } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { AlertTriangle, ArrowLeft, Banknote, BarChart3, Box, ChevronDown, CircleDollarSign, CreditCard, Landmark, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { X, ShieldAlert, Info } from 'lucide-react';
 import { calculateEmiAmount } from '../utils/emi';
 import { CurrencyInput } from './CurrencyInput';
 import { V35ModalFrame } from './ui/V35ModalFrame';
@@ -9,13 +9,13 @@ import { findInvestmentSipRule } from '../domain/investmentSip';
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function AddAccountModal() {
-  const { 
-    addAccountModalType, 
-    setAddAccountModalType, 
-    addAccount, 
-    updateAccount, 
+  const {
+    addAccountModalType,
+    setAddAccountModalType,
+    addAccount,
+    updateAccount,
     deleteAccount,
-    addCreditCard, 
+    addCreditCard,
     updateCreditCard,
     editingAccount,
     setEditingAccount,
@@ -27,14 +27,12 @@ export function AddAccountModal() {
     people,
     loanSharingRules,
     loanContributionRules,
-    getCurrencySymbol
+    getCurrencySymbol,
   } = useAppContext();
-  
-  // Generic fields
+
   const [name, setName] = useState('');
   const [balance, setBalance] = useState('');
-  
-  // Asset fields
+
   const [group, setGroup] = useState('Bank Account');
   const [investmentMethod, setInvestmentMethod] = useState<'SIP' | 'Lump Sum'>('SIP');
   const [investedAmount, setInvestedAmount] = useState('');
@@ -42,14 +40,12 @@ export function AddAccountModal() {
   const [nextSIPDate, setNextSIPDate] = useState('');
   const [sipSourceAccountId, setSipSourceAccountId] = useState('');
 
-  // Liability fields
   const [liabilityType, setLiabilityType] = useState('Credit Card');
   const [dueAmount, setDueAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [billingCycleDay, setBillingCycleDay] = useState('1');
   const [limit, setLimit] = useState('');
-  
-  // Loan fields
+
   const [originalPrincipal, setOriginalPrincipal] = useState('');
   const [interestRate, setInterestRate] = useState('');
   const [monthlyEMI, setMonthlyEMI] = useState('');
@@ -63,12 +59,10 @@ export function AddAccountModal() {
   const [personalResponsibilityPercent, setPersonalResponsibilityPercent] = useState('100');
   const [contributionMode, setContributionMode] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [contributionValues, setContributionValues] = useState<Record<string, string>>({});
-  
-  // Interest-Only Loan fields
+
   const [monthlyInterestRate, setMonthlyInterestRate] = useState('');
   const [nextInterestDueDate, setNextInterestDueDate] = useState('');
 
-  // Penalty fields (Financial Advocate Mode)
   const [lateFeeFixedAmount, setLateFeeFixedAmount] = useState('');
   const [lateFeeInterestRate, setLateFeeInterestRate] = useState('');
   const [gracePeriodDays, setGracePeriodDays] = useState('0');
@@ -77,19 +71,15 @@ export function AddAccountModal() {
   const showError = (message: string) => setError({ message, id: Date.now() });
 
   useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        setError(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(timer);
   }, [error]);
 
-  // Populate or reset fields when modal opens/edits
   useEffect(() => {
     if (editingCreditCard) {
       setName(editingCreditCard.name || '');
-      const openingTx = transactions.find(t => 
+      const openingTx = transactions.find(t =>
         (t.isOpeningBalance || t.transaction_type === 'OPENING_BALANCE') &&
         (t.account === editingCreditCard.id || t.toAccountId === editingCreditCard.id || t.fromAccountId === editingCreditCard.id)
       );
@@ -101,7 +91,7 @@ export function AddAccountModal() {
       setLimit(editingCreditCard.limit !== undefined ? editingCreditCard.limit.toString() : '');
     } else if (editingAccount) {
       setName(editingAccount.name || '');
-      const openingTx = transactions.find(t => 
+      const openingTx = transactions.find(t =>
         (t.isOpeningBalance || t.transaction_type === 'OPENING_BALANCE') &&
         (t.account === editingAccount.id || t.toAccountId === editingAccount.id || t.fromAccountId === editingAccount.id)
       );
@@ -117,18 +107,18 @@ export function AddAccountModal() {
       } else {
         setLiabilityType(editingAccount.group || 'Bank Loan');
         setOriginalPrincipal(editingAccount.originalPrincipal !== undefined ? editingAccount.originalPrincipal.toString() : (editingAccount.balance !== undefined ? editingAccount.balance.toString() : ''));
-        setInterestRate(editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : (editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : ''));
-        setMonthlyEMI(editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : (editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : ''));
-        setNextEMIDate(editingAccount.nextEMIDate || editingAccount.loanStartDate || editingAccount.loanStartDate || '');
+        setInterestRate(editingAccount.interestRate !== undefined ? editingAccount.interestRate.toString() : '');
+        setMonthlyEMI(editingAccount.monthlyEMI !== undefined ? editingAccount.monthlyEMI.toString() : '');
+        setNextEMIDate(editingAccount.nextEMIDate || editingAccount.loanStartDate || '');
         setInterestCalculationType(editingAccount.interestCalculationType || 'REDUCING');
         setPaymentFrequency(editingAccount.paymentFrequency || 'MONTHLY');
-        setTenureMonths(editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : (editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : ''));
-        setLoanStartDate(editingAccount.loanStartDate || editingAccount.loanStartDate || editingAccount.nextEMIDate || '');
+        setTenureMonths(editingAccount.tenureMonths !== undefined ? editingAccount.tenureMonths.toString() : '');
+        setLoanStartDate(editingAccount.loanStartDate || editingAccount.nextEMIDate || '');
         setMonthlyInterestRate(editingAccount.monthlyInterestRate !== undefined ? editingAccount.monthlyInterestRate.toString() : '');
         setNextInterestDueDate(editingAccount.nextInterestDueDate || '');
-        setLateFeeFixedAmount(editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : (editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : ''));
-        setLateFeeInterestRate(editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : (editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : ''));
-        setGracePeriodDays(editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : (editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : '0'));
+        setLateFeeFixedAmount(editingAccount.lateFeeFixedAmount !== undefined ? editingAccount.lateFeeFixedAmount.toString() : '');
+        setLateFeeInterestRate(editingAccount.lateFeeInterestRate !== undefined ? editingAccount.lateFeeInterestRate.toString() : '');
+        setGracePeriodDays(editingAccount.gracePeriodDays !== undefined ? editingAccount.gracePeriodDays.toString() : '0');
         const sharing = loanSharingRules.find(rule => rule.accountId === editingAccount.id && rule.isShared);
         const contributions = loanContributionRules.filter(rule => rule.accountId === editingAccount.id && rule.isActive);
         setIsSharedLoan(Boolean(sharing));
@@ -170,27 +160,21 @@ export function AddAccountModal() {
       setContributionValues({});
       setIsEmiManualOverride(false);
     }
-  }, [addAccountModalType, editingAccount, editingCreditCard, recurringRules, loanSharingRules, loanContributionRules]);
+  }, [addAccountModalType, editingAccount, editingCreditCard, recurringRules, loanSharingRules, loanContributionRules, transactions]);
 
-  // Auto-set interestCalculationType when liabilityType changes
   useEffect(() => {
-    if (liabilityType === 'Interest-Only Loan') {
-      setInterestCalculationType('INTEREST_ONLY');
-    }
+    if (liabilityType === 'Interest-Only Loan') setInterestCalculationType('INTEREST_ONLY');
   }, [liabilityType]);
 
-  // Auto-calculate EMI when Principal, Rate, Tenure, Calculation Type, or Payment Frequency changes
   useEffect(() => {
     const isLoanType = liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan';
     if (addAccountModalType === 'liability' && isLoanType && !isEmiManualOverride) {
-      const p = parseFloat(originalPrincipal) || parseFloat(balance) || 0;
+      const principal = parseFloat(originalPrincipal) || parseFloat(balance) || 0;
       const rate = parseFloat(interestRate) || 0;
       const tenure = parseInt(tenureMonths) || 0;
-      if (p > 0 && (tenure > 0 || interestCalculationType === 'INTEREST_ONLY')) {
-        const calculated = calculateEmiAmount(p, rate, tenure || 1, interestCalculationType, paymentFrequency);
-        if (calculated >= 0) {
-          setMonthlyEMI(calculated.toString());
-        }
+      if (principal > 0 && (tenure > 0 || interestCalculationType === 'INTEREST_ONLY')) {
+        const calculated = calculateEmiAmount(principal, rate, tenure || 1, interestCalculationType, paymentFrequency);
+        if (calculated >= 0) setMonthlyEMI(calculated.toString());
       }
     }
   }, [originalPrincipal, balance, interestRate, tenureMonths, interestCalculationType, paymentFrequency, liabilityType, addAccountModalType, isEmiManualOverride]);
@@ -224,25 +208,17 @@ export function AddAccountModal() {
           investedAmount: Math.abs(Number(investedAmount) || 0),
           ...(investmentMethod === 'SIP' ? {
             monthlySIPAmount: Math.abs(Number(monthlySIPAmount) || 0),
-            nextSIPDate: nextSIPDate
-          } : {})
-        } : {})
+            nextSIPDate,
+          } : {}),
+        } : {}),
       };
 
       if (editingAccount) {
-        try {
-          updateAccount(editingAccount.id, assetData, { sipSourceAccountId });
-        } catch (err: unknown) {
-          showError(getErrorMessage(err, 'Failed to update account'));
-          return;
-        }
+        try { updateAccount(editingAccount.id, assetData, { sipSourceAccountId }); }
+        catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account')); return; }
       } else {
-        try {
-          addAccount(assetData, { sipSourceAccountId });
-        } catch (err: unknown) {
-          showError(getErrorMessage(err, 'Failed to add account'));
-          return;
-        }
+        try { addAccount(assetData, { sipSourceAccountId }); }
+        catch (err: unknown) { showError(getErrorMessage(err, 'Failed to add account')); return; }
       }
     } else {
       if (liabilityType === 'Credit Card') {
@@ -253,31 +229,19 @@ export function AddAccountModal() {
           dueAmount: Math.abs(Number(dueAmount) || 0),
           dueDate,
           billingCycleDay: parseInt(billingCycleDay, 10) || 1,
-          limit: Math.abs(Number(limit) || 0)
+          limit: Math.abs(Number(limit) || 0),
         };
 
         if (editingCreditCard) {
-          try {
-            updateCreditCard(editingCreditCard.id, cardData);
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to update credit card'));
-            return;
-          }
+          try { updateCreditCard(editingCreditCard.id, cardData); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update credit card')); return; }
         } else {
           if (editingAccount) {
-            try {
-              deleteAccount(editingAccount.id);
-            } catch (err: unknown) {
-              showError(getErrorMessage(err, 'Failed to update account type'));
-              return;
-            }
+            try { deleteAccount(editingAccount.id); }
+            catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account type')); return; }
           }
-          try {
-            addCreditCard(cardData);
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to add credit card'));
-            return;
-          }
+          try { addCreditCard(cardData); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to add credit card')); return; }
         }
       } else if (liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan' || liabilityType === 'Other') {
         const numP = Math.abs(Number(originalPrincipal) || numBalance);
@@ -290,6 +254,7 @@ export function AddAccountModal() {
           isActive: isSharedLoan,
         })).filter(rule => !isSharedLoan || rule.value > 0);
         const responsibilityPercent = Number(personalResponsibilityPercent);
+
         if (isSharedLoan) {
           if (activePeople.length < 2) { showError('Add at least one other person in Manage → Sharing before configuring a shared loan.'); return; }
           if (!Number.isFinite(responsibilityPercent) || responsibilityPercent < 0 || responsibilityPercent > 100) { showError('Your liability responsibility must be between 0% and 100%.'); return; }
@@ -298,7 +263,12 @@ export function AddAccountModal() {
           if (contributionMode === 'FIXED' && Math.abs(contributionTotal - Math.abs(Number(monthlyEMI) || 0)) > 0.01) { showError('Fixed EMI contributions must add up to the full loan payment.'); return; }
           if (!sharingContributions.some(rule => people.find(person => person.id === rule.personId)?.isSelf)) { showError('Set your own EMI contribution before saving the shared loan.'); return; }
         }
-        const loanSharing = { isShared: isSharedLoan, personalResponsibilityPercent: isSharedLoan ? responsibilityPercent : 100, contributions: isSharedLoan ? sharingContributions : [] };
+
+        const loanSharing = {
+          isShared: isSharedLoan,
+          personalResponsibilityPercent: isSharedLoan ? responsibilityPercent : 100,
+          contributions: isSharedLoan ? sharingContributions : [],
+        };
         const loanData = {
           name,
           type: 'liability' as const,
@@ -310,7 +280,7 @@ export function AddAccountModal() {
           interestRate: Math.abs(Number(interestRate) || 0),
           monthlyEMI: Math.abs(Number(monthlyEMI) || 0),
           interestCalculationType: finalInterestCalcType,
-          paymentFrequency: paymentFrequency,
+          paymentFrequency,
           tenureMonths: Math.abs(Number(tenureMonths) || 0),
           loanStartDate: loanStartDate || nextEMIDate,
           nextEMIDate: nextEMIDate || loanStartDate,
@@ -320,616 +290,122 @@ export function AddAccountModal() {
         };
 
         if (editingCreditCard) {
-          try {
-            deleteAccount(editingCreditCard.id);
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to update account type'));
-            return;
-          }
+          try { deleteAccount(editingCreditCard.id); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account type')); return; }
           addAccount(loanData, { loanSharing });
         } else if (editingAccount) {
-          try {
-            updateAccount(editingAccount.id, loanData, { loanSharing });
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to update account'));
-            return;
-          }
+          try { updateAccount(editingAccount.id, loanData, { loanSharing }); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account')); return; }
         } else {
           addAccount(loanData, { loanSharing });
         }
       } else {
-        const otherData = {
-          name,
-          type: 'liability' as const,
-          balance: numBalance,
-          group: liabilityType
-        };
-
+        const otherData = { name, type: 'liability' as const, balance: numBalance, group: liabilityType };
         if (editingCreditCard) {
-          try {
-            deleteAccount(editingCreditCard.id);
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to update account type'));
-            return;
-          }
+          try { deleteAccount(editingCreditCard.id); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account type')); return; }
           addAccount(otherData);
         } else if (editingAccount) {
-          try {
-            updateAccount(editingAccount.id, otherData);
-          } catch (err: unknown) {
-            showError(getErrorMessage(err, 'Failed to update account'));
-            return;
-          }
+          try { updateAccount(editingAccount.id, otherData); }
+          catch (err: unknown) { showError(getErrorMessage(err, 'Failed to update account')); return; }
         } else {
           addAccount(otherData);
         }
       }
     }
-    
+
     handleClose();
   };
 
   const isEditing = Boolean(editingAccount || editingCreditCard);
+  const activePeople = people.filter(person => !person.isArchived);
+  const assetAccounts = accounts.filter(account => account.type === 'asset' && !account.is_archived);
+  const isLoanType = addAccountModalType === 'liability' && ['Bank Loan', 'Loan', 'Mortgage', 'Interest-Only Loan'].includes(liabilityType);
+  const fieldClass = 'h-10 w-full rounded-lg border border-[#21334a] bg-[#111d2d] px-3 text-[12px] font-medium text-[#f5f7fb] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]';
+  const labelClass = 'mb-1.5 block text-[10.5px] font-medium text-[#cbd4e0]';
+
+  const accountKinds = [
+    { id: 'bank', label: 'Bank', icon: Landmark, active: addAccountModalType === 'asset' && group === 'Bank Account', select: () => { setAddAccountModalType('asset'); setGroup('Bank Account'); } },
+    { id: 'cash', label: 'Cash', icon: Banknote, active: addAccountModalType === 'asset' && group === 'Cash', select: () => { setAddAccountModalType('asset'); setGroup('Cash'); } },
+    { id: 'loan', label: 'Loan', icon: CircleDollarSign, active: addAccountModalType === 'liability' && liabilityType !== 'Credit Card' && liabilityType !== 'Other', select: () => { setAddAccountModalType('liability'); setLiabilityType('Bank Loan'); } },
+    { id: 'investment', label: 'Investment', icon: BarChart3, active: addAccountModalType === 'asset' && group === 'Investment', select: () => { setAddAccountModalType('asset'); setGroup('Investment'); } },
+    { id: 'credit-card', label: 'Credit Card', icon: CreditCard, active: addAccountModalType === 'liability' && liabilityType === 'Credit Card', select: () => { setAddAccountModalType('liability'); setLiabilityType('Credit Card'); } },
+    { id: 'other', label: 'Other', icon: Box, active: (addAccountModalType === 'asset' && group === 'Physical Asset') || (addAccountModalType === 'liability' && liabilityType === 'Other'), select: () => { setAddAccountModalType('asset'); setGroup('Physical Asset'); } },
+  ];
 
   return (
-    <V35ModalFrame size="md" testId="account-form-sheet" labelledBy="account-form-title" panelClassName="overflow-y-auto p-5 sm:p-6">
-        <button 
-          type="button"
-          aria-label="Close account form"
-          onClick={handleClose}
-          className="v35-focus-ring absolute right-4 top-3 flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface sm:top-4"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        
-        <div className="mb-5 flex min-h-10 items-center justify-between gap-3 pr-11">
-          <h2 id="account-form-title" className="text-lg font-semibold text-on-surface sm:text-xl">
-            {isEditing 
-              ? (addAccountModalType === 'asset' ? 'Edit Asset' : 'Edit Liability')
-              : (addAccountModalType === 'asset' ? 'Add Asset' : 'Add Liability')
-            }
-          </h2>
-          {isEditing && (
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md bg-surface-container-high text-on-surface-variant">
-                {addAccountModalType}
-              </span>
-              <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md bg-primary/10 text-primary">
-                {addAccountModalType === 'asset' ? group : liabilityType}
-              </span>
-            </div>
-          )}
-        </div>
-        
-        {error && (
-          <div className="bg-rose-500/10 text-rose-400 p-4 rounded-xl mb-4 border border-rose-500/20 text-sm">
-            {error.message}
-          </div>
-        )}
+    <V35ModalFrame size="sm" testId="account-form-sheet" labelledBy="account-form-title">
+      <div className="grid h-[54px] shrink-0 grid-cols-[40px_1fr_40px] items-center border-b border-[#21334a]/70 px-2.5">
+        <button type="button" aria-label="Back from account form" onClick={handleClose} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]"><ArrowLeft className="h-4 w-4" /></button>
+        <h2 id="account-form-title" className="text-center text-[14px] font-semibold text-white">{isEditing ? 'Edit Account' : 'Add Account'}</h2>
+        <button type="button" aria-label="Close account form" onClick={handleClose} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]"><X className="h-4 w-4" /></button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {error ? <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2.5 text-[11px] font-medium text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error.message}</span></div> : null}
+
           <div>
-            <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-              {addAccountModalType === 'asset' ? 'Asset Name' : 'Liability Name'}
-            </label>
-            <input 
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-              placeholder={addAccountModalType === 'asset' ? 'e.g. Primary Checking' : 'e.g. Car Loan'}
-            />
+            <span className={labelClass}>Account Type</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {accountKinds.map(kind => {
+                const Icon = kind.icon;
+                return <button key={kind.id} type="button" onClick={kind.select} aria-pressed={kind.active} className={`flex h-[54px] flex-col items-center justify-center gap-1 rounded-lg border text-[9.5px] font-medium transition ${kind.active ? 'border-blue-500 bg-blue-500/12 text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,.15)]' : kind.id === 'cash' ? 'border-emerald-500/20 bg-emerald-500/7 text-emerald-200' : kind.id === 'loan' || kind.id === 'credit-card' ? 'border-purple-500/20 bg-purple-500/7 text-purple-200' : 'border-[#21334a] bg-[#101c2c] text-[#a4b1c1]'}`}><Icon className="h-4 w-4" /><span>{kind.label}</span></button>;
+              })}
+            </div>
           </div>
 
-          {!isEditing && (addAccountModalType === 'asset' ? (
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Asset Type</label>
-              <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/30 flex-wrap sm:flex-nowrap">
-                {['Bank Account', 'Cash', 'Investment', 'Physical Asset'].map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setGroup(type)}
-                    className={`flex-1 text-xs font-semibold py-2 px-1 rounded-lg transition-colors min-w-fit ${
-                      group === type 
-                        ? 'bg-surface-container-high text-on-surface shadow-sm' 
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
+          <div><label htmlFor="account-name" className={labelClass}>Account Name</label><input id="account-name" value={name} onChange={event => setName(event.target.value)} placeholder="e.g. HDFC Salary Account" className={fieldClass} required /></div>
+
+          <div><label htmlFor="opening-balance" className={labelClass}>Opening Balance</label><div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#9aa8ba]">{getCurrencySymbol()}</span><CurrencyInput id="opening-balance" value={balance} onValueChange={setBalance} placeholder="0.00" className={`${fieldClass} pl-8 font-numeric`} required /></div></div>
+
+          <div><span className={labelClass}>Account Holder</span><div className="flex h-10 items-center justify-between rounded-lg border border-[#21334a] bg-[#111d2d] px-3 text-[12px] font-medium text-white"><span>Me</span><ChevronDown className="h-4 w-4 text-[#7f8fa4]" /></div></div>
+
+          {group === 'Investment' && addAccountModalType === 'asset' ? (
+            <details open className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between px-3 text-[11px] font-medium text-[#a0afc1]">Investment details<ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+              <div className="space-y-3 border-t border-[#1f3046] p-3">
+                <div><span className={labelClass}>Investment Method</span><div className="grid grid-cols-2 gap-1 rounded-lg border border-[#21334a] bg-[#0c1726] p-1"><button type="button" onClick={() => setInvestmentMethod('SIP')} className={`h-8 rounded-md text-[10.5px] font-medium ${investmentMethod === 'SIP' ? 'bg-blue-600 text-white' : 'text-[#94a4b8]'}`}>SIP</button><button type="button" onClick={() => setInvestmentMethod('Lump Sum')} className={`h-8 rounded-md text-[10.5px] font-medium ${investmentMethod === 'Lump Sum' ? 'bg-blue-600 text-white' : 'text-[#94a4b8]'}`}>Lump Sum</button></div></div>
+                <div><label className={labelClass}>Total Invested Amount</label><CurrencyInput value={investedAmount} onValueChange={setInvestedAmount} className={fieldClass} placeholder="0.00" /></div>
+                {investmentMethod === 'SIP' ? <><div><label className={labelClass}>Monthly SIP Amount</label><CurrencyInput value={monthlySIPAmount} onValueChange={setMonthlySIPAmount} className={fieldClass} placeholder="0.00" /></div><div><label className={labelClass}>Next SIP Date</label><input type="date" value={nextSIPDate} onChange={event => setNextSIPDate(event.target.value)} className={fieldClass} /></div><div><label className={labelClass}>Funding Account</label><select value={sipSourceAccountId} onChange={event => setSipSourceAccountId(event.target.value)} className={fieldClass}><option value="">Select funding account</option>{assetAccounts.filter(account => account.id !== editingAccount?.id).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div></> : null}
               </div>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Liability Type</label>
-              <select
-                aria-label="Liability Type"
-                value={liabilityType}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setLiabilityType(val);
-                  if (val === 'Interest-Only Loan') {
-                    setInterestCalculationType('INTEREST_ONLY');
-                  }
-                  setIsEmiManualOverride(false);
-                }}
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
-              >
-                <option value="Bank Loan">Bank Loan</option>
-                <option value="Credit Card">Credit Card</option>
-                <option value="Loan">Personal Loan</option>
-                <option value="Interest-Only Loan">Interest-Only Loan</option>
-                <option value="Mortgage">Mortgage</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-          ))}
+            </details>
+          ) : null}
 
-          {addAccountModalType === 'liability' && liabilityType === 'Credit Card' && (
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Credit Limit</label>
-              <CurrencyInput
-                required
-                value={limit}
-                onValueChange={setLimit}
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                placeholder="e.g. 5000"
-              />
-            </div>
-          )}
+          {addAccountModalType === 'liability' && liabilityType === 'Credit Card' ? (
+            <details open className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between px-3 text-[11px] font-medium text-[#a0afc1]">Credit card details<ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+              <div className="space-y-3 border-t border-[#1f3046] p-3">
+                <div><label className={labelClass}>Credit Limit</label><CurrencyInput value={limit} onValueChange={setLimit} className={fieldClass} required /></div>
+                <div><label className={labelClass}>Amount Due</label><CurrencyInput value={dueAmount} onValueChange={setDueAmount} className={fieldClass} /></div>
+                <div className="grid grid-cols-2 gap-2"><div><label className={labelClass}>Due Date</label><input type="date" value={dueDate} onChange={event => setDueDate(event.target.value)} className={fieldClass} required /></div><div><label className={labelClass}>Billing Day</label><input type="number" min="1" max="31" value={billingCycleDay} onChange={event => setBillingCycleDay(event.target.value)} className={fieldClass} /></div></div>
+              </div>
+            </details>
+          ) : null}
 
-          {addAccountModalType === 'asset' && group === 'Investment' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Investment Method</label>
-                <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/30">
-                  {['SIP', 'Lump Sum'].map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setInvestmentMethod(method as 'SIP' | 'Lump Sum')}
-                      className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${
-                        investmentMethod === method 
-                          ? 'bg-surface-container-high text-on-surface shadow-sm' 
-                          : 'text-on-surface-variant hover:text-on-surface'
-                      }`}
-                    >
-                      {method}
-                    </button>
-                  ))}
+          {isLoanType ? (
+            <details className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between px-3 text-[11px] font-medium text-[#a0afc1]">Loan details<ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+              <div className="space-y-3 border-t border-[#1f3046] p-3">
+                <div><label className={labelClass}>Loan Type</label><select value={liabilityType} onChange={event => { setLiabilityType(event.target.value); setIsEmiManualOverride(false); }} className={fieldClass}><option value="Bank Loan">Bank Loan</option><option value="Loan">Personal Loan</option><option value="Mortgage">Mortgage</option><option value="Interest-Only Loan">Interest-Only Loan</option><option value="Other">Other</option></select></div>
+                <div><label className={labelClass}>Initial Loan Amount</label><CurrencyInput value={originalPrincipal} onValueChange={setOriginalPrincipal} className={fieldClass} /></div>
+                <div className="grid grid-cols-2 gap-2"><div><label className={labelClass}>Interest Rate (%)</label><input type="number" step="0.01" value={interestRate} onChange={event => setInterestRate(event.target.value)} className={fieldClass} /></div><div><label className={labelClass}>Tenure (months)</label><input type="number" value={tenureMonths} onChange={event => setTenureMonths(event.target.value)} className={fieldClass} /></div></div>
+                <div><label className={labelClass}>Interest Calculation</label><select value={interestCalculationType} onChange={event => { setInterestCalculationType(event.target.value as typeof interestCalculationType); setIsEmiManualOverride(false); }} disabled={liabilityType === 'Interest-Only Loan'} className={fieldClass}><option value="REDUCING">Reducing Balance</option><option value="FLAT">Flat Rate</option><option value="INTEREST_ONLY">Interest Only</option></select></div>
+                <div><label className={labelClass}>Payment Frequency</label><select value={paymentFrequency} onChange={event => { setPaymentFrequency(event.target.value as typeof paymentFrequency); setIsEmiManualOverride(false); }} className={fieldClass}><option value="MONTHLY">Monthly</option><option value="QUARTERLY">Quarterly</option><option value="ANNUALLY">Annually</option></select></div>
+                <div><label className={labelClass}>EMI / Payment</label><CurrencyInput value={monthlyEMI} onValueChange={value => { setMonthlyEMI(value); setIsEmiManualOverride(true); }} className={fieldClass} /></div>
+                <div className="grid grid-cols-2 gap-2"><div><label className={labelClass}>Loan Start Date</label><input type="date" value={loanStartDate} onChange={event => setLoanStartDate(event.target.value)} className={fieldClass} /></div><div><label className={labelClass}>Next EMI Date</label><input type="date" value={nextEMIDate} onChange={event => setNextEMIDate(event.target.value)} className={fieldClass} /></div></div>
+                <div className="grid grid-cols-3 gap-2"><div><label className={labelClass}>Late Fee</label><CurrencyInput value={lateFeeFixedAmount} onValueChange={setLateFeeFixedAmount} className={fieldClass} /></div><div><label className={labelClass}>Late %</label><input type="number" step="0.01" value={lateFeeInterestRate} onChange={event => setLateFeeInterestRate(event.target.value)} className={fieldClass} /></div><div><label className={labelClass}>Grace Days</label><input type="number" value={gracePeriodDays} onChange={event => setGracePeriodDays(event.target.value)} className={fieldClass} /></div></div>
+
+                <div className="rounded-lg border border-[#21334a] bg-[#101c2c] p-2.5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10.5px] font-medium text-white">Shared loan</p><p className="mt-0.5 text-[9.5px] text-[#75869b]">Split responsibility and EMI contributions</p></div><button type="button" aria-pressed={isSharedLoan} onClick={() => setIsSharedLoan(value => !value)} className={`relative h-6 w-11 rounded-full border ${isSharedLoan ? 'border-blue-500/50 bg-blue-600' : 'border-[#31445e] bg-[#162338]'}`}><span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white transition-all ${isSharedLoan ? 'left-[22px]' : 'left-1'}`} /></button></div>
+                  {isSharedLoan ? <div className="mt-3 space-y-2 border-t border-[#21334a] pt-3"><div><label className={labelClass}>Your Liability Responsibility (%)</label><input type="number" min="0" max="100" value={personalResponsibilityPercent} onChange={event => setPersonalResponsibilityPercent(event.target.value)} className={fieldClass} /></div><div><label className={labelClass}>Contribution Mode</label><select value={contributionMode} onChange={event => setContributionMode(event.target.value as typeof contributionMode)} className={fieldClass}><option value="PERCENT">Percentage</option><option value="FIXED">Fixed Amount</option></select></div>{activePeople.map(person => <div key={person.id}><label className={labelClass}>{person.name}{person.isSelf ? ' (You)' : ''}</label><input type="number" min="0" step="0.01" value={contributionValues[person.id] || ''} onChange={event => setContributionValues(values => ({ ...values, [person.id]: event.target.value }))} className={fieldClass} /></div>)}</div> : null}
                 </div>
               </div>
+            </details>
+          ) : null}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Total Invested Amount</label>
-                  <CurrencyInput
-                    aria-label="Total Invested Amount"
-                    required
-                    value={investedAmount}
-                    onValueChange={setInvestedAmount}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Current Market Value</label>
-                  <CurrencyInput
-                    aria-label="Current Market Value"
-                    required
-                    value={balance}
-                    onValueChange={setBalance}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              {investmentMethod === 'SIP' && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Monthly SIP Amount</label>
-                    <CurrencyInput
-                      aria-label="Monthly SIP Amount"
-                      required
-                      value={monthlySIPAmount}
-                      onValueChange={setMonthlySIPAmount}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Next SIP Date</label>
-                    <input 
-                      aria-label="Next SIP Date"
-                      type="date"
-                      required
-                      value={nextSIPDate}
-                      onChange={(e) => setNextSIPDate(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    />
-                  </div>
-                </div>
-              )}
-              {investmentMethod === 'SIP' && (
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">SIP Funding Account</label>
-                  <select
-                    aria-label="SIP Funding Account"
-                    required
-                    value={sipSourceAccountId}
-                    onChange={event => setSipSourceAccountId(event.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                  >
-                    <option value="">Select funding account</option>
-                    {accounts.filter(account => account.type === 'asset' && account.is_archived !== 1 && !['Investment', 'Physical Asset'].includes(String(account.group ?? ''))).map(account => (
-                      <option key={account.id} value={account.id}>{account.name} ({account.group ?? 'Asset'})</option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-on-surface-variant">Saving this investment creates a monthly recurring transfer. The transfer stays pending until you confirm it on the due date.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {addAccountModalType === 'asset' && group !== 'Investment' && (
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                {isEditing ? 'Initial / Starting Balance' : (group === 'Physical Asset' ? 'Estimated Current Value' : 'Current Balance')}
-              </label>
-              <CurrencyInput
-                required
-                value={balance}
-                onValueChange={setBalance}
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                placeholder="0.00"
-              />
-            </div>
-          )}
-
-          {addAccountModalType === 'liability' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {!(liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan') && (
-                <div className={liabilityType === 'Credit Card' ? '' : 'col-span-2'}>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                    {isEditing ? 'Initial / Starting Balance' : 'Current Balance'}
-                  </label>
-                  <CurrencyInput
-                    required
-                    value={balance}
-                    onValueChange={setBalance}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
-              {liabilityType === 'Credit Card' && (
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Due Amount</label>
-                  <CurrencyInput
-                    value={dueAmount}
-                    onValueChange={setDueAmount}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {addAccountModalType === 'liability' && liabilityType === 'Credit Card' && !isEditing && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Next Due Date</label>
-                <input 
-                  type="date"
-                  required
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Billing Cycle Day</label>
-                <input 
-                  type="number"
-                  min="1"
-                  max="31"
-                  required
-                  value={billingCycleDay}
-                  onChange={(e) => setBillingCycleDay(e.target.value)}
-                  className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                  placeholder="e.g. 15"
-                />
-              </div>
-            </div>
-          )}
-
-          {addAccountModalType === 'liability' && (liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan') && (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                    Initial Loan Amount (Principal)
-                  </label>
-                  <CurrencyInput
-                    required
-                    value={originalPrincipal}
-                    onValueChange={(value) => {
-                      setOriginalPrincipal(value);
-                      if (!isEditing || !balance) {
-                        setBalance(value);
-                      }
-                    }}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="e.g. 500000"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Interest Rate (%)</label>
-                  <input 
-                    type="number"
-                    step="0.01"
-                    required
-                    value={interestRate}
-                    onChange={(e) => setInterestRate(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="e.g. 8.5"
-                  />
-                </div>
-              </div>
-
-              {liabilityType === 'Interest-Only Loan' ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Payment Frequency</label>
-                    <select
-                      value={paymentFrequency}
-                      onChange={(e) => setPaymentFrequency(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY')}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
-                    >
-                      <option value="MONTHLY">Monthly</option>
-                      <option value="QUARTERLY">Quarterly</option>
-                      <option value="ANNUALLY">Annually</option>
-                    </select>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-2 relative group cursor-pointer">
-                      <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                        Tenure (Months to Maturity)
-                      </label>
-                      <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-                      <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 absolute bottom-full right-0 mb-1.5 w-64 p-2.5 bg-surface-container-highest text-[11px] text-on-surface rounded-xl shadow-xl border border-outline-variant/40 pointer-events-none z-30 font-normal normal-case leading-snug">
-                        This determines the maturity date when your full principal (Bullet Payment) becomes due.
-                      </div>
-                    </div>
-                    <input 
-                      type="number"
-                      step="1"
-                      min="1"
-                      required
-                      value={tenureMonths}
-                      onChange={(e) => setTenureMonths(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                      placeholder="e.g. 24"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Interest Type</label>
-                      <select
-                        value={interestCalculationType}
-                        onChange={(e) => setInterestCalculationType(e.target.value as 'REDUCING' | 'FLAT' | 'INTEREST_ONLY')}
-                        className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
-                      >
-                        <option value="REDUCING">Reducing Balance</option>
-                        <option value="FLAT">Flat Rate</option>
-                        <option value="INTEREST_ONLY">Interest-Only (Bullet Repayment)</option>
-                      </select>
-                    </div>
-                    {interestCalculationType === 'INTEREST_ONLY' ? (
-                      <div>
-                        <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Payment Frequency</label>
-                        <select
-                          value={paymentFrequency}
-                          onChange={(e) => setPaymentFrequency(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY')}
-                          className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all appearance-none"
-                        >
-                          <option value="MONTHLY">Monthly</option>
-                          <option value="QUARTERLY">Quarterly</option>
-                          <option value="ANNUALLY">Annually</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Tenure (Months)</label>
-                        <input 
-                          type="number"
-                          step="1"
-                          min="1"
-                          required
-                          value={tenureMonths}
-                          onChange={(e) => setTenureMonths(e.target.value)}
-                          className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                          placeholder="e.g. 24"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {interestCalculationType === 'INTEREST_ONLY' && (
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-2 relative group cursor-pointer">
-                        <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                          Tenure (Months to Maturity)
-                        </label>
-                        <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 absolute bottom-full left-0 mb-1.5 w-64 p-2.5 bg-surface-container-highest text-[11px] text-on-surface rounded-xl shadow-xl border border-outline-variant/40 pointer-events-none z-30 font-normal normal-case leading-snug">
-                          This determines the maturity date when your full principal (Bullet Payment) becomes due.
-                        </div>
-                      </div>
-                      <input 
-                        type="number"
-                        step="1"
-                        min="1"
-                        required
-                        value={tenureMonths}
-                        onChange={(e) => setTenureMonths(e.target.value)}
-                        className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                        placeholder="e.g. 24"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                    {liabilityType === 'Interest-Only Loan' || interestCalculationType === 'INTEREST_ONLY'
-                      ? 'First Payment Date'
-                      : 'First EMI / Due Date'}
-                  </label>
-                  <input 
-                    type="date"
-                    required
-                    value={nextEMIDate}
-                    onChange={(e) => {
-                      setNextEMIDate(e.target.value);
-                      setLoanStartDate(e.target.value);
-                    }}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                      {interestCalculationType === 'INTEREST_ONLY' ? 'Periodic Interest Payment' : 'Monthly EMI Amount'}
-                    </label>
-                    {isEmiManualOverride && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEmiManualOverride(false);
-                          const p = parseFloat(originalPrincipal) || parseFloat(balance) || 0;
-                          const rate = parseFloat(interestRate) || 0;
-                          const tenure = parseInt(tenureMonths) || 0;
-                          const calculated = calculateEmiAmount(p, rate, tenure || 1, interestCalculationType, paymentFrequency);
-                          if (calculated > 0) setMonthlyEMI(calculated.toString());
-                        }}
-                        className="text-[10px] font-semibold text-primary hover:underline"
-                      >
-                        Recalculate
-                      </button>
-                    )}
-                  </div>
-                  <CurrencyInput
-                    required
-                    value={monthlyEMI}
-                    onValueChange={(value) => {
-                      setMonthlyEMI(value);
-                      setIsEmiManualOverride(true);
-                    }}
-                    className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-3 px-4 text-on-surface font-numeric focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
-                    placeholder="0.00"
-                  />
-                  {interestCalculationType === 'INTEREST_ONLY' && (
-                    <p className="text-[11px] text-primary mt-1.5 flex items-center gap-1 font-medium">
-                      <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-                      {paymentFrequency === 'QUARTERLY' && 'Quarterly: balance × (rate / 400)'}
-                      {paymentFrequency === 'ANNUALLY' && 'Annually: balance × (rate / 100)'}
-                      {paymentFrequency === 'MONTHLY' && 'Monthly: balance × (rate / 1200)'}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-outline-variant/30 bg-surface-container-low p-4 space-y-3">
-                <label className="flex items-start justify-between gap-4 cursor-pointer">
-                  <span><span className="block text-sm font-bold text-on-surface">Shared / family loan</span><span className="mt-1 block text-xs text-on-surface-variant">Keep one real loan and split responsibility between family contributors.</span></span>
-                  <input type="checkbox" checked={isSharedLoan} onChange={event => setIsSharedLoan(event.target.checked)} className="mt-1 h-5 w-5 accent-primary" />
-                </label>
-                {isSharedLoan && <div className="space-y-4 border-t border-outline-variant/20 pt-4">
-                  <label className="block"><span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Your liability responsibility (%)</span><input type="number" min="0" max="100" step="0.01" value={personalResponsibilityPercent} onChange={event => setPersonalResponsibilityPercent(event.target.value)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-2.5 font-numeric text-on-surface" /><span className="mt-1 block text-[11px] text-on-surface-variant">Used for your personal net-worth exposure. It can differ from who pays the EMI this month.</span></label>
-                  <div><div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">EMI contribution</span><div className="flex rounded-lg border border-outline-variant/30 p-0.5">{(['PERCENT','FIXED'] as const).map(mode => <button key={mode} type="button" onClick={() => { setContributionMode(mode); setContributionValues({}); }} className={`rounded-md px-2 py-1 text-[10px] font-bold ${contributionMode === mode ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}>{mode === 'PERCENT' ? '%' : getCurrencySymbol()}</button>)}</div></div>
-                    <div className="space-y-2">{people.filter(person => !person.isArchived).map(person => <label key={person.id} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-xl bg-surface-container p-3"><span className="text-sm font-semibold text-on-surface">{person.name}{person.isSelf ? ' (you)' : ''}</span><input type="number" min="0" step="0.01" value={contributionValues[person.id] || ''} onChange={event => setContributionValues(current => ({ ...current, [person.id]: event.target.value }))} placeholder={contributionMode === 'PERCENT' ? '0 %' : '0'} className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-2 text-right font-numeric text-on-surface" /></label>)}</div>
-                  </div>
-                </div>}
-              </div>
-
-              {/* Financial Advocate Mode: Penalty Terms Section */}
-              <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-3 mt-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
-                      <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-                      Penalty Terms (Ask your lender these before signing)
-                    </h4>
-                    <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                      Different banks have hidden charges. We use this to warn you before they can charge you.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Fixed Late Fee ({getCurrencySymbol()})
-                    </label>
-                    <CurrencyInput
-                      value={lateFeeFixedAmount}
-                      onValueChange={setLateFeeFixedAmount}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 px-3 text-xs text-on-surface font-numeric focus:outline-none focus:border-amber-500/50"
-                      placeholder="e.g. 500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Overdue Rate (%)
-                    </label>
-                    <input 
-                      type="number"
-                      step="0.01"
-                      value={lateFeeInterestRate}
-                      onChange={(e) => setLateFeeInterestRate(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 px-3 text-xs text-on-surface font-numeric focus:outline-none focus:border-amber-500/50"
-                      placeholder="e.g. 2.0"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
-                      Grace Period (Days)
-                    </label>
-                    <input 
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={gracePeriodDays}
-                      onChange={(e) => setGracePeriodDays(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 px-3 text-xs text-on-surface font-numeric focus:outline-none focus:border-amber-500/50"
-                      placeholder="e.g. 3"
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          <button 
-            type="submit"
-            className="v35-focus-ring mt-2 min-h-12 w-full rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
-          >
-            {isEditing ? 'Save Changes' : (addAccountModalType === 'asset' ? 'Add Asset' : 'Add Liability')}
-          </button>
+          <button type="submit" className="v35-focus-ring mt-1 flex h-10 w-full items-center justify-center rounded-lg border border-blue-400/20 bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[12px] font-semibold text-white shadow-[0_8px_18px_rgba(13,96,238,.22)] hover:from-[#2582ff] hover:to-[#176bf5]">{isEditing ? 'Save Changes' : 'Add Account'}</button>
         </form>
+      </div>
     </V35ModalFrame>
   );
 }
