@@ -4,6 +4,7 @@ import { V35AccountsPanel } from './V35AccountsPanel';
 import { V35CategoriesPanel } from './V35CategoriesPanel';
 import { V35GoalsPanel } from './V35GoalsPanel';
 import { SharingPanel } from './SharingPanel';
+import { V35SupportingForms } from './V35SupportingForms';
 
 type ManageDestination = 'Accounts' | 'Categories' | 'Sharing' | 'Goals';
 
@@ -43,6 +44,7 @@ export function ManageFinances() {
 
   return (
     <div data-testid="page-manage" className="w-full animate-fade-in pb-safe touch-pan-y">
+      <V35SupportingForms destination={destination} />
       {destination === 'Accounts' ? <V35AccountsPanel /> : null}
       {destination === 'Categories' ? <V35CategoriesPanel /> : null}
       {destination === 'Sharing' ? <SharingPanel /> : null}
