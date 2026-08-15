@@ -44,7 +44,9 @@
 
 [data-testid="transaction-form-sheet"] details summary::-webkit-details-marker,
 [data-testid="account-form-sheet"] details summary::-webkit-details-marker,
-[data-testid="pay-modal"] details summary::-webkit-details-marker {
+[data-testid="pay-modal"] details summary::-webkit-details-marker,
+[role="dialog"]:has(#category-form-title) details summary::-webkit-details-marker,
+[role="dialog"]:has(#goal-form-title) details summary::-webkit-details-marker {
   display: none;
 }
 
@@ -145,6 +147,58 @@
   border-radius: 8px !important;
 }
 
+/* Reconcile Account now follows the Upload → Match → Review reference flow. */
+[data-testid="reconcile-sheet"] {
+  width: min(calc(100vw - 24px), 390px) !important;
+  max-width: 390px !important;
+  max-height: min(92dvh, 700px) !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+}
+
+[data-testid="reconcile-sheet"] #reconcile-form-title {
+  font-size: 14px !important;
+}
+
+[data-testid="reconcile-sheet"] #reconcile-form-title::after {
+  content: none !important;
+}
+
+[data-testid="reconcile-sheet"] input,
+[data-testid="reconcile-sheet"] select {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+/* The rebuilt Category and Goal forms own their own compact shell/spacing. */
+[role="dialog"]:has(#category-form-title),
+[role="dialog"]:has(#goal-form-title) {
+  width: min(calc(100vw - 24px), 286px) !important;
+  max-width: 286px !important;
+  max-height: 92dvh !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  overflow-y: auto !important;
+  background: linear-gradient(180deg, #0b1625 0%, #091321 100%) !important;
+  border: 1px solid #31455f !important;
+}
+
+[role="dialog"]:has(#category-form-title) h2,
+[role="dialog"]:has(#goal-form-title) h2 {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+}
+
+[role="dialog"]:has(#category-form-title) input,
+[role="dialog"]:has(#category-form-title) select,
+[role="dialog"]:has(#goal-form-title) input,
+[role="dialog"]:has(#goal-form-title) select {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
 /* Wallet Summary uses its own rebuilt reference markup. */
 [data-testid="wallet-summary-sheet"] {
   width: min(calc(100vw - 24px), 390px) !important;
@@ -163,7 +217,10 @@
   [data-testid="transaction-form-sheet"],
   [data-testid="account-form-sheet"],
   [data-testid="pay-modal"],
-  [data-testid="wallet-summary-sheet"] {
+  [data-testid="reconcile-sheet"],
+  [data-testid="wallet-summary-sheet"],
+  [role="dialog"]:has(#category-form-title),
+  [role="dialog"]:has(#goal-form-title) {
     width: 100% !important;
     max-width: none !important;
     max-height: 92dvh !important;
