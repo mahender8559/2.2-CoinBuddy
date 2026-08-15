@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Edit2, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit2, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import type { AffordabilityClass, Category } from '../types';
@@ -23,6 +23,8 @@ const toneForBehavior = (behavior: AffordabilityClass): 'positive' | 'warning' |
 };
 
 const defaultBehavior = (category: Category): AffordabilityClass => category.affordabilityClass ?? (category.group === 'Savings' ? 'SAVINGS' : category.group === 'Leisure' ? 'FLEXIBLE' : 'NORMAL');
+const fieldClass = 'h-10 w-full rounded-lg border border-[#21334a] bg-[#101c2c] px-3 text-[12px] font-medium text-[#f5f7fb] outline-none transition placeholder:text-[#6f7e91] focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]';
+const labelClass = 'mb-1.5 block text-[10.5px] font-medium text-[#cbd4e0]';
 
 export function V35CategoriesPanel() {
   const {
@@ -114,6 +116,8 @@ export function V35CategoriesPanel() {
     resetDraft();
   };
 
+  const iconPresets = (['Utensils', 'ShoppingBag', 'Car', 'Home', 'Plane', 'BookOpen'] as Array<keyof typeof icons>).filter(key => Boolean(icons[key]));
+
   return (
     <section data-testid="page-categories" className="w-full space-y-5 pb-24 md:pb-0 animate-fade-in">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -168,19 +172,58 @@ export function V35CategoriesPanel() {
       <div className="flex items-start gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4"><IconBadge icon={ChevronRight} size="sm" /><div><p className="text-sm font-semibold text-on-surface">What financial behavior means</p><p className="mt-1 text-xs leading-5 text-on-surface-variant">Committed is protected first; Normal is regular living; Flexible can be reduced; Irregular is estimated from history; Savings is treated as a protected contribution.</p></div></div>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/65 p-0 backdrop-blur-sm md:items-center md:p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="category-form-title" className="v35-surface max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl p-5 md:max-w-md md:rounded-2xl md:p-6">
-            <div className="flex items-start justify-between gap-4"><div><h2 id="category-form-title" className="text-xl font-semibold text-on-surface">{editing ? 'Edit category' : 'Add category'}</h2><p className="mt-1 text-sm text-on-surface-variant">Define how this category behaves in budgets and planning.</p></div><button type="button" aria-label="Close category form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high"><X className="h-5 w-5" /></button></div>
-            <div className="mt-5 space-y-4">
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Category name</span><input aria-label="Category name" value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Groceries" className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-4 py-3 text-on-surface outline-none focus:border-primary/70" /></label>
-              <div><span className="text-sm font-semibold text-on-surface">Category type</span><div className="mt-1.5 grid grid-cols-2 gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-low p-1"><button type="button" onClick={() => setType('expense')} className={`v35-focus-ring min-h-10 rounded-lg text-xs font-semibold ${type === 'expense' ? 'bg-primary text-white' : 'text-on-surface-variant'}`}>Expense</button><button type="button" onClick={() => setType('income')} className={`v35-focus-ring min-h-10 rounded-lg text-xs font-semibold ${type === 'income' ? 'bg-primary text-white' : 'text-on-surface-variant'}`}>Income</button></div></div>
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Icon</span><div className="mt-1.5 flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{(() => { const Selected = icons[icon] || ShoppingBag; return <Selected className="h-5 w-5" />; })()}</span><select aria-label="Category icon" value={icon} onChange={event => setIcon(event.target.value as keyof typeof icons)} className="v35-focus-ring min-h-11 min-w-0 flex-1 rounded-xl border border-outline-variant/30 bg-surface-container px-3 text-sm text-on-surface">{Object.keys(icons).sort().map(iconName => <option key={iconName} value={iconName}>{iconName}</option>)}</select></div></label>
-              {type === 'expense' ? <>
-                <label className="block"><span className="text-sm font-semibold text-on-surface">Financial behavior</span><select aria-label="Financial behavior" value={behavior} onChange={event => setBehavior(event.target.value as AffordabilityClass)} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none focus:border-primary/70">{Object.entries(BEHAVIOR_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="mt-1.5 block text-xs leading-5 text-on-surface-variant">This controls how affordability planning protects, estimates or flexes the category.</span></label>
-                <label className="block"><span className="text-sm font-semibold text-on-surface">Cycle budget</span><div className="relative mt-1.5"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">{getCurrencySymbol()}</span><CurrencyInput aria-label="Category budget" value={budget || ''} onValueChange={value => setBudget(Number(value) || 0)} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container py-3 pl-8 pr-4 font-numeric text-on-surface outline-none focus:border-primary/70" /></div></label>
-                <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span><span className="block text-sm font-semibold text-on-surface">Rollover unused budget</span><span className="mt-0.5 block text-xs leading-5 text-on-surface-variant">Carry unused budget behavior into the next cycle using the existing CoinBuddy rollover logic.</span></span><input type="checkbox" checked={rollover} onChange={event => setRollover(event.target.checked)} className="mt-1 h-5 w-5 accent-primary" /></label>
-              </> : <div className="rounded-xl bg-[var(--cb-green-soft)] p-3 text-xs leading-5 text-on-surface-variant">Income categories do not need a spending budget or affordability behavior.</div>}
-              <button type="button" onClick={save} disabled={!name.trim()} className="v35-focus-ring w-full rounded-xl bg-primary py-3.5 font-semibold text-white disabled:opacity-50">Save category</button>
+        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/70 backdrop-blur-md md:items-center md:p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="category-form-title" className="w-full overflow-hidden rounded-t-[18px] border border-[#31455f] bg-gradient-to-b from-[#0b1625] to-[#091321] shadow-2xl md:max-w-[286px] md:rounded-[18px]">
+            <div className="flex h-[46px] items-center justify-between border-b border-[#21334a]/70 px-2.5">
+              <button type="button" aria-label="Back from category form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-[#9aa8ba] hover:bg-[#132238]"><span aria-hidden="true" className="text-lg">‹</span></button>
+              <h2 id="category-form-title" className="text-[12px] font-semibold text-white">{editing ? 'Edit Category' : 'Add Category'}</h2>
+              <button type="button" aria-label="Close category form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-[#9aa8ba] hover:bg-[#132238]"><X className="h-4 w-4" /></button>
+            </div>
+
+            <div className="space-y-3 p-3.5">
+              <div>
+                <span className={labelClass}>Icon & Color</span>
+                <div className="flex items-center gap-2">
+                  {iconPresets.map((preset, index) => {
+                    const Icon = icons[preset] || ShoppingBag;
+                    const selected = icon === preset;
+                    const tones = ['bg-red-500/85 text-white', 'bg-blue-600/85 text-white', 'bg-amber-500/90 text-white', 'bg-emerald-600/85 text-white', 'bg-blue-600/85 text-white', 'bg-purple-600/85 text-white'];
+                    return <button key={String(preset)} type="button" aria-label={`Use ${String(preset)} icon`} aria-pressed={selected} onClick={() => setIcon(preset)} className={`v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg border ${selected ? 'border-blue-400 ring-1 ring-blue-500' : 'border-transparent'} ${tones[index % tones.length]}`}><Icon className="h-4 w-4" /></button>;
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="category-name" className={labelClass}>Category Name</label>
+                <input id="category-name" aria-label="Category name" value={name} onChange={event => setName(event.target.value)} placeholder="Food & Dining" className={fieldClass} />
+              </div>
+
+              <div>
+                <span className={labelClass}>Type</span>
+                <div className="grid grid-cols-2 gap-1">
+                  <button type="button" onClick={() => setType('expense')} aria-pressed={type === 'expense'} className={`h-8 rounded-lg border text-[10.5px] font-medium ${type === 'expense' ? 'border-red-500/45 bg-red-500/10 text-red-400' : 'border-[#21334a] bg-[#0f1b2b] text-[#8998ab]'}`}>⊖ Expense</button>
+                  <button type="button" onClick={() => setType('income')} aria-pressed={type === 'income'} className={`h-8 rounded-lg border text-[10.5px] font-medium ${type === 'income' ? 'border-emerald-500/45 bg-emerald-500/10 text-emerald-400' : 'border-[#21334a] bg-[#0f1b2b] text-[#8998ab]'}`}>⊕ Income</button>
+                </div>
+              </div>
+
+              {type === 'expense' ? (
+                <details className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+                  <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between px-3 text-[10.5px] font-medium text-[#9aa8ba]">Budget & planning options <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" /></summary>
+                  <div className="space-y-3 border-t border-[#1f3046] p-3">
+                    <div>
+                      <label className={labelClass}>Financial behavior</label>
+                      <select aria-label="Financial behavior" value={behavior} onChange={event => setBehavior(event.target.value as AffordabilityClass)} className={fieldClass}>{Object.entries(BEHAVIOR_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Cycle budget</label>
+                      <div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-[#8b9aae]">{getCurrencySymbol()}</span><CurrencyInput aria-label="Category budget" value={budget || ''} onValueChange={value => setBudget(Number(value) || 0)} className={`${fieldClass} pl-7 font-numeric`} /></div>
+                    </div>
+                    <label className="flex items-center justify-between gap-3 text-[10.5px] text-[#cbd4e0]"><span>Rollover unused budget</span><input type="checkbox" checked={rollover} onChange={event => setRollover(event.target.checked)} className="h-4 w-4 accent-blue-600" /></label>
+                  </div>
+                </details>
+              ) : null}
+
+              <button type="button" onClick={save} disabled={!name.trim()} className="v35-focus-ring flex h-9 w-full items-center justify-center rounded-lg bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[11px] font-semibold text-white disabled:opacity-50">{editing ? 'Save Changes' : 'Save Category'}</button>
             </div>
           </div>
         </div>
