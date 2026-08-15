@@ -120,9 +120,9 @@
 /* ========================================================================
    CoinBuddy V3.5 — LOCKED Forms & Modals system
    ========================================================================
-   This is intentionally scoped to money forms plus the V3.5 Category/Goal
-   supporting forms. Business fields and financial behavior remain owned by
-   the feature components; this layer controls presentation only.
+   The approved dark-theme form board is the visual source of truth.
+   Finance-specific fields remain owned by their feature components; this
+   layer standardizes presentation without changing business semantics.
 */
 .v35-modal-backdrop {
   background: var(--cb-form-backdrop);
@@ -144,7 +144,6 @@
   opacity: 0.75;
 }
 
-/* Compact hierarchy from the locked reference. */
 .v35-form-sheet h2,
 .v35-form-sheet h3,
 [data-testid="wallet-summary-sheet"] h2,
@@ -168,7 +167,7 @@
   text-transform: none !important;
 }
 
-/* One field language: compact, cool navy, 8 px corners, blue focus. */
+/* Unified input language: compact, cool navy, 8 px corners, blue focus. */
 .v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.opacity-0),
 .v35-form-sheet select,
 .v35-form-sheet textarea,
@@ -217,7 +216,7 @@
   cursor: pointer;
 }
 
-/* Reduce legacy oversized card language inside forms without changing logic. */
+/* Reduce the old oversized card language while retaining all controls. */
 .v35-form-sheet .rounded-2xl,
 [data-testid="wallet-summary-sheet"] .rounded-2xl,
 [role="dialog"]:has(#category-form-title) .rounded-2xl,
@@ -247,11 +246,11 @@
   border-color: var(--cb-form-border) !important;
 }
 
-/* Primary form action: full-width, strong blue, no oversized glow. */
+/* Primary actions from the approved board. */
 .v35-form-sheet button[type="submit"],
 .v35-form-sheet button[data-testid="confirm-payment"],
-[role="dialog"]:has(#category-form-title) > div button:last-child,
-[role="dialog"]:has(#goal-form-title) > div button:last-child {
+[role="dialog"]:has(#category-form-title) button.w-full.bg-primary,
+[role="dialog"]:has(#goal-form-title) button.w-full.bg-primary {
   min-height: 42px !important;
   border-radius: var(--cb-form-radius) !important;
   background: linear-gradient(180deg, #1a67ef 0%, var(--cb-form-blue) 100%) !important;
@@ -262,11 +261,13 @@
 }
 
 .v35-form-sheet button[type="submit"]:hover,
-.v35-form-sheet button[data-testid="confirm-payment"]:hover {
+.v35-form-sheet button[data-testid="confirm-payment"]:hover,
+[role="dialog"]:has(#category-form-title) button.w-full.bg-primary:hover,
+[role="dialog"]:has(#goal-form-title) button.w-full.bg-primary:hover {
   background: linear-gradient(180deg, #2473fb 0%, var(--cb-form-blue-hover) 100%) !important;
 }
 
-/* Pay / Pay Down uses the purple action language in the locked board. */
+/* Pay / Pay Down is the one approved purple primary action. */
 [data-testid="pay-modal"] button[data-testid="confirm-payment"] {
   background: linear-gradient(180deg, #812bd8 0%, var(--cb-form-purple) 100%) !important;
   box-shadow: 0 8px 20px rgba(116, 37, 201, 0.20) !important;
@@ -290,8 +291,8 @@
   outline-offset: 2px;
 }
 
-/* Add Transaction: convert the oversized amount hero back into the compact
-   field treatment shown in the locked reference while keeping all validation. */
+/* Add Transaction: replace the oversized amount hero with the compact amount
+   field shown in the approved reference while preserving its validation. */
 [data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 {
   align-items: stretch !important;
   justify-content: flex-start !important;
@@ -306,6 +307,24 @@
   font-weight: 600 !important;
   letter-spacing: 0.01em !important;
   text-align: left;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) {
+  position: relative;
+  width: 100% !important;
+  justify-content: flex-start !important;
+  gap: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) > span:first-child {
+  position: absolute;
+  left: 12px;
+  z-index: 2;
+  font-size: 13px !important;
+  line-height: 40px;
+  color: var(--cb-text-muted) !important;
 }
 
 [data-testid="transaction-form-sheet"] input[aria-label="Transaction amount"] {
@@ -328,25 +347,7 @@
   font-size: 11px;
 }
 
-[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) {
-  position: relative;
-  width: 100% !important;
-  justify-content: flex-start !important;
-  gap: 0 !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) > span:first-child {
-  position: absolute;
-  left: 12px;
-  z-index: 2;
-  font-size: 13px !important;
-  line-height: 40px;
-  color: var(--cb-text-muted) !important;
-}
-
-/* Dense transaction category/account choices instead of large tiles. */
+/* Dense transaction category/account choices instead of oversized tiles. */
 [data-testid="transaction-form-sheet"] form button.min-w-\[90px\] {
   min-width: 76px !important;
   min-height: 40px !important;
@@ -359,13 +360,12 @@
   height: 16px !important;
 }
 
-/* Keep footer actions visually attached to the sheet. */
 .v35-form-sheet form .sticky.bottom-0 {
   background: rgba(11, 21, 35, 0.96) !important;
   border-color: var(--cb-form-border) !important;
 }
 
-/* Supporting Category/Goal forms use the same mobile sheet dimensions. */
+/* Supporting Category/Goal forms use the same sheet density and controls. */
 [role="dialog"]:has(#category-form-title),
 [role="dialog"]:has(#goal-form-title) {
   padding: 18px !important;
@@ -376,8 +376,27 @@
   gap: 12px;
 }
 
-/* Sharing → People is an inline supporting form in the real app. Give it the
-   same visual language without turning People into Accounts or transactions. */
+/* Their header close buttons intentionally stay neutral, never CTA-colored. */
+[role="dialog"]:has(#category-form-title) button[aria-label="Close category form"],
+[role="dialog"]:has(#goal-form-title) button[aria-label="Close goal form"] {
+  min-height: 40px !important;
+  width: 40px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--cb-form-radius) !important;
+  background: transparent !important;
+  color: var(--cb-text-muted) !important;
+  box-shadow: none !important;
+}
+
+[role="dialog"]:has(#category-form-title) button[aria-label="Close category form"]:hover,
+[role="dialog"]:has(#goal-form-title) button[aria-label="Close goal form"]:hover {
+  background: var(--cb-form-field-hover) !important;
+  color: var(--cb-text) !important;
+}
+
+/* Sharing → People is inline in the real app. Style it consistently without
+   changing the normalized People/account distinction. */
 section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Person name"],
 section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Relationship"] {
   min-height: var(--cb-form-control-height) !important;
@@ -399,7 +418,6 @@ section.v35-surface:has(input[aria-label="Person name"]) button:has(svg) {
   border-radius: var(--cb-form-radius) !important;
 }
 
-/* Semantic states from the board. */
 .v35-form-sheet [role="alert"] {
   border-radius: var(--cb-form-radius) !important;
 }
