@@ -98,13 +98,13 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   // current ledger instead of coupling the regression to demo-data IDs/names.
   const sourceAccount = page.locator('input[name="fromAccount"]').first();
   await expect(sourceAccount).toBeAttached();
-  const sourceName = (await sourceAccount.getAttribute('aria-label'))?.replace('From account ', '');
+  const sourceName = await sourceAccount.evaluate(input => input.closest('label')?.textContent?.trim());
   expect(sourceName).toBeTruthy();
   await sourceAccount.check({ force: true });
 
   const destinationAccount = page.locator('input[name="toAccount"]').first();
   await expect(destinationAccount).toBeAttached();
-  const destinationName = (await destinationAccount.getAttribute('aria-label'))?.replace('To account ', '');
+  const destinationName = await destinationAccount.evaluate(input => input.closest('label')?.textContent?.trim());
   expect(destinationName).toBeTruthy();
   await destinationAccount.check({ force: true });
 
