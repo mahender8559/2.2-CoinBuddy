@@ -2,13 +2,26 @@ import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { CurrencyInput } from './CurrencyInput';
 import { V35ModalFrame } from './ui/V35ModalFrame';
-import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
-import { icons } from '../icons';
+import { AlertTriangle, ArrowLeft, Calendar as CalendarIcon, Check, ChevronDown, X } from 'lucide-react';
 import type { Transaction } from '../types';
 
-
 export function AddTransactionModal() {
-  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, savingsGoals, createEvent, setManageCategoriesOpen } = useAppContext();
+  const {
+    isAddModalOpen,
+    setAddModalOpen,
+    addTransaction,
+    updateTransaction,
+    editingTransaction,
+    setEditingTransaction,
+    getCurrencySymbol,
+    accounts,
+    categories,
+    events,
+    recurringRules,
+    savingsGoals,
+    createEvent,
+  } = useAppContext();
+
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -17,7 +30,7 @@ export function AddTransactionModal() {
   const [toAccountId, setToAccountId] = useState('');
   const [error, setError] = useState<{ message: string; id: number } | null>(null);
   const showError = (message: string) => setError({ message, id: Date.now() });
-  
+
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'>('MONTHLY');
@@ -33,17 +46,10 @@ export function AddTransactionModal() {
     return categories.filter(c => type === 'income' ? c.type === 'income' : c.type !== 'income');
   }, [categories, type]);
 
-  const isTransferToLiability = type === 'transfer' && toAccountId && accounts.find(a => a.id === toAccountId)?.type === 'liability';
-  const transferToLiability = isTransferToLiability ? accounts.find(a => a.id === toAccountId) : null;
-  const dueAmount = transferToLiability?.monthlyEMI ?? transferToLiability?.monthlyEMI ?? 0;
-  const liabilityBalance = transferToLiability?.balance ?? 0;
-
   useEffect(() => {
     if (type !== 'transfer' && availableCategories.length > 0) {
       const exists = availableCategories.some(c => c.id === categoryId);
-      if (!exists) {
-        setCategoryId(availableCategories[0].id);
-      }
+      if (!exists) setCategoryId(availableCategories[0].id);
     }
   }, [availableCategories, categoryId, type]);
 
@@ -52,23 +58,19 @@ export function AddTransactionModal() {
   }, [amount, type, account, fromAccountId, toAccountId, isAddModalOpen]);
 
   useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        setError(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 5000);
+    return () => clearTimeout(timer);
   }, [error]);
 
   useEffect(() => {
     if (assets.length > 0 && !account) setAccount(assets[0].id);
     if (assets.length > 0 && !fromAccountId) setFromAccountId(assets[0].id);
     if (accounts.length > 0 && !toAccountId) {
-       setToAccountId(liabilities.length > 0 ? liabilities[0].id : accounts[0].id);
+      setToAccountId(liabilities.length > 0 ? liabilities[0].id : accounts[0].id);
     }
   }, [accounts, assets, liabilities, account, fromAccountId, toAccountId]);
 
-  // Set fields if editing
   useEffect(() => {
     if (editingTransaction && isAddModalOpen) {
       setTitle(editingTransaction.title);
@@ -82,7 +84,7 @@ export function AddTransactionModal() {
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
       setGroupId(events.find(event => event.id === editingTransaction.eventId)?.name || '');
       setGoalId(editingTransaction.goalId || '');
-      
+
       const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
       if (catObj) setCategoryId(catObj.id);
     } else if (isAddModalOpen) {
@@ -95,7 +97,7 @@ export function AddTransactionModal() {
       setGroupId('');
       setGoalId('');
       setCategoryId(categories[0]?.id || '');
-      
+
       if (assets.length > 0) setAccount(assets[0].id);
       if (assets.length > 0) setFromAccountId(assets[0].id);
       if (liabilities.length > 0) setToAccountId(liabilities[0].id);
@@ -103,17 +105,18 @@ export function AddTransactionModal() {
     }
   }, [editingTransaction, isAddModalOpen, categories, assets, liabilities, accounts, events, recurringRules]);
 
-  // Prevent background scrolling when modal is open
   useEffect(() => {
-    if (isAddModalOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (isAddModalOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isAddModalOpen]);
 
   if (!isAddModalOpen) return null;
+
+  const close = () => {
+    setAddModalOpen(false);
+    setEditingTransaction(null);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -123,8 +126,6 @@ export function AddTransactionModal() {
       return;
     }
 
-    // Future transactions and newly-created recurring schedules stay pending
-    // until confirmation, so today's balance must not prevent planning them.
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isFuture = date > todayStr;
@@ -138,11 +139,9 @@ export function AddTransactionModal() {
       }
     }
 
-    // Validate available funds for expenses and transfers from asset accounts
     if (!shouldRemainPending && type === 'expense') {
       const targetAccId = account || 'cash';
       const selectedAcc = accounts.find(a => a.id === targetAccId);
-      
       if (selectedAcc && selectedAcc.type === 'asset') {
         let availableBalance = selectedAcc.balance;
         if (editingTransaction && editingTransaction.type === 'expense' && (editingTransaction.account || 'cash') === selectedAcc.id) {
@@ -170,7 +169,7 @@ export function AddTransactionModal() {
     const categoryObj = categories.find(c => c.id === categoryId);
     const categoryName = categoryObj?.name || 'General';
     const iconName = categoryObj?.icon || 'ShoppingBag';
-    
+
     let finalTitle = title.trim();
     if (!finalTitle) {
       if (type === 'transfer') {
@@ -184,14 +183,12 @@ export function AddTransactionModal() {
       }
     }
 
-    const isInterestOnly = 
-      categoryName.toLowerCase().includes('interest') ||
-      finalTitle.toLowerCase().includes('interest payment');
-
+    const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
     const eventName = groupId.trim();
     const eventId = eventName
       ? (events.find(event => event.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
       : undefined;
+
     const newTx = {
       title: finalTitle,
       subtitle: `${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
@@ -201,411 +198,192 @@ export function AddTransactionModal() {
       icon: type === 'transfer' ? 'ArrowRightLeft' : iconName,
       type,
       account: type === 'transfer' ? undefined : account,
-      fromAccountId: type === 'transfer'
-        ? fromAccountId
-        : (type === 'expense' ? account : undefined),
-      toAccountId: type === 'transfer'
-        ? toAccountId
-        : (type === 'income' ? account : undefined),
+      fromAccountId: type === 'transfer' ? fromAccountId : (type === 'expense' ? account : undefined),
+      toAccountId: type === 'transfer' ? toAccountId : (type === 'income' ? account : undefined),
       transaction_type: type.toUpperCase() as Transaction['transaction_type'],
       isRecurring,
       recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
       is_verified: shouldRemainPending ? 0 : 1,
-      goalId: goalId || undefined
+      goalId: goalId || undefined,
     };
 
     let res: { success: boolean; error?: string };
-    if (editingTransaction) {
-      res = updateTransaction(editingTransaction.id, newTx);
-    } else {
-      res = await addTransaction(newTx);
-    }
+    if (editingTransaction) res = updateTransaction(editingTransaction.id, newTx);
+    else res = await addTransaction(newTx);
 
     if (!res.success) {
       showError(res.error || 'Insufficient funds. Cannot process transaction.');
       return;
     }
-    
-    setEditingTransaction(null);
-    setAddModalOpen(false);
+
+    close();
   };
 
+  const fieldClass = 'h-10 w-full rounded-lg border border-[#21334a] bg-[#111d2d] px-3 text-[12px] font-medium text-[#f5f7fb] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]';
+  const labelClass = 'mb-1.5 block text-[10.5px] font-medium text-[#cbd4e0]';
+  const eligibleAccounts = type === 'income' ? assets : activeAccounts;
+
   return (
-    <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title">
-      <div className="flex shrink-0 items-center justify-between border-b border-outline-variant/30 px-5 py-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="h-5 w-5" /></span>
-          <h2 id="transaction-form-title" className="truncate text-lg font-semibold text-on-surface sm:text-xl">{editingTransaction ? 'Edit Transaction' : 'Log Transaction'}</h2>
-          {editingTransaction && (
-            <span className="px-2 py-0.5 ml-2 text-xs font-bold uppercase tracking-wider bg-surface-variant text-on-surface-variant rounded-md">
-              {type}
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          aria-label="Close transaction form"
-          onClick={() => {
-            setAddModalOpen(false);
-            setEditingTransaction(null);
-          }}
-          className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
-        >
-          <X className="h-5 w-5" />
+    <V35ModalFrame size="sm" testId="transaction-form-sheet" labelledBy="transaction-form-title">
+      <div className="grid h-[54px] shrink-0 grid-cols-[40px_1fr_40px] items-center border-b border-[#21334a]/70 px-2.5">
+        <button type="button" aria-label="Back from transaction form" onClick={close} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <h2 id="transaction-form-title" className="text-center text-[14px] font-semibold text-white">
+          {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
+        </h2>
+        <button type="button" aria-label="Close transaction form" onClick={close} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]">
+          <X className="h-4 w-4" />
         </button>
       </div>
-      
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-2xl space-y-5 p-5 sm:p-6">
-          
-          {error && (
-            <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center gap-3 animate-fade-in shadow-sm">
-              <AlertTriangle className="w-5 h-5 shrink-0 text-rose-400" />
-              <span className="text-xs font-bold leading-tight">{error.message}</span>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {error ? (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2.5 text-[11px] font-medium text-red-300">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error.message}</span>
             </div>
-          )}
+          ) : null}
 
-<div>
-  <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Event / outing (optional)</label>
-  <div className="grid gap-2 sm:grid-cols-2">
-    <select
-      aria-label="Choose existing event"
-      value={events.find(event => event.name.localeCompare(groupId.trim(), undefined, { sensitivity: 'accent' }) === 0)?.id ?? ''}
-      onChange={event => setGroupId(events.find(item => item.id === event.target.value)?.name ?? '')}
-      className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
-    >
-      <option value="">No event (unassign)</option>
-      {events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
-    </select>
-    <input
-      value={groupId}
-      onChange={event => setGroupId(event.target.value)}
-      placeholder="Or type a new event name"
-      className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60"
-    />
-  </div>
-  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-    <p className="text-[11px] text-on-surface-variant">Selecting an existing event fills the name field; typing a different name creates a new event.</p>
-    {editingTransaction?.eventId && groupId && (
-      <button type="button" onClick={() => setGroupId('')} className="rounded-lg border border-error/30 px-3 py-1.5 text-xs font-semibold text-error hover:bg-error/10">Unassign event</button>
-    )}
-  </div>
-</div>
-
-{type !== 'income' && savingsGoals.length > 0 && (
-  <div>
-    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">Goal contribution (optional)</label>
-    <select aria-label="Goal contribution" value={goalId} onChange={event => setGoalId(event.target.value)} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface outline-none focus:border-primary/60">
-      <option value="">No goal</option>
-      {savingsGoals.filter(goal => goal.isActive).map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
-    </select>
-    <p className="mt-2 text-[11px] leading-relaxed text-on-surface-variant">After confirmation, this transfer/expense advances an unlinked Goal automatically. Goals linked to an account use that account balance instead, so CoinBuddy never double-counts the contribution.</p>
-  </div>
-)}
-
-{editingTransaction ? null : (
-
-            <div className="flex gap-2 p-1 bg-surface-container-low rounded-2xl border border-outline-variant/30">
-              <button
-                type="button"
-                onClick={() => setType('expense')}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${type === 'expense' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-              >
-                Expense
+          {!editingTransaction ? (
+            <div className="grid grid-cols-3 gap-1">
+              <button type="button" onClick={() => setType('expense')} aria-pressed={type === 'expense'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'expense' ? 'border-red-500/45 bg-red-500/10 text-red-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
+                <span className="mr-1 inline-block h-2 w-2 rounded-sm border border-current" /> Expense
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setType('income');
-                  const selectedAcc = accounts.find(a => a.id === account);
-                  if (selectedAcc && selectedAcc.type === 'liability' && assets.length > 0) {
-                    setAccount(assets[0].id);
-                  }
-                }}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${type === 'income' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-              >
-                Income
+              <button type="button" onClick={() => { setType('income'); if (assets.length > 0 && !assets.some(a => a.id === account)) setAccount(assets[0].id); }} aria-pressed={type === 'income'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'income' ? 'border-emerald-500/45 bg-emerald-500/10 text-emerald-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
+                <span className="mr-1 inline-block h-2 w-2 rounded-sm border border-current" /> Income
               </button>
-              <button
-                type="button"
-                onClick={() => setType('transfer')}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${type === 'transfer' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'}`}
-              >
-                Transfer
+              <button type="button" onClick={() => setType('transfer')} aria-pressed={type === 'transfer'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'transfer' ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
+                <span className="mr-1 inline-block h-2 w-2 rounded-full border border-current" /> Transfer
               </button>
             </div>
-          )}
+          ) : null}
 
-          <div className="flex flex-col items-center justify-center py-4">
-            <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">AMOUNT</span>
-            <div className="flex items-center justify-center gap-2 sm:gap-3 w-full px-2">
-              <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary shrink-0">{getCurrencySymbol()}</span>
+          <div>
+            <label htmlFor="transaction-amount" className={labelClass}>Amount</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#9aa8ba]">{getCurrencySymbol()}</span>
               <CurrencyInput
+                id="transaction-amount"
                 aria-label="Transaction amount"
                 required
                 value={amount}
                 onValueChange={setAmount}
-                className={`bg-transparent font-numeric font-bold text-on-surface focus:outline-none min-w-[140px] max-w-[280px] sm:max-w-[360px] w-full text-center placeholder:text-on-surface-variant/30 transition-all ${
-                  amount.length > 12 
-                    ? 'text-2xl sm:text-3xl' 
-                    : amount.length > 8 
-                    ? 'text-3xl sm:text-4xl' 
-                    : amount.length > 5 
-                    ? 'text-4xl sm:text-5xl' 
-                    : 'text-5xl sm:text-6xl'
-                }`}
                 placeholder="0.00"
+                className={`${fieldClass} pl-8 font-numeric`}
               />
-              <div className="flex flex-col gap-1 shrink-0">
-                <button type="button" onClick={() => setAmount(prev => (Number(prev || 0) + 1).toFixed(2))} className="bg-surface-container-high hover:bg-surface-variant p-1 rounded text-on-surface">
-                  <ChevronUp className="w-4 h-4" />
-                </button>
-                <button type="button" onClick={() => setAmount(prev => Math.max(0, Number(prev || 0) - 1).toFixed(2))} className="bg-surface-container-high hover:bg-surface-variant p-1 rounded text-on-surface">
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
-              <div className="mt-3 px-3 py-1 bg-surface-container-high/70 border border-outline-variant/20 rounded-full flex items-center gap-1.5 animate-fade-in shadow-xs">
-                <span className="text-[11px] font-medium text-on-surface-variant">Formatted:</span>
-                <span className="text-xs font-bold text-emerald-400 font-numeric">
-                  {formatCurrency(parseFloat(amount))}
-                </span>
-              </div>
-            )}
-            {isTransferToLiability && (
-              <div className="flex gap-2 mt-4">
-                {dueAmount > 0 && dueAmount !== liabilityBalance && (
-                  <button
-                    type="button"
-                    onClick={() => setAmount(dueAmount.toString())}
-                    className="flex-1 py-1.5 px-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-semibold rounded-lg transition-colors border border-outline-variant/30 flex items-center justify-center gap-1.5"
-                  >
-                    Pay Due ({formatCurrency(dueAmount)})
-                  </button>
-                )}
-                {liabilityBalance > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setAmount(liabilityBalance.toString())}
-                    className="flex-1 py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-xs font-semibold rounded-lg transition-colors border border-emerald-500/20 flex items-center justify-center gap-1.5"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Full Payoff ({formatCurrency(liabilityBalance)})
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 mt-4 text-xs text-on-surface-variant">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Encrypted on-device only</span>
             </div>
           </div>
 
-          {type !== 'transfer' && (
-            <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                  {type === 'income' ? 'INCOME CATEGORY' : 'EXPENSE CATEGORY'}
-                </h3>
-                <span 
-                  className="text-sm font-semibold text-primary cursor-pointer hover:underline"
-                  onClick={() => {
-                    setAddModalOpen(false);
-                    setManageCategoriesOpen(true);
-                  }}
-                >
-                  Manage
-                </span>
-              </div>
-              
-              {availableCategories.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-4 bg-surface-container rounded-2xl border border-dashed border-outline-variant/30 text-center gap-2">
-                  <p className="text-xs text-on-surface-variant font-medium">No {type} categories found.</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddModalOpen(false);
-                      setManageCategoriesOpen(true);
-                    }}
-                    className="text-xs font-bold text-primary hover:underline"
-                  >
-                    + Create {type === 'income' ? 'Income' : 'Expense'} Category
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                  {availableCategories.map(c => {
-                    const Icon = icons[c.icon as keyof typeof icons] || ShoppingBag;
-                    const isSelected = categoryId === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setCategoryId(c.id)}
-                        className={`flex flex-col items-center justify-center gap-2 min-w-[90px] p-4 rounded-2xl transition-all ${isSelected ? 'bg-primary/20 border-primary/50 text-primary border' : 'bg-surface-container border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'}`}
-                      >
-                        <Icon className="w-6 h-6" />
-                        <span className="text-xs font-semibold whitespace-nowrap">{c.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {type !== 'transfer' && (
-            <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5">
-              <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-4">
-                {type === 'expense' ? 'FROM ACCOUNT' : 'TO ACCOUNT'}
-              </h3>
-              <div className="flex gap-3 flex-wrap">
-                {(type === 'income' ? assets : activeAccounts).map(acc => (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => setAccount(acc.id)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-full border transition-all ${account === acc.id ? 'bg-primary/10 border-primary text-primary' : 'border-outline-variant/30 text-on-surface-variant hover:text-on-surface hover:bg-surface-container'}`}
-                  >
-                    {acc.type === 'asset' ? <Landmark className="w-4 h-4" /> : <CreditCard className="w-4 h-4" />}
-                    <span className="text-sm font-semibold">{acc.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {type === 'transfer' && (
-             <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 flex flex-col md:flex-row gap-6">
-               <div className="flex-1">
-                 <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-4">FROM (SOURCE)</h3>
-                 <div className="flex flex-col gap-2">
-                   {assets.map(acc => (
-                      <label key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${fromAccountId === acc.id ? 'bg-primary/10 border-primary' : 'border-outline-variant/30 hover:bg-surface-container'}`}>
-                        <input aria-label={`From account ${acc.name}`} type="radio" name="fromAccount" value={acc.id} checked={fromAccountId === acc.id} onChange={() => setFromAccountId(acc.id)} className="hidden" />
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${fromAccountId === acc.id ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
-                          {fromAccountId === acc.id && <Check className="w-3 h-3 text-on-primary" />}
-                        </div>
-                        <span className="text-sm font-medium">{acc.name}</span>
-                      </label>
-                   ))}
-                 </div>
-               </div>
-               <div className="flex-1">
-                 <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-4">TO (DESTINATION)</h3>
-                 <div className="flex flex-col gap-2">
-                   {activeAccounts.filter(a => a.id !== fromAccountId).map(acc => (
-                      <label key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${toAccountId === acc.id ? 'bg-primary/10 border-primary' : 'border-outline-variant/30 hover:bg-surface-container'}`}>
-                        <input aria-label={`To account ${acc.name}`} type="radio" name="toAccount" value={acc.id} checked={toAccountId === acc.id} onChange={() => setToAccountId(acc.id)} className="hidden" />
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${toAccountId === acc.id ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
-                          {toAccountId === acc.id && <Check className="w-3 h-3 text-on-primary" />}
-                        </div>
-                        <span className="text-sm font-medium">{acc.name}</span>
-                      </label>
-                   ))}
-                 </div>
-               </div>
-             </div>
-          )}
-
-          <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary">
-                  <Layers className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-on-surface">Recurring</h3>
-                  <p className="text-xs text-on-surface-variant">
-                    {editingTransaction?.recurringRuleId ? 'This occurrence belongs to a recurring schedule' : 'Create future scheduled occurrences'}
-                  </p>
+          {type === 'transfer' ? (
+            <>
+              <div>
+                <label htmlFor="transaction-from-account" className={labelClass}>Paid From</label>
+                <div className="relative">
+                  <select id="transaction-from-account" aria-label="Paid From" name="fromAccount" value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
+                    {assets.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
                 </div>
               </div>
-              <button
-                type="button"
-                disabled={Boolean(editingTransaction)}
-                onClick={() => setIsRecurring(!isRecurring)}
-                className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ backgroundColor: isRecurring ? 'var(--primary)' : 'var(--surface-container-highest)' }}
-                aria-label="Toggle recurring transaction"
-              >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${isRecurring ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            {isRecurring && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Frequency</label>
-                <select
-                  value={recurrenceFrequency}
-                  disabled={Boolean(editingTransaction)}
-                  onChange={e => setRecurrenceFrequency(e.target.value as typeof recurrenceFrequency)}
-                  className="rounded-xl border border-outline-variant/30 bg-surface-container-high px-3 py-2 text-sm font-semibold text-on-surface outline-none focus:border-primary/60 disabled:opacity-60"
-                >
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="ANNUALLY">Annually</option>
+              <div>
+                <label htmlFor="transaction-to-account" className={labelClass}>Paid To</label>
+                <div className="relative">
+                  <select id="transaction-to-account" aria-label="Paid To" name="toAccount" value={toAccountId} onChange={e => setToAccountId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
+                    {activeAccounts.filter(acc => acc.id !== fromAccountId).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label htmlFor="transaction-account" className={labelClass}>{type === 'expense' ? 'Paid From' : 'Paid To'}</label>
+              <div className="relative">
+                <select id="transaction-account" aria-label={type === 'expense' ? 'Paid From' : 'Paid To'} value={account} onChange={e => setAccount(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
+                  {eligibleAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                 </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
               </div>
-            )}
-            {editingTransaction?.recurringRuleId && (
-              <p className="text-[11px] leading-relaxed text-on-surface-variant">
-                Editing this transaction changes only this occurrence. Manage the future series from Settings → Recurring Payments.
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 relative">
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-3">DATE</label>
-              <div className="flex flex-col gap-1 relative">
-                <span className="text-base font-semibold text-on-surface">{new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                <input 
-                  type="date" 
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                />
-              </div>
-              <CalendarIcon className="w-5 h-5 text-on-surface-variant absolute right-5 bottom-5 pointer-events-none" />
             </div>
+          )}
 
-            <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-5 relative">
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-3">NOTES</label>
-              <input 
-                type="text" 
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Optional..."
-                className="w-full bg-transparent text-base font-semibold text-on-surface focus:outline-none placeholder:text-on-surface-variant/50"
-              />
-              <Edit3 className="w-5 h-5 text-on-surface-variant absolute right-5 bottom-5 pointer-events-none" />
+          {type !== 'transfer' ? (
+            <div>
+              <label htmlFor="transaction-category" className={labelClass}>Category</label>
+              <div className="relative">
+                <select id="transaction-category" aria-label="Category" value={categoryId} onChange={e => setCategoryId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
+                  {availableCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
+              </div>
+            </div>
+          ) : null}
+
+          <div>
+            <label htmlFor="transaction-date" className={labelClass}>Date</label>
+            <div className="relative">
+              <input id="transaction-date" aria-label="Transaction date" type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} pr-9`} required />
+              <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-10 -mx-5 flex gap-3 border-t border-outline-variant/20 bg-surface-container/95 px-5 pb-1 pt-4 backdrop-blur sm:-mx-6 sm:px-6">
-            {editingTransaction && (
-              <button 
-                type="button"
-                onClick={() => {
-                  setAddModalOpen(false);
-                  setEditingTransaction(null);
-                }}
-                className="v35-focus-ring flex min-h-12 flex-1 items-center justify-center rounded-xl border border-outline-variant/30 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high"
-              >
-                Cancel
-              </button>
-            )}
-            <button 
-              type="submit"
-              className="v35-focus-ring flex min-h-12 flex-[2] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
-            >
-              <Lock className="w-5 h-5" /> {editingTransaction ? 'Save Changes' : 'Save Transaction'}
-            </button>
+          <div>
+            <label htmlFor="transaction-notes" className={labelClass}>Notes (optional)</label>
+            <input id="transaction-notes" aria-label="Notes" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Add a note" className={fieldClass} />
           </div>
-          <p className="text-center text-xs text-on-surface-variant pt-4">Saved instantly to your secure local ledger.</p>
+
+          <details className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between px-3 text-[11px] font-medium text-[#9aa8ba]">
+              More options
+              <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+            </summary>
+            <div className="space-y-3 border-t border-[#1f3046] p-3">
+              <div>
+                <label htmlFor="transaction-event" className={labelClass}>Event / outing (optional)</label>
+                <input id="transaction-event" list="coinbuddy-events" value={groupId} onChange={e => setGroupId(e.target.value)} placeholder="Choose or type an event" className={fieldClass} />
+                <datalist id="coinbuddy-events">{events.map(event => <option key={event.id} value={event.name} />)}</datalist>
+              </div>
+
+              {type !== 'income' && savingsGoals.some(goal => goal.isActive) ? (
+                <div>
+                  <label htmlFor="transaction-goal" className={labelClass}>Goal contribution (optional)</label>
+                  <select id="transaction-goal" aria-label="Goal contribution" value={goalId} onChange={e => setGoalId(e.target.value)} className={fieldClass}>
+                    <option value="">No goal</option>
+                    {savingsGoals.filter(goal => goal.isActive).map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
+                  </select>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-[#d6deea]">Recurring transaction</p>
+                  <p className="mt-0.5 text-[10px] text-[#718197]">Create future scheduled occurrences</p>
+                </div>
+                <button type="button" aria-label="Toggle recurring transaction" aria-pressed={isRecurring} disabled={Boolean(editingTransaction)} onClick={() => setIsRecurring(value => !value)} className={`relative h-6 w-11 rounded-full border transition ${isRecurring ? 'border-blue-500/60 bg-blue-600' : 'border-[#31445e] bg-[#162338]'}`}>
+                  <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white transition-all ${isRecurring ? 'left-[22px]' : 'left-1'}`} />
+                </button>
+              </div>
+
+              {isRecurring ? (
+                <div>
+                  <label htmlFor="transaction-frequency" className={labelClass}>Frequency</label>
+                  <select id="transaction-frequency" value={recurrenceFrequency} disabled={Boolean(editingTransaction)} onChange={e => setRecurrenceFrequency(e.target.value as typeof recurrenceFrequency)} className={fieldClass}>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="QUARTERLY">Quarterly</option>
+                    <option value="ANNUALLY">Annually</option>
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          </details>
+
+          <button type="submit" className="v35-focus-ring mt-1 flex h-10 w-full items-center justify-center rounded-lg border border-blue-400/20 bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[12px] font-semibold text-white shadow-[0_8px_18px_rgba(13,96,238,.22)] hover:from-[#2582ff] hover:to-[#176bf5]">
+            {editingTransaction ? 'Save Changes' : 'Save Transaction'}
+          </button>
         </form>
       </div>
     </V35ModalFrame>
