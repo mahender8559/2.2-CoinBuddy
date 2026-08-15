@@ -5,6 +5,10 @@ import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCred
 import {
   initializeDatabase,
   persistDatabase,
+  runAtomicDatabaseAction,
+  createRecoverySnapshot,
+  listRecoverySnapshots,
+  restoreRecoverySnapshot,
   deletePersistedDatabase,
   clearAppBrowserStorage,
   markClearStoragePending,
@@ -228,6 +232,8 @@ interface AppContextType {
   dismissIntegrityWarning: () => void;
   verifyDataIntegrity: () => Promise<DataIntegrityAuditResult>;
   repairDataIntegrityIssues: (issues: DataIntegrityIssue[]) => Promise<DataIntegrityAuditResult>;
+  recoverySnapshotCount: number;
+  restoreLatestRecoverySnapshot: () => Promise<boolean>;
   getStoredSetting: (key: string) => Promise<unknown>;
   setStoredSetting: (key: string, value: unknown) => Promise<void>;
   toast: { message: string; actionLabel?: string; onAction?: () => void } | null;
@@ -300,6 +306,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dbDriver, setDbDriver] = useState<SqlJsDatabaseDriver | null>(null);
   const [dbReady, setDbReady] = useState(false);
   const [integrityWarning, setIntegrityWarning] = useState<string | null>(null);
+  const [recoverySnapshotCount, setRecoverySnapshotCount] = useState(0);
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const pendingLiabilityPayments = useRef(new Set<string>());
   const toastTimer = useRef<number | null>(null);
@@ -586,6 +593,24 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     return verifyDataIntegrity();
   };
 
+  const restoreLatestRecoverySnapshot = async (): Promise<boolean> => {
+    if (!dbDriver) return false;
+    const snapshots = await listRecoverySnapshots();
+    if (!snapshots.length) return false;
+    await createRecoverySnapshot(dbDriver, 'restore');
+    await restoreRecoverySnapshot(dbDriver, snapshots[0]);
+    await refreshStateFromDatabase(dbDriver);
+    await refreshSharedFinance(dbDriver);
+    const settings = await loadAppSettings(dbDriver);
+    setAffordabilitySettingsState(normalizeAffordabilitySettings(settings[AFFORDABILITY_SETTINGS_KEY]));
+    setSavingsGoals(normalizeSavingsGoals(settings[SAVINGS_GOALS_KEY]));
+    setRecoverySnapshotCount((await listRecoverySnapshots()).length);
+    await verifyDataIntegrity();
+    clearStacks();
+    setLastUpdated(new Date().toISOString());
+    return true;
+  };
+
   const persistAppSetting = async (key: string, value: unknown) => {
     if (!dbDriver) return;
     try {
@@ -599,8 +624,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const persistDbAction = async (action: () => Promise<unknown>): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
-      await action();
-      await persistDatabase(dbDriver);
+      await runAtomicDatabaseAction(dbDriver, action);
       await refreshStateFromDatabase(dbDriver);
       return true;
     } catch (error) {
@@ -616,8 +640,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const persistSharedAction = async (action: () => Promise<unknown>): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
-      await action();
-      await persistDatabase(dbDriver);
+      await runAtomicDatabaseAction(dbDriver, action);
       await refreshSharedFinance(dbDriver);
       return true;
     } catch (error) {
@@ -742,6 +765,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         setAffordabilitySettingsState(normalizeAffordabilitySettings(settings[AFFORDABILITY_SETTINGS_KEY]));
         setSavingsGoals(normalizeSavingsGoals(settings[SAVINGS_GOALS_KEY]));
         setDbReady(true);
+        setRecoverySnapshotCount((await listRecoverySnapshots()).length);
       })
       .catch((err) => {
         console.error('SQLite initialization failed:', err);
@@ -1675,6 +1699,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
 
     try {
       if (dbDriver) {
+      await createRecoverySnapshot(dbDriver, 'clear');
+        setRecoverySnapshotCount((await listRecoverySnapshots()).length);
         await persistDbAction(async () => {
           await dbDriver.execute('BEGIN TRANSACTION');
           try {
@@ -1718,6 +1744,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     const validationError = validateLedgerImport(data);
     if (validationError) throw new Error(validationError);
     if (dbDriver) {
+      await createRecoverySnapshot(dbDriver, 'restore');
+      setRecoverySnapshotCount((await listRecoverySnapshots()).length);
       const imported = await persistDbAction(async () => {
         await importLedgerToDatabase(dbDriver, data, { skipValidation: true });
       });
@@ -1766,7 +1794,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
   };
 
   const exportLedgerData = () => ({
-    schemaVersion: 'coinbuddy-ledger-v4',
+    schemaVersion: 'coinbuddy-ledger-v5',
     exportedAt: new Date().toISOString(),
     accounts,
     transactions,
@@ -1830,7 +1858,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       profile, setProfile,
       monthCycleDay, setMonthCycleDay, isDateInCurrentCycle, getCycleDetails,
       lastUpdated, exportLedgerData, importLedgerData, getAccountBalance,
-      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, repairDataIntegrityIssues, getStoredSetting, setStoredSetting, toast, showToast
+      clearAllData, resetToDemoData, integrityWarning, dismissIntegrityWarning: () => setIntegrityWarning(null), verifyDataIntegrity, repairDataIntegrityIssues, recoverySnapshotCount, restoreLatestRecoverySnapshot, getStoredSetting, setStoredSetting, toast, showToast
     }}>
       {children}
     </AppContext.Provider>

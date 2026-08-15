@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Upload, Trash2, Info, Moon, Sun, DollarSign, LayoutList, FileSpreadsheet, Palette, Clock, ChevronRight } from 'lucide-react';
+import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Upload, Trash2, Info, Moon, Sun, DollarSign, LayoutList, FileSpreadsheet, Palette, Clock, ChevronRight, RotateCcw } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
@@ -11,7 +11,7 @@ import type { DataIntegrityAuditResult } from '../db/sqliteSchema';
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function Settings() {
-  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, resetToDemoData, verifyDataIntegrity, repairDataIntegrityIssues, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
+  const { theme, setTheme, colorPalette, setColorPalette, currency, setCurrency, biometric, setBiometric, passcode, setPasscode, setManageCategoriesOpen, profile, setProfile, monthCycleDay, setMonthCycleDay, transactions, categories, accounts, clearAllData, resetToDemoData, verifyDataIntegrity, repairDataIntegrityIssues, recoverySnapshotCount, restoreLatestRecoverySnapshot, lastUpdated, setOnboardingOpen, setButtonTourOpen, getStoredSetting } = useAppContext();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeSubScreen, setActiveSubScreen] = useState<'main' | 'backup'>(() =>
@@ -228,6 +228,7 @@ export function Settings() {
         <div className="v35-surface overflow-hidden rounded-2xl divide-y divide-outline-variant/20">
           <SettingAction icon={FileSpreadsheet} title="Export Excel" desc="Download accounts, transactions and categories as an Excel workbook." onClick={() => { void handleExportExcel(); }} />
           <SettingAction icon={Upload} title="Restore Backup" desc="Restore from encrypted local backup, legacy JSON or Google Drive." onClick={() => { setBackupInitialAction('restore'); setActiveSubScreen('backup'); }} />
+          {recoverySnapshotCount > 0 ? <SettingAction icon={RotateCcw} title="Recover Previous Ledger" desc={`${recoverySnapshotCount} automatic recovery snapshot${recoverySnapshotCount === 1 ? '' : 's'} available from earlier restore or clear operations.`} onClick={() => showConfirm('Recover Previous Ledger', 'Replace the current ledger with the most recent automatic recovery snapshot? CoinBuddy will preserve the current ledger as another recovery snapshot first.', () => { void restoreLatestRecoverySnapshot().then(restored => showAlert(restored ? 'Ledger Recovered' : 'Recovery Unavailable', restored ? 'The previous ledger was restored and passed through the integrity checker.' : 'No recovery snapshot is available.')).catch((error: unknown) => showAlert('Recovery Failed', getErrorMessage(error, 'The recovery snapshot could not be restored.'))); })} /> : null}
           <SettingAction icon={RefreshCw} title="Load demo data" desc="Replace this device's ledger with the realistic CoinBuddy sample." onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.4 sample covering accounts, cards, shared household expenses, reimbursements, shared loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} />
           <SettingAction icon={Trash2} tone="danger" title="Clear Local Storage" desc="Permanently delete all local ledger data from this device." onClick={() => showConfirm('Clear Storage', 'Are you sure you want to permanently delete all data from this device? All transactions, accounts, schedules, events, categories, and settings will be wiped.', () => { void clearAllData().then(() => showAlert('Storage Cleared', 'All local data has been successfully cleared.')).catch((error: unknown) => showAlert('Clear Failed', getErrorMessage(error, 'Your local data could not be cleared.'))); })} />
         </div>

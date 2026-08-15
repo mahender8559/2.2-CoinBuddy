@@ -16,6 +16,8 @@ export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
 const SNAPSHOT_STORE = 'snapshots';
 const SNAPSHOT_KEY = 'primary';
+const RECOVERY_SNAPSHOT_PREFIX = 'recovery:';
+const MAX_RECOVERY_SNAPSHOTS = 5;
 const OPFS_SNAPSHOT_FILE = 'coinbuddy.sqlite';
 const SKIP_DEMO_SEED_KEY = 'coinbuddy_skip_demo_seed';
 
@@ -99,6 +101,73 @@ async function writeSnapshot(snapshot: Uint8Array): Promise<void> {
   } finally { database.close(); }
 }
 
+function snapshotsMatch(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) if (left[index] !== right[index]) return false;
+  return true;
+}
+
+/** Keep a recoverable copy before restore/clear operations replace the ledger. */
+export async function createRecoverySnapshot(driver: SqlJsDatabaseDriver, reason: 'restore' | 'clear' | 'repair'): Promise<string> {
+  const key = `${RECOVERY_SNAPSHOT_PREFIX}${new Date().toISOString()}:${reason}`;
+  const snapshot = driver.rawDb.export() as Uint8Array;
+  const database = await openSnapshotStore();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readwrite').objectStore(SNAPSHOT_STORE).put(snapshot, key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } finally { database.close(); }
+  const snapshots = await listRecoverySnapshots();
+  for (const staleKey of snapshots.slice(MAX_RECOVERY_SNAPSHOTS)) {
+    const store = await openSnapshotStore();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const request = store.transaction(SNAPSHOT_STORE, 'readwrite').objectStore(SNAPSHOT_STORE).delete(staleKey);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } finally { store.close(); }
+  }
+  return key;
+}
+
+export async function listRecoverySnapshots(): Promise<string[]> {
+  const database = await openSnapshotStore();
+  try {
+    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readonly').objectStore(SNAPSHOT_STORE).getAllKeys();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return keys.map(String).filter(key => key.startsWith(RECOVERY_SNAPSHOT_PREFIX)).sort().reverse();
+  } finally { database.close(); }
+}
+
+export async function restoreRecoverySnapshot(driver: SqlJsDatabaseDriver, key: string): Promise<void> {
+  if (!key.startsWith(RECOVERY_SNAPSHOT_PREFIX)) throw new Error('Invalid recovery snapshot.');
+  const database = await openSnapshotStore();
+  let snapshot: Uint8Array | null = null;
+  try {
+    const value = await new Promise<ArrayBuffer | Uint8Array | undefined>((resolve, reject) => {
+      const request = database.transaction(SNAPSHOT_STORE, 'readonly').objectStore(SNAPSHOT_STORE).get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (value) snapshot = value instanceof Uint8Array ? value : new Uint8Array(value);
+  } finally { database.close(); }
+  if (!snapshot) throw new Error('Recovery snapshot is no longer available.');
+  const DatabaseConstructor = driver.rawDb.constructor;
+  const recovered = new DatabaseConstructor(snapshot);
+  recovered.run(SQLITE_PRAGMA_SETUP);
+  const integrity = recovered.exec('PRAGMA integrity_check;')[0]?.values?.[0]?.[0];
+  if (String(integrity).toLowerCase() !== 'ok') { recovered.close(); throw new Error('Recovery snapshot failed SQLite integrity verification.'); }
+  try { driver.rawDb.close(); } catch { /* best effort */ }
+  driver.rawDb = recovered;
+  await persistDatabase(driver);
+}
+
 async function readOpfsSnapshot(): Promise<Uint8Array | null> {
   const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
   if (!getDirectory) return null;
@@ -121,22 +190,22 @@ async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
 }
 
 function createDriver(db: any, isNewDatabase = false, skipDemoSeed = false): SqlJsDatabaseDriver {
-  return {
+  const driver: SqlJsDatabaseDriver = {
     rawDb: db,
     isNewDatabase,
     skipDemoSeed,
     async execute(sql, params = []) {
       if (params.length === 0) {
-        db.exec(sql);
+        driver.rawDb.exec(sql);
         return;
       }
-      const stmt = db.prepare(sql);
+      const stmt = driver.rawDb.prepare(sql);
       stmt.bind(params);
       stmt.step();
       stmt.free();
     },
     async query(sql, params = []) {
-      const stmt = db.prepare(sql);
+      const stmt = driver.rawDb.prepare(sql);
       if (params.length > 0) {
         stmt.bind(params);
       }
@@ -148,9 +217,25 @@ function createDriver(db: any, isNewDatabase = false, skipDemoSeed = false): Sql
       return results;
     },
     exportToBase64() {
-      return bufferToBase64(db.export());
+      return bufferToBase64(driver.rawDb.export());
     }
   };
+  return driver;
+}
+
+/** Run a mutation against a restorable in-memory copy and persist it as one unit. */
+export async function runAtomicDatabaseAction(driver: SqlJsDatabaseDriver, action: () => Promise<unknown>): Promise<void> {
+  const before = driver.rawDb.export() as Uint8Array;
+  const DatabaseConstructor = driver.rawDb.constructor;
+  try {
+    await action();
+    await persistDatabase(driver);
+  } catch (error) {
+    try { driver.rawDb.close(); } catch { /* best effort */ }
+    driver.rawDb = new DatabaseConstructor(before);
+    driver.rawDb.run(SQLITE_PRAGMA_SETUP);
+    throw error;
+  }
 }
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
@@ -206,6 +291,8 @@ export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void
   // if OPFS is unavailable or reset when the page is refreshed.
   try {
     await writeSnapshot(snapshot);
+    const verified = await readSnapshot();
+    if (!verified || !snapshotsMatch(snapshot, verified)) throw new Error('IndexedDB verification failed after write.');
     indexedDbSaved = true;
   } catch (error) {
     indexedDbError = error;

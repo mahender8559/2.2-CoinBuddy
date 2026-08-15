@@ -9,6 +9,8 @@ import {
   BackupManager,
   DEFAULT_BACKUP_SETTINGS,
   BackupSettings,
+  createLedgerFingerprint,
+  isDuplicateLedgerRestore,
 } from '../utils/backupManager';
 import { validateLedgerImport } from '../db/dbClient';
 
@@ -135,7 +137,7 @@ describe('Backup & Encryption Engine Suite', () => {
       const upgraded = upgradeBackupData(mockV1Backup);
 
       expect(upgraded).toBeDefined();
-      expect(upgraded.schemaVersion).toBe('coinbuddy-ledger-v4');
+      expect(upgraded.schemaVersion).toBe('coinbuddy-ledger-v5');
       expect(validateLedgerImport(upgraded)).toBeNull();
       expect(upgraded.lastUpdated).toBeDefined();
       expect(upgraded.currency).toBe('$');
@@ -183,6 +185,21 @@ describe('Backup & Encryption Engine Suite', () => {
 
     it('should throw an error if JSON is malformed', () => {
       expect(() => upgradeBackupData('not json')).toThrow('Invalid JSON structure inside backup.');
+    });
+  });
+
+  describe('V3.6 duplicate and conflict detection', () => {
+    it('uses stable content fingerprints that ignore timestamps and row order', async () => {
+      const left = { schemaVersion: 'coinbuddy-ledger-v5', exportedAt: '2026-01-01', accounts: [{ id: 'b' }, { id: 'a' }], transactions: [], categories: [], creditCards: [], widgets: [], loanRevisions: [] };
+      const right = { ...left, exportedAt: '2026-08-15', accounts: [{ id: 'a' }, { id: 'b' }] };
+      expect(await createLedgerFingerprint(left)).toBe(await createLedgerFingerprint(right));
+      expect(await isDuplicateLedgerRestore(left, right)).toBe(true);
+    });
+
+    it('detects a real financial-data difference', async () => {
+      const left = { accounts: [{ id: 'a', balance: 10 }], transactions: [] };
+      const right = { accounts: [{ id: 'a', balance: 11 }], transactions: [] };
+      expect(await isDuplicateLedgerRestore(left, right)).toBe(false);
     });
   });
 

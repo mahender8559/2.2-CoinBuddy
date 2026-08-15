@@ -15,6 +15,7 @@ import {
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS,
   getNextAutoBackupAt,
+  isDuplicateLedgerRestore,
 } from '../utils/backupManager';
 
 interface BackupSecurityProps {
@@ -413,6 +414,10 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
       try {
         // 1. Upgrade schema
         const upgradedData = upgradeBackupData(decryptedRawJSON, { recomputeBalances: false });
+
+        if (await isDuplicateLedgerRestore(exportLedgerData(), upgradedData)) {
+          throw new Error('This backup contains the same ledger already on this device. Nothing was restored.');
+        }
         
         // 2. Hydrate database
         // importLedgerData persists and refreshes the SQLite projection before it resolves.

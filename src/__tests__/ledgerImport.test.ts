@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateLedgerImport } from '../db/dbClient';
 
 const validBackup = {
-  schemaVersion: 'coinbuddy-ledger-v4',
+  schemaVersion: 'coinbuddy-ledger-v5',
   accounts: [{ id: 'account-1' }],
   transactions: [{ id: 'transaction-1', amount: 25 }],
   categories: [],
@@ -16,7 +16,8 @@ describe('ledger import validation', () => {
     expect(validateLedgerImport(validBackup)).toBeNull();
   });
 
-  it('keeps v3 backups importable while rejecting foreign versions', () => {
+  it('keeps v3 and v4 backups importable while rejecting foreign versions', () => {
+    expect(validateLedgerImport({ ...validBackup, schemaVersion: 'coinbuddy-ledger-v4' })).toBeNull();
     expect(validateLedgerImport({ ...validBackup, schemaVersion: 'coinbuddy-ledger-v3' })).toBeNull();
     expect(validateLedgerImport({ ...validBackup, schemaVersion: 'foreign-v1' })).toContain('not a supported');
   });
@@ -25,5 +26,10 @@ describe('ledger import validation', () => {
     expect(validateLedgerImport({ ...validBackup, transactions: [{ id: 'transaction-1', amount: 0 }] })).toContain('positive amount');
     expect(validateLedgerImport({ ...validBackup, people: {} })).toContain('people');
     expect(validateLedgerImport({ ...validBackup, sharedObligations: {} })).toContain('sharedObligations');
+  });
+
+  it('rejects duplicate entity identifiers before destructive import begins', () => {
+    expect(validateLedgerImport({ ...validBackup, accounts: [{ id: 'same' }, { id: 'same' }] })).toContain('duplicate identifiers');
+    expect(validateLedgerImport({ ...validBackup, transactions: [{ id: 'same', amount: 1 }, { id: 'same', amount: 2 }] })).toContain('duplicate identifiers');
   });
 });

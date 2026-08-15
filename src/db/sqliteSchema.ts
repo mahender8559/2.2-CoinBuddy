@@ -876,6 +876,26 @@ export async function auditDatabaseIntegrity(
   const isNetWorthAccurate = Math.round(expectedNetWorth * 100) === Math.round(actualNetWorth * 100);
   if (!isNetWorthAccurate) addIssue('NET_WORTH_MISMATCH', 'error', 'Net worth does not reconcile to the account ledger.');
 
+  const openingBalanceRows = await db.query(`
+    SELECT COALESCE(to_account_id, from_account_id) AS account_id, COUNT(*) AS entry_count
+      FROM transactions WHERE transaction_type = 'OPENING_BALANCE'
+     GROUP BY COALESCE(to_account_id, from_account_id) HAVING COUNT(*) > 1
+  `);
+  for (const row of openingBalanceRows) addIssue('DUPLICATE_OPENING_BALANCE', 'error', 'An account has more than one opening-balance entry.', String(row.account_id));
+
+  const invalidTransferRows = await db.query(`SELECT id FROM transactions WHERE transaction_type = 'TRANSFER' AND from_account_id = to_account_id`);
+  for (const row of invalidTransferRows) addIssue('SELF_TRANSFER', 'error', 'A transfer uses the same source and destination account.', String(row.id));
+
+  const transactionColumns = new Set((await db.query(`PRAGMA table_info(transactions)`)).map(row => String(row.name)));
+  if (transactionColumns.has('recurring_rule_id') && transactionColumns.has('due_date')) {
+    const duplicateOccurrenceRows = await db.query(`
+      SELECT recurring_rule_id, due_date, COUNT(*) AS entry_count FROM transactions
+       WHERE recurring_rule_id IS NOT NULL AND due_date IS NOT NULL
+       GROUP BY recurring_rule_id, due_date HAVING COUNT(*) > 1
+    `);
+    for (const row of duplicateOccurrenceRows) addIssue('DUPLICATE_RECURRING_OCCURRENCE', 'error', `Recurring schedule ${String(row.recurring_rule_id)} generated the same due date more than once.`, String(row.recurring_rule_id));
+  }
+
   // Credit-card metadata must point to a liability account.
   const cardRows = await db.query(`
     SELECT cc.id, cc.account_id, cc.due_amount, a.id AS linked_id, a.type AS linked_type
@@ -979,6 +999,12 @@ export async function auditDatabaseIntegrity(
 
   // v3.4 shared-finance invariants. These checks intentionally derive totals
   // from normalized rows instead of trusting cached responsibility/settlement values.
+  const activeSelfRows = await db.query(`SELECT id FROM people WHERE is_self = 1 AND is_archived = 0`);
+  const peopleCount = Number((await db.query(`SELECT COUNT(*) AS count FROM people`))[0]?.count ?? 0);
+  if (peopleCount > 0 && activeSelfRows.length !== 1) addIssue('SELF_PERSON', 'error', `Shared Finances requires exactly one active “Me” person; found ${activeSelfRows.length}.`);
+  const invalidPaymentRows = await db.query(`SELECT id FROM shared_payments WHERE (source = 'EXTERNAL' AND transaction_id IS NOT NULL) OR (source = 'TRACKED' AND transaction_id IS NULL)`);
+  for (const row of invalidPaymentRows) addIssue('SHARED_PAYMENT_SOURCE', 'error', 'A shared payment has an invalid tracked/external transaction reference.', String(row.id));
+
   const sharedRows = await db.query(`
     SELECT o.id, o.title, o.total_amount,
       COALESCE((SELECT SUM(r.amount) FROM shared_responsibilities r WHERE r.obligation_id = o.id), 0) AS responsibility_total,

@@ -2,13 +2,13 @@ import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './bala
 import { DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { normalizeSavingsGoals } from '../domain/savingsGoals';
 
-export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v4';
-export const PREVIOUS_LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v3';
+export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v5';
+export const PREVIOUS_LEDGER_SCHEMA_VERSIONS = ['coinbuddy-ledger-v4', 'coinbuddy-ledger-v3'] as const;
 
 export function validateLedgerSchema(data: unknown): string | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Backup must be a JSON object.';
   const ledger = data as Record<string, unknown>;
-  if (ledger.schemaVersion !== LEDGER_SCHEMA_VERSION && ledger.schemaVersion !== PREVIOUS_LEDGER_SCHEMA_VERSION) return 'This backup is not a supported CoinBuddy ledger export.';
+  if (ledger.schemaVersion !== LEDGER_SCHEMA_VERSION && !PREVIOUS_LEDGER_SCHEMA_VERSIONS.includes(ledger.schemaVersion as any)) return 'This backup is not a supported CoinBuddy ledger export.';
   for (const key of ['accounts', 'transactions', 'categories', 'creditCards', 'widgets', 'loanRevisions']) {
     if (!Array.isArray(ledger[key])) return `Backup field "${key}" must be an array.`;
   }
@@ -20,6 +20,12 @@ export function validateLedgerSchema(data: unknown): string | null {
   }
   if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
   if (!(ledger.transactions as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown; amount?: unknown }).id === 'string' && Number.isFinite(Number((value as { amount?: unknown }).amount)) && Number((value as { amount?: unknown }).amount) > 0)) return 'Every imported transaction must have an id and positive amount.';
+  for (const key of ['accounts', 'transactions', 'categories', 'creditCards', 'widgets', 'loanRevisions', 'recurringRules', 'people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements']) {
+    const rows = ledger[key];
+    if (!Array.isArray(rows)) continue;
+    const ids = rows.map(value => value && typeof value === 'object' ? String((value as { id?: unknown; event_id?: unknown }).id ?? (value as { event_id?: unknown }).event_id ?? '') : '').filter(Boolean);
+    if (new Set(ids).size !== ids.length) return `Backup field "${key}" contains duplicate identifiers.`;
+  }
   return null;
 }
 
@@ -32,7 +38,7 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
   }
   if (data.data && typeof data.data === 'object') data = data.data;
 
-  if (data.schemaVersion === LEDGER_SCHEMA_VERSION || data.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION) {
+  if (data.schemaVersion === LEDGER_SCHEMA_VERSION || PREVIOUS_LEDGER_SCHEMA_VERSIONS.includes(data.schemaVersion)) {
     return {
       ...data,
       schemaVersion: LEDGER_SCHEMA_VERSION,

@@ -45,6 +45,7 @@ export interface EncryptedPayload {
     date: string;
     accountCount: number;
     transactionCount: number;
+    fingerprint: string;
   };
 }
 
@@ -67,6 +68,38 @@ const BACKUP_INTERVALS: Record<BackupSettings['backupFrequency'], number> = {
   WEEKLY: 7 * 24 * 60 * 60 * 1000,
   MONTHLY: 30 * 24 * 60 * 60 * 1000,
 };
+
+const VOLATILE_BACKUP_KEYS = new Set(['exportedAt', 'lastUpdated', 'completedAt', 'verifiedAt']);
+
+function canonicalizeLedger(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const normalized = value.map(canonicalizeLedger);
+    if (normalized.every(item => item && typeof item === 'object')) {
+      return normalized.sort((left: any, right: any) => String(left.id ?? left.event_id ?? '').localeCompare(String(right.id ?? right.event_id ?? '')));
+    }
+    return normalized;
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !VOLATILE_BACKUP_KEYS.has(key))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, child]) => [key, canonicalizeLedger(child)]));
+}
+
+/** Content identity used to block duplicate restores even when filenames differ. */
+export async function createLedgerFingerprint(ledger: unknown): Promise<string> {
+  const canonical = JSON.stringify(canonicalizeLedger(ledger));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return bufferToBase64(new Uint8Array(digest));
+}
+
+export async function isDuplicateLedgerRestore(current: unknown, candidate: unknown): Promise<boolean> {
+  const [currentFingerprint, candidateFingerprint] = await Promise.all([
+    createLedgerFingerprint(current),
+    createLedgerFingerprint(candidate),
+  ]);
+  return currentFingerprint === candidateFingerprint;
+}
 
 export function getBackupIntervalMs(frequency: BackupSettings['backupFrequency']): number {
   return BACKUP_INTERVALS[frequency] ?? BACKUP_INTERVALS.DAILY;
@@ -162,6 +195,7 @@ export async function encryptBackup(
       date: new Date().toISOString(),
       accountCount,
       transactionCount,
+      fingerprint: await createLedgerFingerprint(JSON.parse(jsonString)),
     },
   };
 
