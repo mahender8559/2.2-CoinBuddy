@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Bot, CalendarClock, CheckCircle2, CreditCard, Landmark, PiggyBank, ShieldCheck } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { isLiquidCashAccount } from '../domain/affordability';
@@ -26,27 +26,39 @@ export function AutomationCenter() {
   const [fundingByKey, setFundingByKey] = useState<Record<string, string>>({});
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const inFlightKeys = useRef(new Set<string>());
 
   const fundingAccounts = useMemo(() => accounts.filter(account => account.is_archived !== 1 && isLiquidCashAccount(account)), [accounts]);
   const candidates = useMemo(() => buildAutomationCandidates({ accounts, creditCards, savingsGoals, recurringRules }), [accounts, creditCards, savingsGoals, recurringRules]);
 
   const createSchedule = async (candidate: ManagedAutomationCandidate) => {
+    if (inFlightKeys.current.has(candidate.key)) return;
+
     const sourceAccountId = fundingByKey[candidate.key];
     if (!sourceAccountId) {
       setMessage({ tone: 'error', text: 'Choose the account that will fund this schedule.' });
       return;
     }
+
+    const currentCandidate = buildAutomationCandidates({ accounts, creditCards, savingsGoals, recurringRules }).find(item => item.key === candidate.key);
+    if (!currentCandidate) {
+      setMessage({ tone: 'error', text: 'This automation is already covered or its financial details changed. Review the current schedules and try again.' });
+      return;
+    }
+
+    inFlightKeys.current.add(candidate.key);
     setCreatingKey(candidate.key);
     setMessage(null);
     try {
-      const template = buildManagedRecurringTransaction(candidate, sourceAccountId, accounts);
+      const template = buildManagedRecurringTransaction(currentCandidate, sourceAccountId, accounts);
       const result = await addTransaction(template);
       if (!result.success) throw new Error(result.error || 'The managed schedule could not be saved.');
-      setMessage({ tone: 'success', text: `${candidate.title} is scheduled. Due occurrences will wait for your confirmation before changing balances.` });
+      setMessage({ tone: 'success', text: `${currentCandidate.title} is scheduled. Due occurrences will wait for your confirmation before changing balances.` });
       setFundingByKey(previous => ({ ...previous, [candidate.key]: '' }));
     } catch (error) {
       setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'The managed schedule could not be created.' });
     } finally {
+      inFlightKeys.current.delete(candidate.key);
       setCreatingKey(null);
     }
   };
