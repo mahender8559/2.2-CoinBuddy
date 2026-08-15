@@ -93,6 +93,7 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await expectInsideViewport(page, reconcileSheet);
   await expect(reconcileSheet.getByRole('heading', { name: 'Reconcile Account', exact: true })).toBeVisible();
   await expect(reconcileSheet.getByLabel('Upload statement')).toBeAttached();
+  await page.screenshot({ path: testInfo.outputPath('v35-reconcile-upload.png'), fullPage: false });
   await reconcileSheet.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(reconcileSheet.getByLabel('Current actual balance')).toBeVisible();
   await reconcileSheet.getByRole('button', { name: 'Close reconciliation', exact: true }).click();
@@ -111,6 +112,7 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await expect(rateSheet.getByRole('heading', { name: 'Update Loan Rate', exact: true })).toBeVisible();
   await rateSheet.locator('input[type="number"]').first().fill('9');
   await expect(rateSheet.getByText('Adjustment strategy', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('v35-loan-rate.png'), fullPage: false });
   await rateSheet.getByRole('button', { name: 'Close loan rate update', exact: true }).click();
   await paySheet.getByRole('button', { name: 'Close payment', exact: true }).click();
 
