@@ -80,21 +80,25 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
   const accountSheet = page.getByTestId('account-form-sheet');
   await expectInsideViewport(page, accountSheet);
-  await expect(accountSheet.getByRole('heading', { name: 'Add Asset', exact: true })).toBeVisible();
-  await expect(accountSheet.getByText('Asset Type', { exact: true })).toBeVisible();
+  await expect(accountSheet.getByRole('heading', { name: 'Add Account', exact: true })).toBeVisible();
+  await expect(accountSheet.getByText('Account Type', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-account-form.png'), fullPage: false });
   await accountSheet.getByRole('button', { name: 'Close account form', exact: true }).click();
 
-  // Reconciliation uses the same shell while preserving its ledger guardrails.
+  // Reconciliation now mirrors the approved Upload → Match → Review flow while
+  // retaining the same balance-adjustment guardrails in the Match step.
   await page.getByRole('button', { name: /HDFC Salary Account/ }).click();
   await page.getByRole('button', { name: 'Reconcile', exact: true }).first().click();
   const reconcileSheet = page.getByTestId('reconcile-sheet');
   await expectInsideViewport(page, reconcileSheet);
+  await expect(reconcileSheet.getByRole('heading', { name: 'Reconcile Account', exact: true })).toBeVisible();
+  await expect(reconcileSheet.getByLabel('Upload statement')).toBeAttached();
+  await reconcileSheet.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(reconcileSheet.getByLabel('Current actual balance')).toBeVisible();
   await reconcileSheet.getByRole('button', { name: 'Close reconciliation', exact: true }).click();
 
   // Pay Down + floating-rate revision stay financially unchanged but now share
-  // the same responsive presentation system.
+  // the same compact reference hierarchy.
   await page.getByRole('button', { name: /Car Loan/ }).click();
   await page.getByRole('button', { name: 'Pay down', exact: true }).click();
   const paySheet = page.getByTestId('pay-modal');
@@ -104,9 +108,10 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await paySheet.getByRole('button', { name: 'Update Floating Interest Rate', exact: true }).click();
   const rateSheet = page.getByTestId('loan-rate-sheet');
   await expectInsideViewport(page, rateSheet);
+  await expect(rateSheet.getByRole('heading', { name: 'Update Loan Rate', exact: true })).toBeVisible();
   await rateSheet.locator('input[type="number"]').first().fill('9');
-  await expect(rateSheet.getByText('Select Adjustment Strategy', { exact: true })).toBeVisible();
-  await rateSheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(rateSheet.getByText('Adjustment strategy', { exact: true })).toBeVisible();
+  await rateSheet.getByRole('button', { name: 'Close loan rate update', exact: true }).click();
   await paySheet.getByRole('button', { name: 'Close payment', exact: true }).click();
 
   // Wallet Summary matches the same bottom-sheet/desktop-dialog geometry.
@@ -114,7 +119,7 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   const walletSheet = page.getByTestId('wallet-summary-sheet');
   await expectInsideViewport(page, walletSheet);
   await expect(walletSheet.getByRole('heading', { name: 'Wallet Summary', exact: true })).toBeVisible();
-  await expect(walletSheet.getByText('Amount in Cash', { exact: true })).toBeVisible();
+  await expect(walletSheet.getByText('Cash Wallet', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-wallet-summary.png'), fullPage: false });
   await walletSheet.getByRole('button', { name: 'Close wallet summary', exact: true }).click();
 
