@@ -183,7 +183,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
   };
 
   return (
-    <V35ModalFrame size="lg" testId="loan-rate-sheet" panelClassName="space-y-5 overflow-y-auto p-5 text-on-surface sm:p-6">
+    <V35ModalFrame size="lg" testId="loan-rate-sheet" labelledBy="loan-rate-form-title" panelClassName="space-y-5 overflow-y-auto p-5 text-on-surface sm:p-6">
         
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-outline-variant/20 pb-4 pr-1">
@@ -192,13 +192,15 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
               <Percent className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold">Update Floating Interest Rate</h3>
+              <h3 id="loan-rate-form-title" className="text-lg font-semibold">Update Floating Interest Rate</h3>
               <p className="text-xs text-on-surface-variant">
                 Adjust interest rate & select EMI vs. Tenure revision strategy for <strong className="text-on-surface">{account.name}</strong>
               </p>
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Close loan rate update"
             onClick={onClose}
             className="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
           >
@@ -234,10 +236,11 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
           {/* New Rate & Effective Date Inputs */}
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <label htmlFor="new-interest-rate" className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <Percent className="w-3.5 h-3.5 text-primary" /> New Interest Rate (%)
               </label>
               <input
+                id="new-interest-rate"
                 type="number"
                 step="0.05"
                 required
@@ -249,10 +252,11 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <label htmlFor="loan-rate-effective-date" className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-primary" /> Effective Date
               </label>
               <input
+                id="loan-rate-effective-date"
                 type="date"
                 required
                 value={effectiveDate}
@@ -264,10 +268,11 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
 
           {type === 'INTEREST_ONLY' && (
             <div>
-              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <label htmlFor="loan-payment-frequency" className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <RefreshCw className="w-3.5 h-3.5 text-primary" /> Payment Frequency
               </label>
               <select
+                id="loan-payment-frequency"
                 value={newFrequency}
                 onChange={(e) => setNewFrequency(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY')}
                 className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface focus:outline-none focus:border-primary appearance-none"
@@ -298,6 +303,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
                 <div className="flex justify-between items-start mb-1.5">
                   <div className="flex items-center gap-2">
                     <input
+                      aria-label="Option A: Maintain Monthly EMI"
                       type="radio"
                       name="strategy"
                       checked={selectedStrategy === 'MAINTAIN_EMI'}
@@ -343,6 +349,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
                 <div className="flex justify-between items-start mb-1.5">
                   <div className="flex items-center gap-2">
                     <input
+                      aria-label="Option B: Maintain Loan Tenure"
                       type="radio"
                       name="strategy"
                       checked={selectedStrategy === 'MAINTAIN_TENURE'}

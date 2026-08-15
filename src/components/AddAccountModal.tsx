@@ -372,7 +372,7 @@ export function AddAccountModal() {
   const isEditing = Boolean(editingAccount || editingCreditCard);
 
   return (
-    <V35ModalFrame size="md" testId="account-form-sheet" panelClassName="overflow-y-auto p-5 sm:p-6">
+    <V35ModalFrame size="md" testId="account-form-sheet" labelledBy="account-form-title" panelClassName="overflow-y-auto p-5 sm:p-6">
         <button 
           type="button"
           aria-label="Close account form"
@@ -383,7 +383,7 @@ export function AddAccountModal() {
         </button>
         
         <div className="mb-5 flex min-h-10 items-center justify-between gap-3 pr-11">
-          <h2 className="text-lg font-semibold text-on-surface sm:text-xl">
+          <h2 id="account-form-title" className="text-lg font-semibold text-on-surface sm:text-xl">
             {isEditing 
               ? (addAccountModalType === 'asset' ? 'Edit Asset' : 'Edit Liability')
               : (addAccountModalType === 'asset' ? 'Add Asset' : 'Add Liability')

@@ -46,10 +46,10 @@ export function ReconcileWizard({ account, kind, onClose }: { account: Account; 
     onClose();
   };
 
-  return <V35ModalFrame size="sm" testId="reconcile-sheet" panelClassName="p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-semibold text-on-surface sm:text-xl">{label}</h2><p className="mt-1 text-sm text-on-surface-variant">{account.name} · Ledger balance {formatCurrency(account.balance)}</p></div><button type="button" aria-label="Close reconciliation" onClick={onClose} className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><X className="h-5 w-5" /></button></div>
+  return <V35ModalFrame size="sm" testId="reconcile-sheet" labelledBy="reconcile-form-title" panelClassName="p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4"><div><h2 id="reconcile-form-title" className="text-lg font-semibold text-on-surface sm:text-xl">{label}</h2><p className="mt-1 text-sm text-on-surface-variant">{account.name} · Ledger balance {formatCurrency(account.balance)}</p></div><button type="button" aria-label="Close reconciliation" onClick={onClose} className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><X className="h-5 w-5" /></button></div>
       <label className="block mt-6 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Current actual balance</label>
-      <CurrencyInput autoFocus aria-label="Current actual balance" value={actualValue} onValueChange={setActualValue} className="mt-2 w-full rounded-2xl bg-surface-container-high px-4 py-3 text-lg font-bold font-numeric text-on-surface outline-none focus:ring-2 focus:ring-primary" />
+      <CurrencyInput autoFocus aria-label="Current actual balance" value={actualValue} onValueChange={setActualValue} className="mt-2 w-full rounded-xl bg-surface-container-high px-4 py-3 text-lg font-bold font-numeric text-on-surface outline-none focus:ring-2 focus:ring-primary" />
       <div className={`mt-4 rounded-2xl p-4 text-sm font-semibold ${difference === 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-primary/10 text-primary'}`}>{summary}</div>
       {reconciliationTooLarge && <p className="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-sm font-semibold text-rose-400"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{reconciliationWarning}</p>}
       {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}

@@ -38,7 +38,7 @@ export function WalletSummaryModal() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ duration: 0.2 }}
-          data-testid="wallet-summary-sheet" role="dialog" aria-modal="true" className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] border border-outline-variant/35 bg-surface-container p-5 shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-6"
+          data-testid="wallet-summary-sheet" role="dialog" aria-modal="true" aria-labelledby="wallet-summary-title" className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] border border-outline-variant/35 bg-surface-container p-5 shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-6"
         >
           <div aria-hidden="true" className="mx-auto -mt-3 mb-3 h-1 w-10 shrink-0 rounded-full bg-outline-variant/55 sm:hidden" />
           <button 
@@ -55,7 +55,7 @@ export function WalletSummaryModal() {
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-on-surface sm:text-xl">Wallet Summary</h2>
+              <h2 id="wallet-summary-title" className="text-lg font-semibold text-on-surface sm:text-xl">Wallet Summary</h2>
               <p className="text-xs text-on-surface-variant font-medium">Liquid cash, bank balances & total debt</p>
             </div>
           </div>

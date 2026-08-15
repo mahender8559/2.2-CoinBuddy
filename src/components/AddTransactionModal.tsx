@@ -233,11 +233,11 @@ export function AddTransactionModal() {
   };
 
   return (
-    <V35ModalFrame size="lg" testId="transaction-form-sheet">
+    <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title">
       <div className="flex shrink-0 items-center justify-between border-b border-outline-variant/30 px-5 py-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="h-5 w-5" /></span>
-          <h2 className="truncate text-lg font-semibold text-on-surface sm:text-xl">{editingTransaction ? 'Edit Transaction' : 'Log Transaction'}</h2>
+          <h2 id="transaction-form-title" className="truncate text-lg font-semibold text-on-surface sm:text-xl">{editingTransaction ? 'Edit Transaction' : 'Log Transaction'}</h2>
           {editingTransaction && (
             <span className="px-2 py-0.5 ml-2 text-xs font-bold uppercase tracking-wider bg-surface-variant text-on-surface-variant rounded-md">
               {type}

@@ -161,7 +161,7 @@ export function PayCardModal() {
   };
 
   return (
-    <V35ModalFrame size="md" testId="pay-modal" panelClassName="overflow-y-auto p-5 sm:p-6">
+    <V35ModalFrame size="md" testId="pay-modal" labelledBy="payment-form-title" panelClassName="overflow-y-auto p-5 sm:p-6">
         
         {/* Celebration Overlay */}
         <AnimatePresence>
@@ -252,7 +252,7 @@ export function PayCardModal() {
             <CreditCard className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-on-surface sm:text-xl">Pay {selectedCard ? 'Credit Card' : 'Liability'}</h2>
+            <h2 id="payment-form-title" className="text-lg font-semibold text-on-surface sm:text-xl">Pay {selectedCard ? 'Credit Card' : 'Liability'}</h2>
             <p className="text-xs text-on-surface-variant">{name}</p>
           </div>
         </div>

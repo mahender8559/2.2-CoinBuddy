@@ -201,9 +201,9 @@
 .v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):focus,
 .v35-form-sheet select:focus,
 .v35-form-sheet textarea:focus,
-[role="dialog"]:has(#category-form-title) input:focus,
+[role="dialog"]:has(#category-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 [role="dialog"]:has(#category-form-title) select:focus,
-[role="dialog"]:has(#goal-form-title) input:focus,
+[role="dialog"]:has(#goal-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 [role="dialog"]:has(#goal-form-title) select:focus {
   border-color: var(--cb-form-blue) !important;
   outline: none !important;
