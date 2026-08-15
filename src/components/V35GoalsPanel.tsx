@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, Car, Edit2, GraduationCap, Home, Plane, Plus, ShieldCheck, Target, Trash2, X } from 'lucide-react';
+import { BookOpen, CalendarDays, Car, ChevronDown, Edit2, GraduationCap, Home, Plane, Plus, ShieldCheck, Target, Trash2, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import type { SavingsGoal, SavingsGoalType } from '../types';
 import { CurrencyInput } from './CurrencyInput';
@@ -44,6 +44,9 @@ const goalEmoji = (type: SavingsGoalType) => {
   if (type === 'EMERGENCY_FUND') return '🛡️';
   return '🎯';
 };
+
+const fieldClass = 'h-10 w-full rounded-lg border border-[#21334a] bg-[#101c2c] px-3 text-[12px] font-medium text-[#f5f7fb] outline-none transition placeholder:text-[#6f7e91] focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]';
+const labelClass = 'mb-1.5 block text-[10.5px] font-medium text-[#cbd4e0]';
 
 export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
   const {
@@ -112,6 +115,14 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
     setModalOpen(false);
   };
 
+  const goalTypeButtons: Array<{ type: SavingsGoalType; icon: typeof Target }> = [
+    { type: 'PURCHASE', icon: Car },
+    { type: 'TRAVEL', icon: Plane },
+    { type: 'HOME', icon: Home },
+    { type: 'EDUCATION', icon: GraduationCap },
+    { type: 'OTHER', icon: Target },
+  ];
+
   return (
     <section data-testid="page-goals" className="w-full space-y-5 pb-24 md:pb-0 animate-fade-in">
       <div className="flex items-start justify-between gap-4">
@@ -148,32 +159,14 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
                 <div className="flex items-start gap-3">
                   <IconBadge icon={Icon} tone={complete ? 'green' : goal.type === 'TRAVEL' ? 'purple' : goal.type === 'EMERGENCY_FUND' ? 'green' : 'blue'} />
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-semibold text-on-surface"><span>{goal.name}</span> <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>
-                      {complete ? <StatusPill tone="positive">Completed</StatusPill> : !goal.isActive ? <StatusPill>Paused</StatusPill> : null}
-                    </div>
+                    <div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-base font-semibold text-on-surface"><span>{goal.name}</span> <span aria-hidden="true">{goalEmoji(goal.type)}</span></h2>{complete ? <StatusPill tone="positive">Completed</StatusPill> : !goal.isActive ? <StatusPill>Paused</StatusPill> : null}</div>
                     <p className="mt-0.5 text-xs text-on-surface-variant">{GOAL_TYPE_LABELS[goal.type]}{goal.targetDate ? ` · Target ${new Date(`${goal.targetDate}T12:00:00`).toLocaleDateString()}` : ''}</p>
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    <button type="button" aria-label={`Edit ${goal.name}`} onClick={() => openEdit(goal)} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button>
-                    <button type="button" aria-label={`Delete ${goal.name}`} onClick={() => { void deleteSavingsGoal(goal.id); }} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button>
-                  </div>
+                  <div className="flex shrink-0 gap-1"><button type="button" aria-label={`Edit ${goal.name}`} onClick={() => openEdit(goal)} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button><button type="button" aria-label={`Delete ${goal.name}`} onClick={() => { void deleteSavingsGoal(goal.id); }} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button></div>
                 </div>
-
-                <div className="mt-5 flex items-end justify-between gap-4">
-                  <div>
-                    <MoneyValue className="text-lg font-semibold text-on-surface">{formatCurrency(current)}</MoneyValue>
-                    <p className="mt-0.5 text-xs text-on-surface-variant">of {formatCurrency(goal.targetAmount)}</p>
-                  </div>
-                  <MoneyValue className={`text-lg font-semibold ${complete ? 'text-[var(--cb-green)]' : 'text-primary'}`}>{Math.round(percent)}%</MoneyValue>
-                </div>
+                <div className="mt-5 flex items-end justify-between gap-4"><div><MoneyValue className="text-lg font-semibold text-on-surface">{formatCurrency(current)}</MoneyValue><p className="mt-0.5 text-xs text-on-surface-variant">of {formatCurrency(goal.targetAmount)}</p></div><MoneyValue className={`text-lg font-semibold ${complete ? 'text-[var(--cb-green)]' : 'text-primary'}`}>{Math.round(percent)}%</MoneyValue></div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-container-high"><div className={`h-full rounded-full transition-[width] duration-300 ${complete ? 'bg-[var(--cb-green)]' : 'bg-primary'}`} style={{ width: `${percent}%` }} /></div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                  <div className="rounded-xl bg-black/10 p-3"><span className="text-on-surface-variant">Monthly plan</span><MoneyValue className="mt-1 block font-semibold text-on-surface">{formatCurrency(goal.monthlyContribution)}</MoneyValue></div>
-                  <div className="rounded-xl bg-black/10 p-3"><span className="text-on-surface-variant">Required pace</span><MoneyValue className="mt-1 block font-semibold text-on-surface">{required > 0 ? formatCurrency(required) : 'On track'}</MoneyValue></div>
-                </div>
-
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-black/10 p-3"><span className="text-on-surface-variant">Monthly plan</span><MoneyValue className="mt-1 block font-semibold text-on-surface">{formatCurrency(goal.monthlyContribution)}</MoneyValue></div><div className="rounded-xl bg-black/10 p-3"><span className="text-on-surface-variant">Required pace</span><MoneyValue className="mt-1 block font-semibold text-on-surface">{required > 0 ? formatCurrency(required) : 'On track'}</MoneyValue></div></div>
                 <p className="mt-4 text-xs leading-5 text-on-surface-variant">{linked ? `Progress tracked from ${linked.name}.` : 'Progress uses manual saved amount and verified Goal-linked contributions.'}</p>
                 {goal.monthlyContribution > 0 ? <p className="mt-1 text-xs leading-5 text-on-surface-variant">Planner protects {formatCurrency(goal.monthlyContribution)} each cycle for this goal.</p> : null}
                 {linked && !linkedIsLiquid ? <div className="mt-3 flex gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs leading-5 text-on-surface-variant"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{linked.name} tracks progress only. It is excluded from affordability liquid cash and protected reserves.</span></div> : null}
@@ -185,30 +178,42 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
       )}
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-[220] flex items-end justify-center overflow-y-auto bg-black/65 p-0 backdrop-blur-sm md:items-center md:p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="goal-form-title" className="v35-surface max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl p-5 md:max-w-md md:rounded-2xl md:p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 id="goal-form-title" className="text-xl font-semibold text-on-surface">{editing ? 'Edit goal' : 'Add goal'}</h2>
-                <p className="mt-1 text-sm text-on-surface-variant">Keep the target simple. CoinBuddy will handle the progress math.</p>
-              </div>
-              <button type="button" aria-label="Close goal form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high"><X className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-[220] flex items-end justify-center overflow-y-auto bg-black/70 backdrop-blur-md md:items-center md:p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="goal-form-title" className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[18px] border border-[#31455f] bg-gradient-to-b from-[#0b1625] to-[#091321] shadow-2xl md:max-w-[286px] md:rounded-[18px]">
+            <div className="flex h-[46px] items-center justify-between border-b border-[#21334a]/70 px-2.5">
+              <button type="button" aria-label="Back from goal form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-[#9aa8ba] hover:bg-[#132238]"><span aria-hidden="true" className="text-lg">‹</span></button>
+              <h2 id="goal-form-title" className="text-[12px] font-semibold text-white">{editing ? 'Edit Goal' : 'Add Goal'}</h2>
+              <button type="button" aria-label="Close goal form" onClick={() => setModalOpen(false)} className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-[#9aa8ba] hover:bg-[#132238]"><X className="h-4 w-4" /></button>
             </div>
 
-            <div className="mt-5 space-y-4">
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Goal name</span><input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} placeholder="e.g. Emergency Fund" className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-4 py-3 text-on-surface outline-none focus:border-primary/70" /></label>
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Goal type</span><select value={draft.type} onChange={event => setDraft(current => ({ ...current, type: event.target.value as SavingsGoalType }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none focus:border-primary/70">{Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Target amount</span><div className="relative mt-1.5"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">{getCurrencySymbol()}</span><CurrencyInput value={draft.targetAmount || ''} onValueChange={value => setDraft(current => ({ ...current, targetAmount: Number(value) || 0 }))} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container py-3 pl-8 pr-4 font-numeric text-on-surface outline-none focus:border-primary/70" /></div></label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block"><span className="text-sm font-semibold text-on-surface">Target date</span><input type="date" value={draft.targetDate ?? ''} onChange={event => setDraft(current => ({ ...current, targetDate: event.target.value || undefined }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none focus:border-primary/70" /></label>
-                <label className="block"><span className="text-sm font-semibold text-on-surface">Monthly contribution</span><CurrencyInput value={draft.monthlyContribution || ''} onValueChange={value => setDraft(current => ({ ...current, monthlyContribution: Number(value) || 0 }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 font-numeric text-on-surface outline-none focus:border-primary/70" /></label>
+            <div className="space-y-3 p-3.5">
+              <div><label htmlFor="goal-name" className={labelClass}>Goal Name</label><input id="goal-name" value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} placeholder="Dream Car 🚙" className={fieldClass} /></div>
+
+              <div><label className={labelClass}>Target Amount</label><div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-[#8b9aae]">{getCurrencySymbol()}</span><CurrencyInput aria-label="Target Amount" value={draft.targetAmount || ''} onValueChange={value => setDraft(current => ({ ...current, targetAmount: Number(value) || 0 }))} className={`${fieldClass} pl-7 font-numeric`} placeholder="10,00,000" /></div></div>
+
+              <div><label htmlFor="goal-date" className={labelClass}>Target Date</label><div className="relative"><input id="goal-date" type="date" value={draft.targetDate ?? ''} onChange={event => setDraft(current => ({ ...current, targetDate: event.target.value || undefined }))} className={`${fieldClass} pr-9`} /><CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" /></div></div>
+
+              <div>
+                <span className={labelClass}>Icon</span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {goalTypeButtons.map(({ type, icon: Icon }) => <button key={type} type="button" aria-label={`Goal type ${GOAL_TYPE_LABELS[type]}`} aria-pressed={draft.type === type} onClick={() => setDraft(current => ({ ...current, type }))} className={`v35-focus-ring flex h-8 items-center justify-center rounded-lg border ${draft.type === type ? 'border-blue-500 bg-blue-600 text-white' : 'border-[#21334a] bg-[#101c2c] text-[#a3b0c0]'}`}><Icon className="h-4 w-4" /></button>)}
+                </div>
               </div>
-              <label className="block"><span className="text-sm font-semibold text-on-surface">Track progress from account</span><select value={draft.linkedAccountId ?? ''} onChange={event => { const linkedAccountId = event.target.value || undefined; const linkedAccount = linkedAccountId ? assetAccounts.find(account => account.id === linkedAccountId) : undefined; setDraft(current => ({ ...current, linkedAccountId, protectLinkedBalance: linkedAccount && isLiquidCashAccount(linkedAccount) ? current.protectLinkedBalance : false })); }} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 text-on-surface outline-none focus:border-primary/70"><option value="">No linked account</option>{assetAccounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.group ?? 'Asset'})</option>)}</select>{selectedLinkedAccount && !selectedLinkedIsLiquid ? <span className="mt-2 block text-xs leading-5 text-on-surface-variant">This account can track progress but remains excluded from liquid affordability cash.</span> : null}</label>
-              {!draft.linkedAccountId ? <label className="block"><span className="text-sm font-semibold text-on-surface">Already saved</span><CurrencyInput value={draft.manualSavedAmount || ''} onValueChange={value => setDraft(current => ({ ...current, manualSavedAmount: Number(value) || 0 }))} className="mt-1.5 w-full rounded-xl border border-outline-variant/30 bg-surface-container px-3 py-3 font-numeric text-on-surface outline-none focus:border-primary/70" /></label> : null}
-              <label className={`flex items-start justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3 ${selectedLinkedIsLiquid ? 'cursor-pointer' : 'opacity-70'}`}><span><span className="block text-sm font-semibold text-on-surface">Protect linked liquid cash</span><span className="mt-0.5 block text-xs leading-5 text-on-surface-variant">{selectedLinkedAccount && !selectedLinkedIsLiquid ? 'Not applicable to non-liquid investment or physical asset links.' : 'Useful when the goal is deliberately held in a bank, savings, cash or wallet account.'}</span></span><input type="checkbox" checked={draft.protectLinkedBalance} disabled={!draft.linkedAccountId || !selectedLinkedIsLiquid} onChange={event => setDraft(current => ({ ...current, protectLinkedBalance: event.target.checked }))} className="mt-1 h-5 w-5 accent-primary" /></label>
-              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-outline-variant/30 bg-surface-container p-3"><span className="text-sm font-semibold text-on-surface">Active goal</span><input type="checkbox" checked={draft.isActive} onChange={event => setDraft(current => ({ ...current, isActive: event.target.checked }))} className="h-5 w-5 accent-primary" /></label>
-              {saveError ? <p role="alert" className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{saveError}</p> : null}
-              <button type="button" disabled={isSaving} onClick={() => { void save(); }} className="v35-focus-ring w-full rounded-xl bg-primary py-3.5 font-semibold text-white active:scale-[0.99] disabled:opacity-60">{isSaving ? 'Saving…' : 'Save goal'}</button>
+
+              <details className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
+                <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between px-3 text-[10.5px] font-medium text-[#9aa8ba]">More options <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" /></summary>
+                <div className="space-y-3 border-t border-[#1f3046] p-3">
+                  <div><label className={labelClass}>Goal type</label><select value={draft.type} onChange={event => setDraft(current => ({ ...current, type: event.target.value as SavingsGoalType }))} className={fieldClass}>{Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                  <div><label className={labelClass}>Monthly contribution</label><CurrencyInput value={draft.monthlyContribution || ''} onValueChange={value => setDraft(current => ({ ...current, monthlyContribution: Number(value) || 0 }))} className={`${fieldClass} font-numeric`} /></div>
+                  <div><label className={labelClass}>Track progress from account</label><select value={draft.linkedAccountId ?? ''} onChange={event => { const linkedAccountId = event.target.value || undefined; const linkedAccount = linkedAccountId ? assetAccounts.find(account => account.id === linkedAccountId) : undefined; setDraft(current => ({ ...current, linkedAccountId, protectLinkedBalance: linkedAccount && isLiquidCashAccount(linkedAccount) ? current.protectLinkedBalance : false })); }} className={fieldClass}><option value="">No linked account</option>{assetAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>{selectedLinkedAccount && !selectedLinkedIsLiquid ? <span className="mt-1.5 block text-[10px] leading-4 text-[#8291a5]">This account tracks progress but stays excluded from liquid affordability cash.</span> : null}</div>
+                  {!draft.linkedAccountId ? <div><label className={labelClass}>Already saved</label><CurrencyInput value={draft.manualSavedAmount || ''} onValueChange={value => setDraft(current => ({ ...current, manualSavedAmount: Number(value) || 0 }))} className={`${fieldClass} font-numeric`} /></div> : null}
+                  <label className={`flex items-center justify-between gap-3 text-[10.5px] text-[#cbd4e0] ${selectedLinkedIsLiquid ? '' : 'opacity-60'}`}><span>Protect linked liquid cash</span><input type="checkbox" checked={draft.protectLinkedBalance} disabled={!draft.linkedAccountId || !selectedLinkedIsLiquid} onChange={event => setDraft(current => ({ ...current, protectLinkedBalance: event.target.checked }))} className="h-4 w-4 accent-blue-600" /></label>
+                  <label className="flex items-center justify-between gap-3 text-[10.5px] text-[#cbd4e0]"><span>Active goal</span><input type="checkbox" checked={draft.isActive} onChange={event => setDraft(current => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 accent-blue-600" /></label>
+                </div>
+              </details>
+
+              {saveError ? <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10.5px] text-red-300">{saveError}</p> : null}
+              <button type="button" disabled={isSaving || !draft.name.trim() || draft.targetAmount <= 0} onClick={() => { void save(); }} className="v35-focus-ring flex h-9 w-full items-center justify-center rounded-lg bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[11px] font-semibold text-white disabled:opacity-50">{isSaving ? 'Saving…' : editing ? 'Save Changes' : 'Create Goal'}</button>
             </div>
           </div>
         </div>
