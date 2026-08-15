@@ -97,7 +97,9 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   // This behavior is account-agnostic: use the accounts rendered by the
   // current ledger instead of coupling the regression to demo-data IDs/names.
   const sourceAccount = page.locator('input[name="fromAccount"]').first();
-  await expect(sourceAccount).toBeAttached();
+  // Full parallel runs can render the shell before the SQLite ledger finishes
+  // hydrating. Wait for the first usable account instead of racing hydration.
+  await expect(sourceAccount).toBeAttached({ timeout: 15_000 });
   const sourceName = await sourceAccount.evaluate(input => input.closest('label')?.textContent?.trim());
   expect(sourceName).toBeTruthy();
   await sourceAccount.check({ force: true });
