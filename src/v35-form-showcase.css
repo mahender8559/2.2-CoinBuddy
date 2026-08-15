@@ -1,0 +1,608 @@
+/*
+ * CoinBuddy V3.5 — approved Forms & Modals showcase fidelity layer
+ *
+ * The original V3.5 migration correctly introduced shared tokens and a
+ * responsive modal frame, but much of the feature markup still rendered with
+ * the older oversized card language. This final layer is intentionally loaded
+ * after v35.css so the real forms visibly inherit the compact approved system
+ * without changing any financial behaviour or removing advanced fields.
+ */
+
+:root {
+  --cb-form-showcase-panel: #091321;
+  --cb-form-showcase-panel-top: #0b1625;
+  --cb-form-showcase-field: #101c2c;
+  --cb-form-showcase-field-hover: #14243a;
+  --cb-form-showcase-border: #24364d;
+  --cb-form-showcase-border-strong: #31455f;
+  --cb-form-showcase-muted: #8796aa;
+  --cb-form-showcase-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+}
+
+/* --------------------------------------------------------------------------
+   Shared modal geometry
+   -------------------------------------------------------------------------- */
+.v35-form-sheet,
+[data-testid="wallet-summary-sheet"],
+[role="dialog"]:has(#category-form-title),
+[role="dialog"]:has(#goal-form-title) {
+  background: linear-gradient(180deg, var(--cb-form-showcase-panel-top) 0%, var(--cb-form-showcase-panel) 100%) !important;
+  border: 1px solid var(--cb-form-showcase-border-strong) !important;
+  color: var(--cb-text) !important;
+}
+
+.v35-form-sheet {
+  scrollbar-color: #334963 transparent;
+}
+
+.v35-form-sheet::-webkit-scrollbar,
+.v35-form-sheet *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.v35-form-sheet::-webkit-scrollbar-thumb,
+.v35-form-sheet *::-webkit-scrollbar-thumb {
+  background: #334963;
+  border-radius: 999px;
+}
+
+.v35-form-sheet .v35-sheet-handle,
+[data-testid="wallet-summary-sheet"] > div[aria-hidden="true"] {
+  width: 42px !important;
+  height: 4px !important;
+  background: #8795a8 !important;
+  opacity: 0.72 !important;
+}
+
+.v35-form-sheet h2,
+[data-testid="wallet-summary-sheet"] h2 {
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.v35-form-sheet h3 {
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.v35-form-sheet p,
+[data-testid="wallet-summary-sheet"] p {
+  line-height: 1.4;
+}
+
+/* Compact labels and controls are the most visible part of the approved board. */
+.v35-form-sheet label.block,
+.v35-form-sheet label > span:first-child,
+[role="dialog"]:has(#category-form-title) label > span:first-child,
+[role="dialog"]:has(#goal-form-title) label > span:first-child {
+  margin-bottom: 6px !important;
+  color: var(--cb-form-label) !important;
+  font-size: 11px !important;
+  font-weight: 550 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.v35-form-sheet input:not(:where([type="checkbox"], [type="radio"], [type="file"], .opacity-0)),
+.v35-form-sheet select,
+.v35-form-sheet textarea,
+[role="dialog"]:has(#category-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#category-form-title) select,
+[role="dialog"]:has(#goal-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#goal-form-title) select {
+  min-height: 40px !important;
+  height: 40px !important;
+  border: 1px solid var(--cb-form-showcase-border) !important;
+  border-radius: 8px !important;
+  background: var(--cb-form-showcase-field) !important;
+  color: #f7f9fc !important;
+  padding-inline: 12px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015) !important;
+}
+
+.v35-form-sheet textarea {
+  min-height: 76px !important;
+  height: auto !important;
+  padding-block: 10px !important;
+}
+
+.v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):focus,
+.v35-form-sheet select:focus,
+.v35-form-sheet textarea:focus {
+  border-color: #1672ff !important;
+  box-shadow: 0 0 0 1px #1672ff, 0 0 0 3px rgba(22, 114, 255, 0.10) !important;
+}
+
+.v35-form-sheet input::placeholder,
+.v35-form-sheet textarea::placeholder {
+  color: #68798f !important;
+}
+
+/* Remove the legacy pill/oversized-card feel inside forms. */
+.v35-form-sheet .bg-surface-container-low.rounded-2xl,
+.v35-form-sheet .bg-surface-container.rounded-2xl,
+.v35-form-sheet .bg-surface-container-high.rounded-2xl,
+[data-testid="wallet-summary-sheet"] .rounded-2xl {
+  border-radius: 8px !important;
+}
+
+.v35-form-sheet .bg-surface-container-low.rounded-2xl,
+.v35-form-sheet .bg-surface-container.rounded-2xl {
+  background: rgba(15, 27, 43, 0.76) !important;
+  border-color: var(--cb-form-showcase-border) !important;
+}
+
+.v35-form-sheet .bg-surface-container-low.rounded-2xl.p-5,
+.v35-form-sheet .bg-surface-container-low.rounded-2xl.p-4,
+.v35-form-sheet .bg-surface-container-low.rounded-2xl.p-3,
+.v35-form-sheet .bg-surface-container.rounded-2xl.p-5,
+.v35-form-sheet .bg-surface-container.rounded-2xl.p-4 {
+  padding: 12px !important;
+}
+
+.v35-form-sheet button.rounded-full,
+.v35-form-sheet span.rounded-full {
+  border-radius: 8px !important;
+}
+
+.v35-form-sheet button:not([aria-label*="Close"]):not([type="submit"]) {
+  min-height: 40px;
+}
+
+.v35-form-sheet button[type="submit"],
+.v35-form-sheet button[data-testid="confirm-payment"],
+[role="dialog"]:has(#category-form-title) button.w-full.bg-primary,
+[role="dialog"]:has(#goal-form-title) button.w-full.bg-primary {
+  min-height: 42px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.005em !important;
+}
+
+/* --------------------------------------------------------------------------
+   Add / Edit Transaction
+   -------------------------------------------------------------------------- */
+[data-testid="transaction-form-sheet"] > .v35-sheet-handle + div {
+  min-height: 54px;
+  padding: 10px 14px !important;
+  border-color: rgba(49, 69, 95, 0.62) !important;
+}
+
+/* The board uses a very clean title bar. The old shield tile made the sheet
+   still look like the pre-V3.5 design, so keep the title and remove the tile. */
+[data-testid="transaction-form-sheet"] > .v35-sheet-handle + div > div:first-child > span:first-child {
+  display: none !important;
+}
+
+[data-testid="transaction-form-sheet"] > .v35-sheet-handle + div > div:first-child {
+  gap: 8px !important;
+}
+
+[data-testid="transaction-form-sheet"] form {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  max-width: none !important;
+  padding: 14px 16px 16px !important;
+}
+
+[data-testid="transaction-form-sheet"] form > * {
+  margin-top: 0 !important;
+}
+
+/* Put the everyday money-entry controls first. Advanced CoinBuddy fields are
+   retained, but moved below the quick transaction path. */
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border {
+  order: 10;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 {
+  order: 20;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(button[class*="min-w-[90px]"]) {
+  order: 30;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(button.rounded-full.border) {
+  order: 40;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(input[name="fromAccount"]) {
+  order: 40;
+}
+
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 {
+  order: 50;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(select[aria-label="Choose existing event"]) {
+  order: 60;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(select[aria-label="Goal contribution"]) {
+  order: 65;
+}
+
+[data-testid="transaction-form-sheet"] form > div:has(button[aria-label="Toggle recurring transaction"]) {
+  order: 70;
+}
+
+[data-testid="transaction-form-sheet"] form > .sticky.bottom-0 {
+  order: 90;
+}
+
+[data-testid="transaction-form-sheet"] form > p.text-center {
+  order: 100;
+  margin-top: -4px !important;
+  color: #6d7d91 !important;
+  font-size: 10px !important;
+}
+
+/* Expense / Income / Transfer segmented control with the reference semantic tones. */
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border {
+  gap: 6px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border > button {
+  min-height: 36px !important;
+  border: 1px solid var(--cb-form-showcase-border) !important;
+  border-radius: 8px !important;
+  background: #0f1a2a !important;
+  color: #a8b4c4 !important;
+  padding: 0 10px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border > button:nth-child(1).bg-primary {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+  color: #ff6769 !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border > button:nth-child(2).bg-primary {
+  background: rgba(34, 197, 94, 0.11) !important;
+  border-color: rgba(34, 197, 94, 0.26) !important;
+  color: #38d976 !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.gap-2.p-1.bg-surface-container-low.rounded-2xl.border > button:nth-child(3).bg-primary {
+  background: rgba(18, 88, 230, 0.15) !important;
+  border-color: rgba(42, 122, 255, 0.34) !important;
+  color: #65a3ff !important;
+}
+
+/* Compact amount field: it should read as a field, not a dashboard hero. */
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 {
+  align-items: stretch !important;
+  padding: 0 !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > span:first-child {
+  margin-bottom: 6px !important;
+  color: var(--cb-form-label) !important;
+  font-size: 11px !important;
+  font-weight: 550 !important;
+  letter-spacing: 0 !important;
+  text-align: left !important;
+}
+
+[data-testid="transaction-form-sheet"] input[aria-label="Transaction amount"] {
+  height: 40px !important;
+  padding-left: 30px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+/* Category tiles become short choice chips. */
+[data-testid="transaction-form-sheet"] form button[class*="min-w-[90px]"] {
+  min-width: max-content !important;
+  min-height: 38px !important;
+  flex-direction: row !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="transaction-form-sheet"] form button[class*="min-w-[90px]"] svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+[data-testid="transaction-form-sheet"] form button[class*="min-w-[90px]"] span {
+  font-size: 11px !important;
+}
+
+/* Account choice pills use the same rectangular field language as the board. */
+[data-testid="transaction-form-sheet"] form button.rounded-full.border {
+  min-height: 38px !important;
+  border-radius: 8px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+}
+
+/* Date + Notes are stacked like the reference transaction form. */
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 {
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 > div {
+  min-height: 66px;
+  padding: 10px 12px !important;
+  border-radius: 8px !important;
+  background: var(--cb-form-showcase-field) !important;
+  border-color: var(--cb-form-showcase-border) !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 > div label {
+  margin-bottom: 4px !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 > div span.text-base {
+  font-size: 13px !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .grid.grid-cols-2.gap-4 > div input[type="text"] {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .sticky.bottom-0 {
+  margin-inline: -16px !important;
+  padding: 10px 16px calc(2px + env(safe-area-inset-bottom)) !important;
+  background: rgba(9, 19, 33, 0.97) !important;
+  border-color: var(--cb-form-showcase-border) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Add / Edit Account
+   -------------------------------------------------------------------------- */
+[data-testid="account-form-sheet"] {
+  padding: 16px !important;
+}
+
+[data-testid="account-form-sheet"] > .mb-5 {
+  margin-bottom: 14px !important;
+}
+
+[data-testid="account-form-sheet"] form.space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 12px !important;
+}
+
+/* Existing asset-method segmented controls now look like proper choice tiles. */
+[data-testid="account-form-sheet"] form .flex.bg-surface-container-low.p-1.rounded-xl.border {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+[data-testid="account-form-sheet"] form .flex.bg-surface-container-low.p-1.rounded-xl.border > button {
+  min-height: 38px !important;
+  border: 1px solid var(--cb-form-showcase-border) !important;
+  border-radius: 8px !important;
+  background: #0f1a2a !important;
+  color: #9eacbd !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  box-shadow: none !important;
+}
+
+[data-testid="account-form-sheet"] form .flex.bg-surface-container-low.p-1.rounded-xl.border > button.bg-surface-container-high {
+  background: rgba(18, 88, 230, 0.15) !important;
+  border-color: rgba(42, 122, 255, 0.38) !important;
+  color: #69a6ff !important;
+}
+
+/* In a narrow, phone-like sheet, one field per row is calmer and matches the board. */
+[data-testid="account-form-sheet"] form [class*="sm:grid-cols-2"],
+[data-testid="account-form-sheet"] form [class*="sm:grid-cols-3"] {
+  grid-template-columns: 1fr !important;
+}
+
+/* --------------------------------------------------------------------------
+   Pay / Pay Down
+   -------------------------------------------------------------------------- */
+[data-testid="pay-modal"] {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 16px !important;
+}
+
+[data-testid="pay-modal"] > .mb-5.flex.items-center.gap-3.pr-11 {
+  order: 10;
+  margin-bottom: 14px !important;
+  min-height: 40px;
+}
+
+[data-testid="pay-modal"] > .mb-5.flex.items-center.gap-3.pr-11 > div:first-child {
+  display: none !important;
+}
+
+[data-testid="pay-modal"] > .mb-5.flex.items-center.gap-3.pr-11 > div:last-child p {
+  margin-top: 2px;
+  color: #7f8fa4 !important;
+}
+
+[data-testid="pay-modal"] > .bg-surface-container-low.p-4.rounded-2xl.border {
+  order: 20;
+  margin-bottom: 12px !important;
+  padding: 11px 12px !important;
+}
+
+[data-testid="pay-modal"] > form {
+  order: 30;
+}
+
+[data-testid="pay-modal"] > form.space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 12px !important;
+}
+
+[data-testid="pay-modal"] > .bg-emerald-500\/10 {
+  order: 40;
+  margin-top: 12px !important;
+  margin-bottom: 0 !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="pay-modal"] form button.rounded-full {
+  min-height: 32px !important;
+  border-radius: 8px !important;
+  padding: 0 10px !important;
+}
+
+[data-testid="pay-modal"] input.font-numeric.text-lg {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="pay-modal"] button[data-testid="confirm-payment"] {
+  min-height: 42px !important;
+  background: linear-gradient(180deg, #842cdd 0%, #6820bd 100%) !important;
+  border: 1px solid rgba(174, 92, 255, 0.30) !important;
+  box-shadow: 0 8px 22px rgba(116, 37, 201, 0.22) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Reconcile and loan-rate sheets
+   -------------------------------------------------------------------------- */
+[data-testid="reconcile-sheet"],
+[data-testid="loan-rate-sheet"] {
+  padding: 16px !important;
+}
+
+[data-testid="reconcile-sheet"] > div:first-of-type,
+[data-testid="loan-rate-sheet"] > div:first-of-type {
+  min-height: 42px;
+}
+
+[data-testid="reconcile-sheet"] label.block.mt-6 {
+  margin-top: 14px !important;
+}
+
+[data-testid="reconcile-sheet"] input[aria-label="Current actual balance"] {
+  margin-top: 6px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="reconcile-sheet"] > div.rounded-2xl {
+  margin-top: 10px !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--cb-form-showcase-border) !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="reconcile-sheet"] > button:last-child {
+  margin-top: 14px !important;
+  min-height: 42px !important;
+  border-radius: 8px !important;
+  background: linear-gradient(180deg, #1a67ef 0%, #1258e6 100%) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Wallet Summary
+   -------------------------------------------------------------------------- */
+[data-testid="wallet-summary-sheet"] {
+  padding: 16px !important;
+}
+
+[data-testid="wallet-summary-sheet"] > .mb-5.flex.shrink-0.items-center.gap-3.pr-11 {
+  margin-bottom: 14px !important;
+}
+
+[data-testid="wallet-summary-sheet"] > .mb-5.flex.shrink-0.items-center.gap-3.pr-11 > div:first-child {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="wallet-summary-sheet"] .space-y-3 > .rounded-2xl {
+  padding: 12px !important;
+  border-radius: 8px !important;
+  background: rgba(15, 27, 43, 0.82) !important;
+  border-color: var(--cb-form-showcase-border) !important;
+}
+
+[data-testid="wallet-summary-sheet"] .space-y-3 > .rounded-2xl p.text-2xl {
+  font-size: 19px !important;
+  line-height: 1.25 !important;
+}
+
+[data-testid="wallet-summary-sheet"] .space-y-3 > .rounded-2xl [class*="p-2.5"] {
+  padding: 7px !important;
+  border-radius: 8px !important;
+}
+
+/* Supporting Category / Goal dialogs. */
+[role="dialog"]:has(#category-form-title),
+[role="dialog"]:has(#goal-form-title) {
+  padding: 16px !important;
+}
+
+[role="dialog"]:has(#category-form-title) form,
+[role="dialog"]:has(#goal-form-title) form {
+  gap: 12px !important;
+}
+
+/* --------------------------------------------------------------------------
+   Desktop = centered compact dialog. Mobile = real viewport bottom sheet.
+   -------------------------------------------------------------------------- */
+@media (min-width: 640px) {
+  .v35-form-sheet,
+  [data-testid="wallet-summary-sheet"],
+  [role="dialog"]:has(#category-form-title),
+  [role="dialog"]:has(#goal-form-title) {
+    border-radius: 18px !important;
+    box-shadow: var(--cb-form-showcase-shadow) !important;
+  }
+
+  [data-testid="transaction-form-sheet"] {
+    max-width: 430px !important;
+  }
+
+  [data-testid="account-form-sheet"],
+  [data-testid="pay-modal"],
+  [data-testid="reconcile-sheet"],
+  [data-testid="loan-rate-sheet"],
+  [data-testid="wallet-summary-sheet"] {
+    max-width: 410px !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .v35-form-sheet,
+  [data-testid="wallet-summary-sheet"],
+  [role="dialog"]:has(#category-form-title),
+  [role="dialog"]:has(#goal-form-title) {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92dvh !important;
+    border-radius: 18px 18px 0 0 !important;
+    box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.42) !important;
+  }
+
+  [data-testid="transaction-form-sheet"] form {
+    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+}
