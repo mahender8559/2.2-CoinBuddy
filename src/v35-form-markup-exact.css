@@ -13,13 +13,14 @@
   padding: 0 10px !important;
 }
 
-/* The older reference skin used a generated Add Transaction title. The rebuilt
-   component now owns the real Add/Edit title, so suppress that compatibility hack. */
-[data-testid="transaction-form-sheet"] #transaction-form-title {
+/* The older reference skin generated titles with pseudo-elements. Rebuilt
+   components own their real Add/Edit titles now, so win at the same selector
+   specificity and suppress those compatibility shims. */
+[data-testid="transaction-form-sheet"]:not(:has(#transaction-form-title + span)) #transaction-form-title {
   font-size: 14px !important;
 }
 
-[data-testid="transaction-form-sheet"] #transaction-form-title::after {
+[data-testid="transaction-form-sheet"]:not(:has(#transaction-form-title + span)) #transaction-form-title::after {
   content: none !important;
 }
 
@@ -83,11 +84,11 @@
   padding: 0 10px !important;
 }
 
-[data-testid="account-form-sheet"] #account-form-title {
+[data-testid="account-form-sheet"]:not(:has(#account-form-title + div)) #account-form-title {
   font-size: 14px !important;
 }
 
-[data-testid="account-form-sheet"] #account-form-title::after {
+[data-testid="account-form-sheet"]:not(:has(#account-form-title + div)) #account-form-title::after {
   content: none !important;
 }
 
