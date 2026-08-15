@@ -20,7 +20,11 @@ const LOCKED_FORM_TEST_IDS = new Set([
   'account-form-sheet',
   'pay-modal',
   'reconcile-sheet',
+  'wallet-summary-sheet',
   'loan-rate-sheet',
+  'budget-form-sheet',
+  'person-form-sheet',
+  'person-edit-sheet',
 ]);
 
 export function V35ModalFrame({
