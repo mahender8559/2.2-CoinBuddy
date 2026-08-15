@@ -93,19 +93,32 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   await addButton.click();
   await page.getByRole('button', { name: 'Transfer', exact: true }).first().click();
   await page.getByLabel('Transaction amount').fill('999999');
-  await page.getByLabel('From account HDFC Salary Account', { exact: true }).check({ force: true });
-  await page.getByLabel('To account Cash Wallet', { exact: true }).check({ force: true });
+
+  // This behavior is account-agnostic: use the accounts rendered by the
+  // current ledger instead of coupling the regression to demo-data IDs/names.
+  const sourceAccount = page.locator('input[name="fromAccount"]').first();
+  await expect(sourceAccount).toBeAttached();
+  const sourceName = (await sourceAccount.getAttribute('aria-label'))?.replace('From account ', '');
+  expect(sourceName).toBeTruthy();
+  await sourceAccount.check({ force: true });
+
+  const destinationAccount = page.locator('input[name="toAccount"]').first();
+  await expect(destinationAccount).toBeAttached();
+  const destinationName = (await destinationAccount.getAttribute('aria-label'))?.replace('To account ', '');
+  expect(destinationName).toBeTruthy();
+  await destinationAccount.check({ force: true });
+
   await page.getByRole('button', { name: 'Toggle recurring transaction' }).click();
   await page.getByRole('button', { name: 'Save Transaction' }).click();
 
   await expect(page.getByRole('button', { name: 'Save Transaction' })).toHaveCount(0);
   await openTab(page, 'Activity');
-  const pending = page.getByText(/Transfer: HDFC Salary Account to Cash Wallet/).first();
+  const pending = page.getByText(`Transfer: ${sourceName} to ${destinationName}`, { exact: true }).first();
   await expect(pending).toBeVisible();
   const pendingToggle = page.getByRole('button', { name: /Needs confirmation/ }).first();
   if (await pendingToggle.getAttribute('aria-expanded') === 'false') await pendingToggle.click();
   await page.getByRole('button', { name: 'Transferred ✓' }).first().click();
-  await expect(page.getByRole('alert')).toContainText(/Insufficient funds in HDFC Salary Account/i);
+  await expect(page.getByRole('alert')).toContainText(`Insufficient funds in ${sourceName}`);
   await expect(pending).toBeVisible();
 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
