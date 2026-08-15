@@ -42,7 +42,8 @@
   padding-right: 32px !important;
 }
 
-[data-testid="transaction-form-sheet"] details summary::-webkit-details-marker {
+[data-testid="transaction-form-sheet"] details summary::-webkit-details-marker,
+[data-testid="pay-modal"] details summary::-webkit-details-marker {
   display: none;
 }
 
@@ -52,8 +53,70 @@
   border-radius: 8px !important;
 }
 
+/* Rebuilt Pay / Pay Down is edge-to-edge inside the shared sheet, like the reference. */
+[data-testid="pay-modal"] {
+  width: min(calc(100vw - 24px), 390px) !important;
+  max-width: 390px !important;
+  max-height: min(92dvh, 720px) !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+}
+
+[data-testid="pay-modal"] > div:first-child {
+  min-height: 54px !important;
+  height: 54px !important;
+  padding: 0 10px !important;
+}
+
+[data-testid="pay-modal"] #payment-form-title {
+  font-size: 14px !important;
+}
+
+[data-testid="pay-modal"] #payment-form-title::after {
+  content: none !important;
+}
+
+[data-testid="pay-modal"] input,
+[data-testid="pay-modal"] select {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+[data-testid="pay-modal"] #payment-amount {
+  padding-left: 30px !important;
+  padding-right: 11px !important;
+  text-align: left !important;
+}
+
+[data-testid="pay-modal"] select {
+  padding-right: 32px !important;
+}
+
+[data-testid="pay-modal"] button[data-testid="confirm-payment"] {
+  min-height: 40px !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+}
+
+/* Wallet Summary uses its own rebuilt reference markup. */
+[data-testid="wallet-summary-sheet"] {
+  width: min(calc(100vw - 24px), 390px) !important;
+  max-width: 390px !important;
+  max-height: min(92dvh, 680px) !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+}
+
+[data-testid="wallet-summary-sheet"] > div:nth-child(2) {
+  min-height: 54px !important;
+  height: 54px !important;
+}
+
 @media (max-width: 639px) {
-  [data-testid="transaction-form-sheet"] {
+  [data-testid="transaction-form-sheet"],
+  [data-testid="pay-modal"],
+  [data-testid="wallet-summary-sheet"] {
     width: 100% !important;
     max-width: none !important;
     max-height: 92dvh !important;
