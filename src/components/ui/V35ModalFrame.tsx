@@ -22,7 +22,9 @@ const LOCKED_FORM_TEST_IDS = new Set([
   'reconcile-sheet',
   'wallet-summary-sheet',
   'loan-rate-sheet',
+  'category-create-sheet',
   'budget-form-sheet',
+  'goal-create-sheet',
   'person-form-sheet',
   'person-edit-sheet',
 ]);
