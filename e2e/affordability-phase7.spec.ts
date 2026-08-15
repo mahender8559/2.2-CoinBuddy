@@ -93,8 +93,8 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   await addButton.click();
   await page.getByRole('button', { name: 'Transfer', exact: true }).first().click();
   await page.getByLabel('Transaction amount').fill('999999');
-  await page.locator('label').filter({ has: page.locator('input[name="fromAccount"][value="acc_sbi_01"]') }).click();
-  await page.locator('label').filter({ has: page.locator('input[name="toAccount"][value="acc_cash_01"]') }).click();
+  await page.getByLabel('From account HDFC Salary Account', { exact: true }).check({ force: true });
+  await page.getByLabel('To account Cash Wallet', { exact: true }).check({ force: true });
   await page.getByRole('button', { name: 'Toggle recurring transaction' }).click();
   await page.getByRole('button', { name: 'Save Transaction' }).click();
 

@@ -485,7 +485,7 @@ export function AddTransactionModal() {
                  <div className="flex flex-col gap-2">
                    {assets.map(acc => (
                       <label key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${fromAccountId === acc.id ? 'bg-primary/10 border-primary' : 'border-outline-variant/30 hover:bg-surface-container'}`}>
-                        <input type="radio" name="fromAccount" value={acc.id} checked={fromAccountId === acc.id} onChange={() => setFromAccountId(acc.id)} className="hidden" />
+                        <input aria-label={`From account ${acc.name}`} type="radio" name="fromAccount" value={acc.id} checked={fromAccountId === acc.id} onChange={() => setFromAccountId(acc.id)} className="hidden" />
                         <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${fromAccountId === acc.id ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
                           {fromAccountId === acc.id && <Check className="w-3 h-3 text-on-primary" />}
                         </div>
@@ -499,7 +499,7 @@ export function AddTransactionModal() {
                  <div className="flex flex-col gap-2">
                    {activeAccounts.filter(a => a.id !== fromAccountId).map(acc => (
                       <label key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${toAccountId === acc.id ? 'bg-primary/10 border-primary' : 'border-outline-variant/30 hover:bg-surface-container'}`}>
-                        <input type="radio" name="toAccount" value={acc.id} checked={toAccountId === acc.id} onChange={() => setToAccountId(acc.id)} className="hidden" />
+                        <input aria-label={`To account ${acc.name}`} type="radio" name="toAccount" value={acc.id} checked={toAccountId === acc.id} onChange={() => setToAccountId(acc.id)} className="hidden" />
                         <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${toAccountId === acc.id ? 'border-primary bg-primary' : 'border-outline-variant'}`}>
                           {toAccountId === acc.id && <Check className="w-3 h-3 text-on-primary" />}
                         </div>
