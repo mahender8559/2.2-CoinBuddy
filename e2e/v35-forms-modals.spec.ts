@@ -106,6 +106,7 @@ test('v3.5 uses one responsive sheet system for core money forms', async ({ page
   await expectInsideViewport(page, paySheet);
   await expect(paySheet.getByLabel('Pay From')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-pay-down.png'), fullPage: false });
+  await paySheet.getByText('Loan payment details', { exact: true }).click();
   await paySheet.getByRole('button', { name: 'Update Floating Interest Rate', exact: true }).click();
   const rateSheet = page.getByTestId('loan-rate-sheet');
   await expectInsideViewport(page, rateSheet);
