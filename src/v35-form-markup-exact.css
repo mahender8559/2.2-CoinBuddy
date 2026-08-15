@@ -45,6 +45,7 @@
 [data-testid="transaction-form-sheet"] details summary::-webkit-details-marker,
 [data-testid="account-form-sheet"] details summary::-webkit-details-marker,
 [data-testid="pay-modal"] details summary::-webkit-details-marker,
+[data-testid="loan-rate-sheet"] details summary::-webkit-details-marker,
 [role="dialog"]:has(#category-form-title) details summary::-webkit-details-marker,
 [role="dialog"]:has(#goal-form-title) details summary::-webkit-details-marker {
   display: none;
@@ -199,6 +200,34 @@
   font-weight: 500 !important;
 }
 
+/* Rebuilt loan-rate update mirrors the compact supporting form. */
+[data-testid="loan-rate-sheet"] {
+  width: min(calc(100vw - 24px), 286px) !important;
+  max-width: 286px !important;
+  max-height: 92dvh !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  overflow-y: auto !important;
+}
+
+[data-testid="loan-rate-sheet"] #loan-rate-form-title {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+}
+
+[data-testid="loan-rate-sheet"] input,
+[data-testid="loan-rate-sheet"] select {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+[data-testid="loan-rate-sheet"] button[type="submit"] {
+  min-height: 36px !important;
+  height: 36px !important;
+  border-radius: 8px !important;
+}
+
 /* Wallet Summary uses its own rebuilt reference markup. */
 [data-testid="wallet-summary-sheet"] {
   width: min(calc(100vw - 24px), 390px) !important;
@@ -219,6 +248,7 @@
   [data-testid="pay-modal"],
   [data-testid="reconcile-sheet"],
   [data-testid="wallet-summary-sheet"],
+  [data-testid="loan-rate-sheet"],
   [role="dialog"]:has(#category-form-title),
   [role="dialog"]:has(#goal-form-title) {
     width: 100% !important;
