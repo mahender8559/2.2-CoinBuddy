@@ -200,6 +200,41 @@
   font-weight: 500 !important;
 }
 
+/* Sharing keeps people as participants, while matching the reference form density. */
+section.v35-surface:has(input[aria-label="Person name"]) .mt-5.grid:has(input[aria-label="Person name"]) {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+  max-width: 286px;
+  padding: 12px !important;
+  border: 1px solid #31455f;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #0b1625 0%, #091321 100%);
+}
+
+section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Person name"],
+section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Relationship"] {
+  min-height: 40px !important;
+  height: 40px !important;
+  border: 1px solid #21334a !important;
+  border-radius: 8px !important;
+  background: #101c2c !important;
+  padding: 0 11px !important;
+  color: #f5f7fb !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+section.v35-surface:has(input[aria-label="Person name"]) .mt-5.grid:has(input[aria-label="Person name"]) > button {
+  min-height: 36px !important;
+  height: 36px !important;
+  border-radius: 8px !important;
+  background: linear-gradient(180deg, #1677ff 0%, #0d60ee 100%) !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
 /* Rebuilt loan-rate update mirrors the compact supporting form. */
 [data-testid="loan-rate-sheet"] {
   width: min(calc(100vw - 24px), 286px) !important;
@@ -255,5 +290,9 @@
     max-width: none !important;
     max-height: 92dvh !important;
     border-radius: 18px 18px 0 0 !important;
+  }
+
+  section.v35-surface:has(input[aria-label="Person name"]) .mt-5.grid:has(input[aria-label="Person name"]) {
+    max-width: none;
   }
 }
