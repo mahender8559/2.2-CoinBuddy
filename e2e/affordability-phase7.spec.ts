@@ -87,7 +87,19 @@ test('category financial behavior can be changed and persists after reload', asy
 
 
 test('recurring transfer can be scheduled above today\'s balance but confirmation enforces funds', async ({ page }) => {
+  test.slow();
   const errors = await prepare(page, false);
+
+  // This scenario requires accounts and must not depend on another test's
+  // storage. Seed its ledger explicitly before exercising recurring transfer.
+  await openTab(page, 'Settings');
+  const demoButton = page.getByRole('button', { name: /Load demo data/i });
+  await expect(demoButton).toBeVisible();
+  await demoButton.click();
+  await expect(page.getByText('Load Demo Data', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await openTab(page, 'Dashboard');
 
   const addButton = page.getByRole('button', { name: /add transaction/i }).first();
   await addButton.click();
@@ -97,9 +109,7 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   // This behavior is account-agnostic: use the accounts rendered by the
   // current ledger instead of coupling the regression to demo-data IDs/names.
   const sourceAccount = page.locator('input[name="fromAccount"]').first();
-  // Full parallel runs can render the shell before the SQLite ledger finishes
-  // hydrating. Wait for the first usable account instead of racing hydration.
-  await expect(sourceAccount).toBeAttached({ timeout: 15_000 });
+  await expect(sourceAccount).toBeAttached();
   const sourceName = await sourceAccount.evaluate(input => input.closest('label')?.textContent?.trim());
   expect(sourceName).toBeTruthy();
   await sourceAccount.check({ force: true });

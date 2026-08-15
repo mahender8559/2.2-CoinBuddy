@@ -16,6 +16,9 @@ async function enterPin(page: Page, digits: string) {
 }
 
 test('v3.5 lock screen preserves hashed PIN unlock behavior in a compact responsive surface', async ({ page }, testInfo: TestInfo) => {
+  // PBKDF2 verification is deliberately expensive and slows down when both
+  // browser projects run alongside the full regression suite.
+  test.slow();
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -60,7 +63,7 @@ test('v3.5 lock screen preserves hashed PIN unlock behavior in a compact respons
 
   // Wrong PIN must keep the vault locked and expose a readable error.
   await enterPin(page, '1111');
-  await expect(lockScreen.getByRole('alert')).toHaveText('Incorrect PIN. Try again.');
+  await expect(lockScreen.getByRole('alert')).toHaveText('Incorrect PIN. Try again.', { timeout: 15_000 });
   await expect(lockScreen).toBeVisible();
   await expect(lockScreen.getByLabel('4 of 4 PIN digits entered')).toBeVisible();
   await expect(lockScreen.getByLabel('0 of 4 PIN digits entered')).toBeVisible({ timeout: 1500 });
