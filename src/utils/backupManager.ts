@@ -603,8 +603,9 @@ export class BackupManager {
   static async executeSilentBackup(settings: BackupSettings, ledgerData?: Record<string, unknown>): Promise<BackupMetadata | null> {
     // Browser/PWA code can reliably detect offline state, not whether the
     // connection is specifically Wi-Fi. Defer any cloud/local sync while offline.
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    if (!isOnline) {
+    const isOffline =
+      typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOffline) {
       return {
         ...(settings.lastBackupMetadata || DEFAULT_BACKUP_SETTINGS.lastBackupMetadata!),
         syncStatus: 'PENDING_NETWORK',

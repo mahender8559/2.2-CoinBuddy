@@ -127,6 +127,10 @@
 }
 
 @layer base {
+  html {
+    scrollbar-gutter: stable;
+  }
+
   html, body, #root {
     overflow-x: hidden;
     min-height: 100%;

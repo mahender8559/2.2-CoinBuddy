@@ -286,6 +286,9 @@ describe('Backup & Encryption Engine Suite', () => {
         authExpired: true,
       };
 
+      // An unavailable online-status signal must not be treated as explicit offline state.
+      vi.stubGlobal('navigator', { onLine: undefined });
+
       const result = await BackupManager.executeSilentBackup(mockSettings);
 
       expect(result).not.toBeNull();

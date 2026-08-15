@@ -168,7 +168,7 @@
 }
 
 /* Unified input language: compact, cool navy, 8 px corners, blue focus. */
-.v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.opacity-0),
+.v35-form-sheet input:not(:where([type="checkbox"], [type="radio"], [type="file"], .opacity-0)),
 .v35-form-sheet select,
 .v35-form-sheet textarea,
 [role="dialog"]:has(#category-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
