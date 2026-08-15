@@ -24,6 +24,28 @@
   --cb-purple-soft: rgba(168, 85, 247, 0.14);
   --cb-amber: #fbbf24;
   --cb-amber-soft: rgba(251, 191, 36, 0.14);
+
+  /* Locked V3.5 Forms & Modals reference tokens.
+     Source of truth: "CoinBuddy Dark Theme Form System.png". */
+  --cb-form-backdrop: rgba(0, 6, 18, 0.76);
+  --cb-form-panel: #0b1523;
+  --cb-form-panel-deep: #091321;
+  --cb-form-field: #111c2c;
+  --cb-form-field-hover: #15243a;
+  --cb-form-border: #223249;
+  --cb-form-border-strong: #2b3d56;
+  --cb-form-label: #c4cfdd;
+  --cb-form-help: #8190a5;
+  --cb-form-blue: #1258e6;
+  --cb-form-blue-hover: #1967f2;
+  --cb-form-blue-soft: rgba(18, 88, 230, 0.15);
+  --cb-form-purple: #7425c9;
+  --cb-form-purple-hover: #852edb;
+  --cb-form-success: #22c55e;
+  --cb-form-error: #ef4444;
+  --cb-form-control-height: 40px;
+  --cb-form-radius: 8px;
+  --cb-form-panel-radius: 18px;
 }
 
 .dark {
@@ -95,10 +117,323 @@
   padding-bottom: max(0.45rem, env(safe-area-inset-bottom));
 }
 
+/* ========================================================================
+   CoinBuddy V3.5 — LOCKED Forms & Modals system
+   ========================================================================
+   This is intentionally scoped to money forms plus the V3.5 Category/Goal
+   supporting forms. Business fields and financial behavior remain owned by
+   the feature components; this layer controls presentation only.
+*/
+.v35-modal-backdrop {
+  background: var(--cb-form-backdrop);
+}
+
+.v35-form-sheet,
+[data-testid="wallet-summary-sheet"],
+[role="dialog"]:has(#category-form-title),
+[role="dialog"]:has(#goal-form-title) {
+  background: linear-gradient(180deg, var(--cb-form-panel) 0%, var(--cb-form-panel-deep) 100%) !important;
+  border-color: var(--cb-form-border-strong) !important;
+  border-radius: var(--cb-form-panel-radius) var(--cb-form-panel-radius) 0 0 !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.34) !important;
+  color: var(--cb-text);
+}
+
+.v35-form-sheet .v35-sheet-handle {
+  background: #7d8ba0 !important;
+  opacity: 0.75;
+}
+
+/* Compact hierarchy from the locked reference. */
+.v35-form-sheet h2,
+.v35-form-sheet h3,
+[data-testid="wallet-summary-sheet"] h2,
+[role="dialog"]:has(#category-form-title) h2,
+[role="dialog"]:has(#goal-form-title) h2 {
+  letter-spacing: -0.012em;
+}
+
+.v35-form-sheet label,
+[role="dialog"]:has(#category-form-title) label,
+[role="dialog"]:has(#goal-form-title) label {
+  color: var(--cb-form-label);
+}
+
+.v35-form-sheet label.block,
+[role="dialog"]:has(#category-form-title) label > span:first-child,
+[role="dialog"]:has(#goal-form-title) label > span:first-child {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+
+/* One field language: compact, cool navy, 8 px corners, blue focus. */
+.v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.opacity-0),
+.v35-form-sheet select,
+.v35-form-sheet textarea,
+[role="dialog"]:has(#category-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#category-form-title) select,
+[role="dialog"]:has(#goal-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#goal-form-title) select {
+  min-height: var(--cb-form-control-height) !important;
+  height: var(--cb-form-control-height);
+  border: 1px solid var(--cb-form-border) !important;
+  border-radius: var(--cb-form-radius) !important;
+  background: var(--cb-form-field) !important;
+  color: var(--cb-text) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.2;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  box-shadow: none !important;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.v35-form-sheet input::placeholder,
+.v35-form-sheet textarea::placeholder,
+[role="dialog"]:has(#category-form-title) input::placeholder,
+[role="dialog"]:has(#goal-form-title) input::placeholder {
+  color: #65758b !important;
+  opacity: 1;
+}
+
+.v35-form-sheet input:not([type="checkbox"]):not([type="radio"]):focus,
+.v35-form-sheet select:focus,
+.v35-form-sheet textarea:focus,
+[role="dialog"]:has(#category-form-title) input:focus,
+[role="dialog"]:has(#category-form-title) select:focus,
+[role="dialog"]:has(#goal-form-title) input:focus,
+[role="dialog"]:has(#goal-form-title) select:focus {
+  border-color: var(--cb-form-blue) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 1px var(--cb-form-blue) !important;
+}
+
+.v35-form-sheet select,
+[role="dialog"]:has(#category-form-title) select,
+[role="dialog"]:has(#goal-form-title) select {
+  cursor: pointer;
+}
+
+/* Reduce legacy oversized card language inside forms without changing logic. */
+.v35-form-sheet .rounded-2xl,
+[data-testid="wallet-summary-sheet"] .rounded-2xl,
+[role="dialog"]:has(#category-form-title) .rounded-2xl,
+[role="dialog"]:has(#goal-form-title) .rounded-2xl {
+  border-radius: 10px !important;
+}
+
+.v35-form-sheet .rounded-xl,
+[data-testid="wallet-summary-sheet"] .rounded-xl,
+[role="dialog"]:has(#category-form-title) .rounded-xl,
+[role="dialog"]:has(#goal-form-title) .rounded-xl {
+  border-radius: var(--cb-form-radius) !important;
+}
+
+.v35-form-sheet .bg-surface-container-low,
+.v35-form-sheet .bg-surface-container,
+[role="dialog"]:has(#category-form-title) .bg-surface-container,
+[role="dialog"]:has(#goal-form-title) .bg-surface-container {
+  background-color: var(--cb-form-field) !important;
+}
+
+.v35-form-sheet .border-outline-variant\/30,
+.v35-form-sheet .border-outline-variant\/20,
+.v35-form-sheet .border-outline-variant\/25,
+[role="dialog"]:has(#category-form-title) .border-outline-variant\/30,
+[role="dialog"]:has(#goal-form-title) .border-outline-variant\/30 {
+  border-color: var(--cb-form-border) !important;
+}
+
+/* Primary form action: full-width, strong blue, no oversized glow. */
+.v35-form-sheet button[type="submit"],
+.v35-form-sheet button[data-testid="confirm-payment"],
+[role="dialog"]:has(#category-form-title) > div button:last-child,
+[role="dialog"]:has(#goal-form-title) > div button:last-child {
+  min-height: 42px !important;
+  border-radius: var(--cb-form-radius) !important;
+  background: linear-gradient(180deg, #1a67ef 0%, var(--cb-form-blue) 100%) !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  box-shadow: 0 8px 20px rgba(18, 88, 230, 0.18) !important;
+}
+
+.v35-form-sheet button[type="submit"]:hover,
+.v35-form-sheet button[data-testid="confirm-payment"]:hover {
+  background: linear-gradient(180deg, #2473fb 0%, var(--cb-form-blue-hover) 100%) !important;
+}
+
+/* Pay / Pay Down uses the purple action language in the locked board. */
+[data-testid="pay-modal"] button[data-testid="confirm-payment"] {
+  background: linear-gradient(180deg, #812bd8 0%, var(--cb-form-purple) 100%) !important;
+  box-shadow: 0 8px 20px rgba(116, 37, 201, 0.20) !important;
+}
+
+[data-testid="pay-modal"] button[data-testid="confirm-payment"]:hover {
+  background: linear-gradient(180deg, #9235e9 0%, var(--cb-form-purple-hover) 100%) !important;
+}
+
+/* Segmented controls and option chips share one dense selected state. */
+.v35-form-sheet button[class*="bg-primary"],
+[role="dialog"]:has(#category-form-title) button[class*="bg-primary"],
+[role="dialog"]:has(#goal-form-title) button[class*="bg-primary"] {
+  border-radius: var(--cb-form-radius) !important;
+}
+
+.v35-form-sheet button:not([type="submit"]):focus-visible,
+[role="dialog"]:has(#category-form-title) button:focus-visible,
+[role="dialog"]:has(#goal-form-title) button:focus-visible {
+  outline: 2px solid var(--cb-form-blue) !important;
+  outline-offset: 2px;
+}
+
+/* Add Transaction: convert the oversized amount hero back into the compact
+   field treatment shown in the locked reference while keeping all validation. */
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 {
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > span:first-child {
+  margin-bottom: 6px !important;
+  color: var(--cb-form-label) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  text-align: left;
+}
+
+[data-testid="transaction-form-sheet"] input[aria-label="Transaction amount"] {
+  max-width: none !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  height: var(--cb-form-control-height) !important;
+  padding-left: 30px !important;
+  padding-right: 12px !important;
+  text-align: left !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+[data-testid="transaction-form-sheet"] input[aria-label="Transaction amount"] + div {
+  display: none !important;
+}
+
+[data-testid="transaction-form-sheet"] input[aria-label="Transaction amount"] ~ * {
+  font-size: 11px;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) {
+  position: relative;
+  width: 100% !important;
+  justify-content: flex-start !important;
+  gap: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+[data-testid="transaction-form-sheet"] form > .flex.flex-col.items-center.justify-center.py-4 > div:nth-child(2) > span:first-child {
+  position: absolute;
+  left: 12px;
+  z-index: 2;
+  font-size: 13px !important;
+  line-height: 40px;
+  color: var(--cb-text-muted) !important;
+}
+
+/* Dense transaction category/account choices instead of large tiles. */
+[data-testid="transaction-form-sheet"] form button.min-w-\[90px\] {
+  min-width: 76px !important;
+  min-height: 40px !important;
+  padding: 8px 10px !important;
+  gap: 4px !important;
+}
+
+[data-testid="transaction-form-sheet"] form button.min-w-\[90px\] svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Keep footer actions visually attached to the sheet. */
+.v35-form-sheet form .sticky.bottom-0 {
+  background: rgba(11, 21, 35, 0.96) !important;
+  border-color: var(--cb-form-border) !important;
+}
+
+/* Supporting Category/Goal forms use the same mobile sheet dimensions. */
+[role="dialog"]:has(#category-form-title),
+[role="dialog"]:has(#goal-form-title) {
+  padding: 18px !important;
+}
+
+[role="dialog"]:has(#category-form-title) > div,
+[role="dialog"]:has(#goal-form-title) > div {
+  gap: 12px;
+}
+
+/* Sharing → People is an inline supporting form in the real app. Give it the
+   same visual language without turning People into Accounts or transactions. */
+section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Person name"],
+section.v35-surface:has(input[aria-label="Person name"]) input[aria-label="Relationship"] {
+  min-height: var(--cb-form-control-height) !important;
+  height: var(--cb-form-control-height) !important;
+  border: 1px solid var(--cb-form-border) !important;
+  border-radius: var(--cb-form-radius) !important;
+  background: var(--cb-form-field) !important;
+  color: var(--cb-text) !important;
+  font-size: 13px !important;
+}
+
+section.v35-surface:has(input[aria-label="Person name"]) input:focus {
+  border-color: var(--cb-form-blue) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 1px var(--cb-form-blue) !important;
+}
+
+section.v35-surface:has(input[aria-label="Person name"]) button:has(svg) {
+  border-radius: var(--cb-form-radius) !important;
+}
+
+/* Semantic states from the board. */
+.v35-form-sheet [role="alert"] {
+  border-radius: var(--cb-form-radius) !important;
+}
+
+.v35-form-sheet :disabled {
+  cursor: not-allowed;
+}
+
+@media (min-width: 640px) {
+  .v35-form-sheet,
+  [data-testid="wallet-summary-sheet"],
+  [role="dialog"]:has(#category-form-title),
+  [role="dialog"]:has(#goal-form-title) {
+    border-radius: var(--cb-form-panel-radius) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42) !important;
+  }
+}
+
 @media (max-width: 767px) {
   /* V3.5 central bottom-nav Add replaces the legacy floating mobile Add button. */
   main + button[data-tour-id="tour-add-transaction"] {
     display: none !important;
+  }
+
+  .v35-form-sheet,
+  [data-testid="wallet-summary-sheet"],
+  [role="dialog"]:has(#category-form-title),
+  [role="dialog"]:has(#goal-form-title) {
+    max-height: 92dvh !important;
+    width: 100% !important;
+  }
+
+  .v35-form-sheet form {
+    row-gap: 14px !important;
   }
 }
 
@@ -106,5 +441,10 @@
   .v35-surface-hover,
   .v35-blue-glow {
     transition: none !important;
+  }
+
+  .v35-form-sheet *,
+  [data-testid="wallet-summary-sheet"] * {
+    transition-duration: 0.01ms !important;
   }
 }
