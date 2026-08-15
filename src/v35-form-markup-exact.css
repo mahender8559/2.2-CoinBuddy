@@ -13,6 +13,16 @@
   padding: 0 10px !important;
 }
 
+/* The older reference skin used a generated Add Transaction title. The rebuilt
+   component now owns the real Add/Edit title, so suppress that compatibility hack. */
+[data-testid="transaction-form-sheet"] #transaction-form-title {
+  font-size: 14px !important;
+}
+
+[data-testid="transaction-form-sheet"] #transaction-form-title::after {
+  content: none !important;
+}
+
 [data-testid="transaction-form-sheet"] .min-h-0.flex-1.overflow-y-auto {
   padding: 0 !important;
 }
