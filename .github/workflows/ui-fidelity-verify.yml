@@ -1,0 +1,31 @@
+name: UI fidelity verify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify-forms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run V3.5 form reference tests
+        run: npx playwright test e2e/v35-forms-modals.spec.ts e2e/v35-supporting-form-reference.spec.ts --project=desktop-chromium
+      - name: Upload UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v35-form-fidelity-evidence
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: warn
+          retention-days: 3
