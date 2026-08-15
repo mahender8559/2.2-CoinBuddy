@@ -1,9 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
-  const desktop = page.getByTitle(name);
-  const mobile = page.getByRole('button', { name, exact: true });
-  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function prepare(page: Page, preserveDatabase = false) {
@@ -41,11 +53,13 @@ test('clean-ledger affordability setup survives reload and does not silently dem
   await expect(page.getByText('HDFC Salary Account', { exact: true })).toHaveCount(0);
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
   await expect(page.getByText('Can I Afford It?', { exact: true })).toBeVisible();
   await page.reload();
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Can I Afford It?', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
@@ -54,6 +68,7 @@ test('clean-ledger affordability setup survives reload and does not silently dem
 test('category financial behavior can be changed and persists after reload', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByRole('button', { name: 'Review categories' }).click();
   const groceries = page.getByLabel('Groceries affordability behavior');
   await groceries.selectOption('IRREGULAR');
@@ -63,6 +78,7 @@ test('category financial behavior can be changed and persists after reload', asy
 
   await page.reload();
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByRole('button', { name: 'Review categories' }).click();
   await expect(page.getByLabel('Groceries affordability behavior')).toHaveValue('IRREGULAR');
   await assertNoDocumentOverflow(page);
@@ -86,6 +102,8 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
   await openTab(page, 'Activity');
   const pending = page.getByText(/Transfer: HDFC Salary Account to Cash Wallet/).first();
   await expect(pending).toBeVisible();
+  const pendingToggle = page.getByRole('button', { name: /Needs confirmation/ }).first();
+  if (await pendingToggle.getAttribute('aria-expanded') === 'false') await pendingToggle.click();
   await page.getByRole('button', { name: 'Transferred ✓' }).first().click();
   await expect(page.getByRole('alert')).toContainText(/Insufficient funds in HDFC Salary Account/i);
   await expect(pending).toBeVisible();
@@ -97,6 +115,7 @@ test('recurring transfer can be scheduled above today\'s balance but confirmatio
 test('money inputs use selected-currency grouping and affordability cards do not overflow mobile', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
 
   const amount = page.getByLabel('Amount', { exact: true });
   await amount.fill('100000');
@@ -113,9 +132,7 @@ test('money inputs use selected-currency grouping and affordability cards do not
 
 test('real Goals persist and feed affordability protection', async ({ page }) => {
   const errors = await prepare(page, false);
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await page.getByRole('button', { name: 'Add goal' }).click();
   await page.getByLabel('Goal name').fill('Laptop Fund');
   await page.getByLabel('Target amount').fill('80000');
@@ -126,12 +143,11 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
   await expect(laptopGoal).toContainText(/Planner protects.*5,000/i);
 
   await page.reload();
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await expect(page.getByRole('article', { name: 'Goal Laptop Fund' })).toBeVisible();
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await page.getByLabel('Amount', { exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Check affordability' }).click();
   const goalProtection = page.getByText('Goals protection:', { exact: true }).locator('..');
@@ -143,7 +159,8 @@ test('real Goals persist and feed affordability protection', async ({ page }) =>
 test('investment SIP setup creates a recurring transfer rule', async ({ page }) => {
   const errors = await prepare(page, false);
   await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Add Asset' }).click();
+  await page.getByRole('button', { name: 'Add account', exact: false }).click();
+  await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add Asset', exact: true })).toBeVisible();
   await page.getByPlaceholder('e.g. Primary Checking').fill('Emergency Fund');
   await page.getByRole('button', { name: 'Investment', exact: true }).click();

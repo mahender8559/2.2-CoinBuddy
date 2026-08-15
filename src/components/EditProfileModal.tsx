@@ -1,101 +1,75 @@
-import React, { useState, useRef } from 'react';
-import { X, Camera } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Camera, UserRound, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { V35ModalFrame } from './ui/V35ModalFrame';
 
-export function EditProfileModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+export function EditProfileModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { profile, setProfile } = useAppContext();
-  
   const [name, setName] = useState(profile.name);
-  const [email, setEmail] = useState(profile.email);
   const [avatar, setAvatar] = useState(profile.avatar);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    setProfile({ ...profile, name, email, avatar });
+    setProfile({ ...profile, name, avatar });
     onClose();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (typeof e.target?.result === 'string') {
-          setAvatar(e.target.result);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = loadEvent => {
+      if (typeof loadEvent.target?.result === 'string') setAvatar(loadEvent.target.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
-    <div className="fixed inset-0 z-[150] bg-background flex flex-col animate-fade-in pb-safe">
-      <div className="flex items-center justify-between p-4 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-2 hover:bg-surface-variant rounded-full text-on-surface">
-            <X className="w-6 h-6" />
-          </button>
-          <h2 className="text-xl font-bold text-on-surface">Edit Profile</h2>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-8 items-center max-w-lg mx-auto w-full">
-        {/* Avatar Selection */}
-        <div className="relative mt-4">
-          <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-surface-container bg-surface-variant flex items-center justify-center">
-            {avatar ? (
-              <img src={avatar} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <div className="text-4xl text-on-surface-variant">{name.charAt(0)}</div>
-            )}
+    <V35ModalFrame size="sm" testId="profile-edit-sheet" labelledBy="profile-edit-title" panelClassName="overflow-y-auto">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-outline-variant/25 px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <UserRound className="h-4.5 w-4.5" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="profile-edit-title" className="text-lg font-semibold text-on-surface">Edit Profile</h2>
+            <p className="mt-0.5 text-xs text-on-surface-variant">Profile details stay on this device.</p>
           </div>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute bottom-0 right-0 bg-primary text-on-primary p-3 rounded-full hover:bg-primary/90 transition-colors shadow-lg"
-          >
-            <Camera className="w-5 h-5" />
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
-          />
         </div>
+        <button type="button" aria-label="Close profile editor" onClick={onClose} className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface">
+          <X className="h-5 w-5" />
+        </button>
+      </header>
 
-        {/* Form Fields */}
-        <div className="w-full space-y-5">
-          <div>
-            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2 block">Full Name</label>
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-surface-container border border-outline-variant/50 rounded-xl p-4 text-on-surface focus:outline-none focus:border-primary/50 transition-colors"
-              placeholder="Your name"
-            />
+      <div className="space-y-6 p-5 sm:p-6">
+        <div className="flex items-center gap-4 rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
+          <div className="relative shrink-0">
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-outline-variant/30 bg-surface-container-high text-2xl font-semibold text-on-surface-variant">
+              {avatar ? <img src={avatar} alt="Profile" className="h-full w-full object-cover" /> : (name.trim().charAt(0) || 'C')}
+            </div>
+            <button type="button" aria-label="Change profile photo" onClick={() => fileInputRef.current?.click()} className="v35-focus-ring absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-xl border border-outline-variant/25 bg-primary text-on-primary shadow-lg">
+              <Camera className="h-4 w-4" />
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-on-surface">Profile picture</p>
+            <p className="mt-1 text-xs leading-5 text-on-surface-variant">Choose an image from this device. It remains part of your local CoinBuddy profile.</p>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="w-full mt-auto pt-8 flex flex-col gap-3">
-          <button 
-            onClick={handleSave}
-            className="w-full bg-primary text-on-primary font-bold py-4 rounded-xl hover:bg-primary/90 transition-colors"
-          >
-            Save Changes
-          </button>
-          <button 
-            onClick={onClose}
-            className="w-full bg-surface-container text-on-surface-variant font-bold py-4 rounded-xl hover:bg-surface-variant transition-colors border border-outline-variant/30"
-          >
-            Cancel
-          </button>
+        <div>
+          <label htmlFor="profile-full-name" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Full Name</label>
+          <input id="profile-full-name" aria-label="Full Name" type="text" value={name} onChange={event => setName(event.target.value)} className="v35-focus-ring w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm font-medium text-on-surface" placeholder="Your name" />
         </div>
       </div>
-    </div>
+
+      <footer className="flex shrink-0 flex-col-reverse gap-3 border-t border-outline-variant/20 bg-surface-container/95 px-5 py-4 backdrop-blur sm:flex-row sm:justify-end sm:px-6">
+        <button type="button" onClick={onClose} className="v35-focus-ring min-h-11 rounded-xl border border-outline-variant/30 px-4 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high sm:min-w-24">Cancel</button>
+        <button type="button" onClick={handleSave} disabled={!name.trim()} className="v35-focus-ring min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">Save Changes</button>
+      </footer>
+    </V35ModalFrame>
   );
 }

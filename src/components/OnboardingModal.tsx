@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Check, Shield, Database, Activity, Lock, Wallet } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Activity, Check, ChevronLeft, ChevronRight, Database, Lock, Shield, Wallet, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { V35ModalFrame } from './ui/V35ModalFrame';
 
 export function OnboardingModal() {
   const { isOnboardingOpen, setOnboardingOpen, setButtonTourOpen } = useAppContext();
@@ -9,170 +10,110 @@ export function OnboardingModal() {
 
   if (!isOnboardingOpen) return null;
 
-  const handleClose = () => {
-    const isFirstUse = localStorage.getItem('coinbuddy_onboarding_seen') !== 'true';
-    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
-    setOnboardingOpen(false);
-    setCurrentStep(0);
-    if (isFirstUse && localStorage.getItem('hasCompletedButtonTour') !== 'true') {
-      setButtonTourOpen(true);
-    }
-  };
-
   const steps = [
     {
       id: 'welcome',
       title: 'Welcome to CoinBuddy',
       description: 'Your offline-first, highly secure financial ledger. Take complete control over your wealth with advanced tracking and zero-drift relational balances.',
-      image: '/logo.png',
-      icon: <Wallet className="w-8 h-8 text-blue-500" />
+      icon: Wallet,
     },
     {
       id: 'accounts',
       title: 'Accounts & Relational Ledger',
       description: 'Create assets, liabilities, and track everything in a unified view. Real-time computed views ensure absolutely zero balance drift.',
-      image: '/logo.png',
-      icon: <Database className="w-8 h-8 text-indigo-500" />
+      icon: Database,
     },
     {
       id: 'transactions',
       title: 'Transactions & Transfers',
       description: 'Log income, expenses, and cross-account transfers. Centralized ledger rules keep account effects and computed balances consistent.',
-      image: '/logo.png',
-      icon: <Activity className="w-8 h-8 text-emerald-500" />
+      icon: Activity,
     },
     {
       id: 'loans',
       title: 'Loans & Liability Tracking',
       description: 'Specialized math support for bullet payments, EMI schedules, and variable interest loans. Know exactly how much you owe.',
-      image: '/logo.png',
-      icon: <Shield className="w-8 h-8 text-purple-500" />
+      icon: Shield,
     },
     {
       id: 'security',
       title: 'Encrypted Backups & Security',
       description: 'Your live ledger stays local to this device. Backup files use AES-256-GCM encryption and can optionally be copied to Google Drive.',
-      image: '/logo.png',
-      icon: <Lock className="w-8 h-8 text-rose-500" />
-    }
+      icon: Lock,
+    },
   ];
 
+  const handleClose = () => {
+    const isFirstUse = localStorage.getItem('coinbuddy_onboarding_seen') !== 'true';
+    localStorage.setItem('coinbuddy_onboarding_seen', 'true');
+    setOnboardingOpen(false);
+    setCurrentStep(0);
+    if (isFirstUse && localStorage.getItem('hasCompletedButtonTour') !== 'true') setButtonTourOpen(true);
+  };
+
   const nextStep = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(curr => curr + 1);
-    } else {
-      handleClose();
-    }
+    if (currentStep < steps.length - 1) setCurrentStep(step => step + 1);
+    else handleClose();
   };
 
   const prevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(curr => curr - 1);
-    }
+    if (currentStep > 0) setCurrentStep(step => step - 1);
   };
 
+  const step = steps[currentStep];
+  const StepIcon = step.icon;
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="w-full max-w-2xl bg-surface-container-low rounded-3xl border border-outline-variant/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-      >
-        <div className="relative h-48 sm:h-64 overflow-hidden shrink-0">
-          <AnimatePresence mode="wait">
-            <motion.img
-              key={currentStep}
-              src={steps[currentStep].image}
-              alt={steps[currentStep].title}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          </AnimatePresence>
-          <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
-          
-          <button 
-            onClick={handleClose}
-            className="absolute top-4 right-4 p-2 bg-surface-container/60 hover:bg-surface-container-high text-on-surface rounded-full transition-colors backdrop-blur-md"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex flex-col p-6 sm:p-8 flex-1 overflow-y-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="flex flex-col flex-1"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-surface-container rounded-2xl border border-outline-variant/20">
-                  {steps[currentStep].icon}
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-bold text-on-surface leading-tight">
-                  {steps[currentStep].title}
-                </h2>
-              </div>
-              <p className="text-lg text-on-surface-variant leading-relaxed">
-                {steps[currentStep].description}
-              </p>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        <div className="p-6 sm:p-8 border-t border-outline-variant/30 bg-surface-container shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              {steps.map((_, idx) => (
-                <div 
-                  key={idx}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    idx === currentStep 
-                      ? 'w-8 bg-primary' 
-                      : 'w-2 bg-outline-variant/50'
-                  }`}
-                />
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              {currentStep > 0 && (
-                <button
-                  onClick={prevStep}
-                  className="px-4 py-2.5 font-bold text-on-surface hover:bg-surface-container-high rounded-xl transition-colors flex items-center"
-                >
-                  <ChevronLeft className="w-5 h-5 mr-1" />
-                  Back
-                </button>
-              )}
-              
-              <button
-                onClick={nextStep}
-                className="px-6 py-2.5 font-bold text-on-primary bg-primary hover:bg-primary/90 rounded-xl transition-transform active:scale-95 shadow-sm flex items-center"
-              >
-                {currentStep === steps.length - 1 ? (
-                  <>
-                    Get Started
-                    <Check className="w-5 h-5 ml-2" />
-                  </>
-                ) : (
-                  <>
-                    Next
-                    <ChevronRight className="w-5 h-5 ml-2" />
-                  </>
-                )}
-              </button>
-            </div>
+    <V35ModalFrame size="lg" testId="onboarding-sheet" labelledBy="onboarding-title">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-outline-variant/25 px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <img src="/logo.png" alt="CoinBuddy" className="h-9 w-9 rounded-xl object-cover ring-1 ring-primary/20" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-on-surface">CoinBuddy guide</p>
+            <p className="text-xs text-on-surface-variant">Step {currentStep + 1} of {steps.length}</p>
           </div>
         </div>
-      </motion.div>
-    </div>
+        <button type="button" aria-label="Close walkthrough" onClick={handleClose} className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface">
+          <X className="h-5 w-5" />
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 sm:py-9">
+        <AnimatePresence mode="wait">
+          <motion.div key={step.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }} className="mx-auto max-w-xl">
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <StepIcon className="h-6 w-6" />
+            </div>
+            <h2 id="onboarding-title" className="text-2xl font-semibold tracking-tight text-on-surface sm:text-3xl">{step.title}</h2>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-on-surface-variant sm:text-base sm:leading-7">{step.description}</p>
+
+            <div className="mt-7 rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">What to remember</p>
+              <p className="mt-2 text-sm leading-6 text-on-surface">
+                {step.id === 'welcome' ? 'Start with your real accounts, then let CoinBuddy derive balances and planning views from the ledger.' :
+                  step.id === 'accounts' ? 'Accounts represent where money or debt actually lives; people and categories remain separate.' :
+                  step.id === 'transactions' ? 'Record real money movement once. Transfers move value between accounts without becoming income or spending.' :
+                  step.id === 'loans' ? 'Loan balances, interest and repayment schedules stay linked so debt views remain financially consistent.' :
+                  'Your live financial data remains local-first. Use encrypted backups when you need portability or recovery.'}
+              </p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <footer className="shrink-0 border-t border-outline-variant/20 bg-surface-container/95 px-5 py-4 backdrop-blur sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5" aria-label={`Walkthrough step ${currentStep + 1} of ${steps.length}`}>
+            {steps.map((item, index) => <span key={item.id} aria-hidden="true" className={`h-1.5 rounded-full transition-all ${index === currentStep ? 'w-7 bg-primary' : 'w-1.5 bg-outline-variant/45'}`} />)}
+          </div>
+          <div className="flex items-center gap-2">
+            {currentStep > 0 ? <button type="button" onClick={prevStep} className="v35-focus-ring flex min-h-10 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high"><ChevronLeft className="h-4 w-4" /> Back</button> : null}
+            <button type="button" onClick={nextStep} className="v35-focus-ring flex min-h-10 items-center gap-1 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary hover:bg-primary/90">
+              {currentStep === steps.length - 1 ? <><span>Get Started</span><Check className="h-4 w-4" /></> : <><span>Next</span><ChevronRight className="h-4 w-4" /></>}
+            </button>
+          </div>
+        </div>
+      </footer>
+    </V35ModalFrame>
   );
 }

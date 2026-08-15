@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { X, ShieldAlert, Info } from 'lucide-react';
 import { calculateEmiAmount } from '../utils/emi';
 import { CurrencyInput } from './CurrencyInput';
+import { V35ModalFrame } from './ui/V35ModalFrame';
 import { findInvestmentSipRule } from '../domain/investmentSip';
 
 const getErrorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
@@ -371,19 +372,18 @@ export function AddAccountModal() {
   const isEditing = Boolean(editingAccount || editingCreditCard);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center bg-background/80 backdrop-blur-sm p-3 sm:px-4 overflow-y-auto">
-      <div className="bg-surface-container rounded-3xl w-full max-w-md p-4 sm:p-6 border border-outline-variant/30 shadow-2xl animate-fade-in relative modal-scroll my-auto">
+    <V35ModalFrame size="md" testId="account-form-sheet" labelledBy="account-form-title" panelClassName="overflow-y-auto p-5 sm:p-6">
         <button 
           type="button"
           aria-label="Close account form"
           onClick={handleClose}
-          className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+          className="v35-focus-ring absolute right-4 top-3 flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface sm:top-4"
         >
           <X className="w-5 h-5" />
         </button>
         
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-on-surface">
+        <div className="mb-5 flex min-h-10 items-center justify-between gap-3 pr-11">
+          <h2 id="account-form-title" className="text-lg font-semibold text-on-surface sm:text-xl">
             {isEditing 
               ? (addAccountModalType === 'asset' ? 'Edit Asset' : 'Edit Liability')
               : (addAccountModalType === 'asset' ? 'Add Asset' : 'Add Liability')
@@ -503,7 +503,7 @@ export function AddAccountModal() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Total Invested Amount</label>
                   <CurrencyInput
@@ -529,7 +529,7 @@ export function AddAccountModal() {
               </div>
 
               {investmentMethod === 'SIP' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Monthly SIP Amount</label>
                     <CurrencyInput
@@ -591,7 +591,7 @@ export function AddAccountModal() {
           )}
 
           {addAccountModalType === 'liability' && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {!(liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan') && (
                 <div className={liabilityType === 'Credit Card' ? '' : 'col-span-2'}>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
@@ -621,7 +621,7 @@ export function AddAccountModal() {
           )}
 
           {addAccountModalType === 'liability' && liabilityType === 'Credit Card' && !isEditing && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Next Due Date</label>
                 <input 
@@ -650,7 +650,7 @@ export function AddAccountModal() {
 
           {addAccountModalType === 'liability' && (liabilityType === 'Bank Loan' || liabilityType === 'Loan' || liabilityType === 'Mortgage' || liabilityType === 'Interest-Only Loan') && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
                     Initial Loan Amount (Principal)
@@ -683,7 +683,7 @@ export function AddAccountModal() {
               </div>
 
               {liabilityType === 'Interest-Only Loan' ? (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Payment Frequency</label>
                     <select
@@ -720,7 +720,7 @@ export function AddAccountModal() {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Interest Type</label>
                       <select
@@ -789,7 +789,7 @@ export function AddAccountModal() {
                 </>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
                     {liabilityType === 'Interest-Only Loan' || interestCalculationType === 'INTEREST_ONLY'
@@ -877,7 +877,7 @@ export function AddAccountModal() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2.5 pt-1">
+                <div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
                       Fixed Late Fee ({getCurrencySymbol()})
@@ -925,12 +925,11 @@ export function AddAccountModal() {
 
           <button 
             type="submit"
-            className="w-full bg-primary hover:bg-primary/90 text-on-primary font-bold py-3.5 rounded-xl transition-colors mt-2"
+            className="v35-focus-ring mt-2 min-h-12 w-full rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
           >
             {isEditing ? 'Save Changes' : (addAccountModalType === 'asset' ? 'Add Asset' : 'Add Liability')}
           </button>
         </form>
-      </div>
-    </div>
+    </V35ModalFrame>
   );
 }

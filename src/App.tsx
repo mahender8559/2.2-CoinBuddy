@@ -6,7 +6,7 @@ import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { BackupAutomationService } from './components/BackupAutomationService';
 import { Activity } from './components/Activity';
-import { Insights } from './components/Insights';
+import { V35Insights } from './components/V35Insights';
 import { Settings } from './components/Settings';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { AddAccountModal } from './components/AddAccountModal';
@@ -14,6 +14,7 @@ import { WalletSummaryModal } from './components/WalletSummaryModal';
 import { PayCardModal } from './components/PayCardModal';
 import { ManageFinances } from './components/ManageFinances';
 import { OnboardingModal } from './components/OnboardingModal';
+import { ExitConfirmSheet } from './components/ExitConfirmSheet';
 import { ButtonTourOverlay } from './components/ButtonTourOverlay';
 import { GoogleSignInGate } from './components/GoogleSignInGate';
 import { useAppContext } from './context/AppContext';
@@ -25,6 +26,7 @@ const GOOGLE_LOGIN_ENABLED = false;
 
 export default function App() {
   const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
+  const [isExitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
     return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
@@ -55,6 +57,12 @@ export default function App() {
       window.history.pushState({ tab }, '', `?tab=${tab}`);
       setActiveTab(tab);
     }
+  };
+
+  const handleOpenSharingForTransaction = (transactionId: string) => {
+    sessionStorage.setItem('coinbuddy_share_transaction_id', transactionId);
+    sessionStorage.setItem('coinbuddy_manage_destination', 'Sharing');
+    handleTabChange('manage');
   };
 
   const handleGoogleLogout = async () => {
@@ -145,12 +153,12 @@ export default function App() {
       }
 
       if (e.state && e.state.exitPrompt) {
-        if (window.confirm('Do you want to exit the app?')) {
-          window.history.back();
-        } else {
-          window.history.pushState({ tab: 'dashboard' }, '', '?tab=dashboard');
-          setActiveTab('dashboard');
-        }
+        // Reinsert a same-document guard while the custom confirmation is open.
+        // This mirrors the blocking behavior of the old native confirm: pressing
+        // Back again cannot silently skip the confirmation and leave the app.
+        window.history.pushState({ exitConfirm: true }, '', '?tab=dashboard');
+        setActiveTab('dashboard');
+        setExitConfirmOpen(true);
       } else if (e.state && e.state.tab) {
         setActiveTab(e.state.tab as Tab);
       }
@@ -159,6 +167,19 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [activeTab, isAddModalOpen, addAccountModalType, isWalletModalOpen, payCardModalState.isOpen, isManageCategoriesOpen, setAddModalOpen, setAddAccountModalType, setWalletModalOpen, setPayCardModalState, setManageCategoriesOpen]);
+
+  const handleStayInApp = () => {
+    setExitConfirmOpen(false);
+    window.history.replaceState({ tab: 'dashboard' }, '', '?tab=dashboard');
+    setActiveTab('dashboard');
+  };
+
+  const handleExitApp = () => {
+    setExitConfirmOpen(false);
+    // Current entry is the temporary exitConfirm guard and the preceding entry
+    // is exitPrompt. Move across both to preserve the old confirmed-exit result.
+    window.history.go(-2);
+  };
 
   const [pinEntry, setPinEntry] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -219,88 +240,99 @@ export default function App() {
 
   if ((biometric || passcode) && !isUnlocked) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 animate-fade-in relative overflow-hidden">
-        {/* Subtle background glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-primary/20 blur-[100px] rounded-full pointer-events-none"></div>
-        
-        <div className="flex flex-col items-center gap-6 z-10 w-full max-w-sm">
-          <div className="w-20 h-20 rounded-full bg-surface-container flex items-center justify-center border border-outline-variant/30 mb-4">
-            <Lock className="w-10 h-10 text-primary" />
-          </div>
-          
-          <div className="text-center space-y-2 mb-4">
-            <h1 className="text-3xl font-bold text-on-surface">App Locked</h1>
-            <p className="text-on-surface-variant">Authenticate to access your local financial ledger.</p>
-          </div>
-
-          {passcode && (
-            <div className="w-full mt-4 flex flex-col items-center">
-              <div className="flex gap-4 mb-8">
-                {[...Array(4)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`w-4 h-4 rounded-full border-2 ${
-                      pinEntry.length > i 
-                        ? 'bg-primary border-primary' 
-                        : 'border-outline-variant/50'
-                    } ${pinError ? 'bg-error border-error animate-pulse' : 'transition-all duration-200'}`}
-                  />
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-4 w-full px-8">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => {
-                      if (pinEntry.length < 4) setPinEntry(prev => prev + num);
-                    }}
-                    className="w-16 h-16 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors text-2xl font-semibold flex items-center justify-center mx-auto"
-                  >
-                    {num}
-                  </button>
-                ))}
-                <div />
-                <button
-                  onClick={() => {
-                    if (pinEntry.length < 4) setPinEntry(prev => prev + '0');
-                  }}
-                  className="w-16 h-16 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors text-2xl font-semibold flex items-center justify-center mx-auto"
-                >
-                  0
-                </button>
-                <button
-                  onClick={() => setPinEntry(prev => prev.slice(0, -1))}
-                  className="w-16 h-16 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors text-lg font-semibold flex items-center justify-center mx-auto text-on-surface-variant"
-                >
-                  Del
-                </button>
+      <div data-testid="locked-app-screen" className="min-h-screen bg-background px-4 py-8 text-on-background sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-sm items-center justify-center">
+          <section className="w-full rounded-[28px] border border-outline-variant/30 bg-surface-container p-5 shadow-xl sm:p-6" aria-labelledby="locked-app-title">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Lock className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-on-surface-variant">Local vault</p>
+                <h1 id="locked-app-title" className="mt-1 text-2xl font-semibold tracking-tight text-on-surface">CoinBuddy is locked</h1>
+                <p className="mt-1.5 text-sm leading-6 text-on-surface-variant">Authenticate to open the financial ledger stored on this device.</p>
               </div>
             </div>
-          )}
-          
-          {biometric && !passcode && (
-            <button 
-              onClick={() => void handleBiometricUnlock()}
-              className="flex flex-col items-center gap-4 group mt-8"
-            >
-              <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_-10px_var(--primary)] relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
-                <Fingerprint className="w-10 h-10 text-primary relative z-10" strokeWidth={1.5} />
-              </div>
-              <span className="text-sm font-semibold tracking-wider uppercase text-primary group-hover:text-primary-container-on">Tap to Unlock</span>
-            </button>
-          )}
 
-          {biometric && passcode && (
-            <button 
-              onClick={() => void handleBiometricUnlock()}
-              className="mt-6 flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
-            >
-              <Fingerprint className="w-5 h-5" />
-              <span className="text-sm font-semibold tracking-wider uppercase">Use Biometrics</span>
-            </button>
-          )}
-          {biometricError && <p role="alert" className="max-w-sm text-center text-sm text-error">{biometricError}</p>}
+            {passcode && (
+              <div className="mt-7">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-sm font-semibold text-on-surface">Enter your 4-digit PIN</p>
+                  <div aria-label={`${pinEntry.length} of 4 PIN digits entered`} className="flex gap-2">
+                    {[...Array(4)].map((_, index) => (
+                      <span
+                        key={index}
+                        aria-hidden="true"
+                        className={`h-2.5 w-2.5 rounded-full border transition-colors ${
+                          pinError
+                            ? 'border-error bg-error'
+                            : pinEntry.length > index
+                              ? 'border-primary bg-primary'
+                              : 'border-outline-variant/50 bg-transparent'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-3 gap-2.5" aria-label="PIN keypad">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      aria-label={`PIN digit ${num}`}
+                      onClick={() => {
+                        if (pinEntry.length < 4) setPinEntry(previous => previous + num);
+                      }}
+                      className="v35-focus-ring flex min-h-12 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-low text-lg font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <div aria-hidden="true" />
+                  <button
+                    type="button"
+                    aria-label="PIN digit 0"
+                    onClick={() => {
+                      if (pinEntry.length < 4) setPinEntry(previous => previous + '0');
+                    }}
+                    className="v35-focus-ring flex min-h-12 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-low text-lg font-semibold text-on-surface transition-colors hover:bg-surface-container-high"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete PIN digit"
+                    onClick={() => setPinEntry(previous => previous.slice(0, -1))}
+                    className="v35-focus-ring flex min-h-12 items-center justify-center rounded-xl border border-outline-variant/25 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                  >
+                    Delete
+                  </button>
+                </div>
+                {pinError && <p role="alert" className="mt-3 text-center text-sm font-medium text-error">Incorrect PIN. Try again.</p>}
+              </div>
+            )}
+
+            {biometric && (
+              <div className={`${passcode ? 'mt-5 border-t border-outline-variant/20 pt-5' : 'mt-7'}`}>
+                <button
+                  type="button"
+                  onClick={() => void handleBiometricUnlock()}
+                  className="v35-focus-ring flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
+                >
+                  <Fingerprint className="h-5 w-5" />
+                  {passcode ? 'Use Biometrics' : 'Unlock with Biometrics'}
+                </button>
+              </div>
+            )}
+
+            {biometricError && <p role="alert" className="mt-3 rounded-xl border border-error/25 bg-error/10 px-3 py-2.5 text-sm leading-5 text-error">{biometricError}</p>}
+
+            <div className="mt-6 flex items-start gap-2.5 rounded-xl bg-surface-container-low px-3.5 py-3 text-xs leading-5 text-on-surface-variant">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cb-green)]" />
+              <span>Your live ledger remains local to this device while CoinBuddy is locked.</span>
+            </div>
+          </section>
         </div>
       </div>
     );
@@ -312,7 +344,7 @@ export default function App() {
       <Header onLogout={handleGoogleLogout} showLogout={GOOGLE_LOGIN_ENABLED} />
       <Navigation activeTab={activeTab} setActiveTab={handleTabChange} />
       
-      <main className="pt-20 min-h-screen md:pl-20">
+      <main className="min-h-screen pt-3 md:pl-20 md:pt-20 xl:pl-60">
         <div className="w-full max-w-[1800px] mx-auto px-3 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-6 pb-28 md:pb-6">
           {integrityWarning && (
             <div className="mb-4 flex items-center gap-3 rounded-xl border border-error/50 bg-error/10 px-4 py-3 text-sm text-on-surface">
@@ -322,9 +354,9 @@ export default function App() {
             </div>
           )}
           {activeTab === 'dashboard' && <Dashboard />}
-          {activeTab === 'activity' && <Activity />}
+          {activeTab === 'activity' && <Activity onOpenSharing={handleOpenSharingForTransaction} />}
           {activeTab === 'manage' && <ManageFinances />}
-          {activeTab === 'insights' && <Insights />}
+          {activeTab === 'insights' && <V35Insights />}
           {activeTab === 'settings' && <Settings />}
         </div>
       </main>
@@ -344,6 +376,7 @@ export default function App() {
         </button>
       )}
 
+      <ExitConfirmSheet open={isExitConfirmOpen} onStay={handleStayInApp} onExit={handleExitApp} />
       <OnboardingModal />
       <ButtonTourOverlay activeTab={activeTab} setActiveTab={handleTabChange} />
       <AddTransactionModal />

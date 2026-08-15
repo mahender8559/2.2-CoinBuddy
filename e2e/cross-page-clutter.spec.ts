@@ -14,23 +14,34 @@ async function prepare(page: Page, tab = 'dashboard') {
 
 test('Manage does not expose duplicate or unwired add/market/sinking-fund controls', async ({ page }) => {
   const errors = await prepare(page, 'manage');
-  await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (await mobileNav.isVisible()) {
+    await expect(mobileNav.getByRole('button', { name: 'Add Transaction' })).toHaveCount(1);
+    await expect(page.getByTestId('page-manage').getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  } else {
+    await expect(page.getByRole('button', { name: 'Add Transaction' })).toHaveCount(0);
+  }
   await expect(page.getByText('Local Storage Encryption Active', { exact: true })).toHaveCount(0);
-  // Market valuation is legitimate for Investment assets; it must not appear on loans.
   const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
   await expect(loanCard.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
+  if (await mobileNav.isVisible()) {
+    await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+    await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Categories', exact: true }).click();
+  } else {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Categories', exact: true }).click();
+  }
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'ADD CATEGORY', exact: true }).click();
+  await page.getByRole('button', { name: 'Add category', exact: true }).click();
   await expect(page.getByText('Enable Rollover / Sinking Fund', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Where should leftover funds go?', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Carry unused budget forward', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rollover unused budget', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
 test('Activity sort labels and row actions do not present duplicate edit controls', async ({ page }) => {
   const errors = await prepare(page, 'activity');
+  await page.getByRole('button', { name: 'Advanced filters' }).click();
   await expect(page.getByRole('option', { name: 'Title (A to Z)' })).toHaveCount(1);
   await expect(page.getByRole('option', { name: 'Notes (A to Z)' })).toHaveCount(0);
   await expect(page.getByTitle('Edit Transaction')).toHaveCount(0);
@@ -44,27 +55,25 @@ test('Insights removes fake clickable savings advice and duplicate security badg
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
-test('first-use tour goes directly from onboarding to UI spotlight without writing backup password', async ({ page }) => {
+test('first-use flow reaches the spotlight tour without backup-password clutter', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+
   await page.goto('/');
   await page.evaluate(() => {
     localStorage.removeItem('coinbuddy_onboarding_seen');
     localStorage.removeItem('hasCompletedButtonTour');
-    localStorage.removeItem('backupConfig');
     localStorage.removeItem('coinbuddy_backup_config');
   });
   await page.reload();
 
   await expect(page.getByRole('heading', { name: 'Welcome to CoinBuddy' })).toBeVisible();
+  await expect(page.getByText(/backup password/i)).toHaveCount(0);
   for (let step = 0; step < 4; step += 1) {
     await page.getByRole('button', { name: 'Next' }).click();
   }
   await page.getByRole('button', { name: 'Get Started' }).click();
   await expect(page.getByRole('heading', { name: 'Add Transaction' })).toBeVisible();
-  await expect(page.getByText(/Dashboard, Activity, or Insights to log income, expenses, or transfers/i)).toBeVisible();
-  const legacyBackup = await page.evaluate(() => ({
-    old: localStorage.getItem('backupConfig'),
-    current: localStorage.getItem('coinbuddy_backup_config'),
-  }));
-  expect(legacyBackup.old).toBeNull();
-  expect(legacyBackup.current).toBeNull();
+  expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });

@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { CurrencyInput } from './CurrencyInput';
+import { V35ModalFrame } from './ui/V35ModalFrame';
 import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { icons } from '../icons';
 import type { Transaction } from '../types';
@@ -232,30 +233,32 @@ export function AddTransactionModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-background animate-slide-up pb-safe">
-      <div className="flex items-center justify-between p-4 border-b border-outline-variant/30">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-primary" />
-          <h2 className="text-xl font-bold text-on-surface">{editingTransaction ? 'Edit Transaction' : 'Log Transaction'}</h2>
+    <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title">
+      <div className="flex shrink-0 items-center justify-between border-b border-outline-variant/30 px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="h-5 w-5" /></span>
+          <h2 id="transaction-form-title" className="truncate text-lg font-semibold text-on-surface sm:text-xl">{editingTransaction ? 'Edit Transaction' : 'Log Transaction'}</h2>
           {editingTransaction && (
             <span className="px-2 py-0.5 ml-2 text-xs font-bold uppercase tracking-wider bg-surface-variant text-on-surface-variant rounded-md">
               {type}
             </span>
           )}
         </div>
-        <button 
+        <button
+          type="button"
+          aria-label="Close transaction form"
           onClick={() => {
             setAddModalOpen(false);
             setEditingTransaction(null);
           }}
-          className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors"
+          className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
         >
-          <Layers className="w-5 h-5" />
+          <X className="h-5 w-5" />
         </button>
       </div>
       
-      <div className="flex-1 overflow-y-auto">
-        <form onSubmit={handleSubmit} className="p-4 space-y-6 max-w-2xl mx-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-2xl space-y-5 p-5 sm:p-6">
           
           {error && (
             <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center gap-3 animate-fade-in shadow-sm">
@@ -335,7 +338,7 @@ export function AddTransactionModal() {
             </div>
           )}
 
-          <div className="flex flex-col items-center justify-center py-6">
+          <div className="flex flex-col items-center justify-center py-4">
             <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">AMOUNT</span>
             <div className="flex items-center justify-center gap-2 sm:gap-3 w-full px-2">
               <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary shrink-0">{getCurrencySymbol()}</span>
@@ -582,7 +585,7 @@ export function AddTransactionModal() {
             </div>
           </div>
 
-          <div className="pt-4 flex gap-3">
+          <div className="sticky bottom-0 z-10 -mx-5 flex gap-3 border-t border-outline-variant/20 bg-surface-container/95 px-5 pb-1 pt-4 backdrop-blur sm:-mx-6 sm:px-6">
             {editingTransaction && (
               <button 
                 type="button"
@@ -590,14 +593,14 @@ export function AddTransactionModal() {
                   setAddModalOpen(false);
                   setEditingTransaction(null);
                 }}
-                className="flex-1 bg-surface-variant hover:bg-surface-variant/80 text-on-surface-variant font-bold py-4 rounded-2xl transition-colors flex items-center justify-center text-lg"
+                className="v35-focus-ring flex min-h-12 flex-1 items-center justify-center rounded-xl border border-outline-variant/30 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high"
               >
                 Cancel
               </button>
             )}
             <button 
               type="submit"
-              className="flex-[2] bg-primary hover:bg-primary/90 text-on-primary font-bold py-4 rounded-2xl transition-colors flex items-center justify-center gap-2 text-lg"
+              className="v35-focus-ring flex min-h-12 flex-[2] items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
             >
               <Lock className="w-5 h-5" /> {editingTransaction ? 'Save Changes' : 'Save Transaction'}
             </button>
@@ -605,6 +608,6 @@ export function AddTransactionModal() {
           <p className="text-center text-xs text-on-surface-variant pt-4">Saved instantly to your secure local ledger.</p>
         </form>
       </div>
-    </div>
+    </V35ModalFrame>
   );
 }

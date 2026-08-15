@@ -47,7 +47,7 @@ import {
 } from '../db/dbClient';
 import { auditDatabaseIntegrity, deleteAccountInDB, updateOpeningBalance, type DataIntegrityAuditResult, type DataIntegrityIssue } from '../db/sqliteSchema';
 import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } from '../utils/safeMath';
-import { hashPasscode, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
+import { hashPasscode, isPasscodeHash, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
 import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
@@ -732,7 +732,7 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         if (typeof settings.biometric === 'boolean') setBiometric(settings.biometric);
         if (typeof settings.passcode === 'string' || settings.passcode === null) {
           const storedPasscode = settings.passcode as string | null;
-          if (storedPasscode && !storedPasscode.startsWith('sha256:')) setPasscode(storedPasscode);
+          if (storedPasscode && !isPasscodeHash(storedPasscode)) setPasscode(storedPasscode);
           else setPasscodeHash(storedPasscode);
         }
         const userConfig = await loadUserConfig(driver);

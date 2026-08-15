@@ -32,31 +32,30 @@ export function WalletSummaryModal() {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-md px-4">
+      <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ duration: 0.2 }}
-          className="bg-surface-container rounded-3xl w-full max-w-lg p-6 border border-outline-variant/30 shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col"
+          data-testid="wallet-summary-sheet" role="dialog" aria-modal="true" aria-labelledby="wallet-summary-title" className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] border border-outline-variant/35 bg-surface-container p-5 shadow-2xl sm:max-w-lg sm:rounded-[28px] sm:p-6"
         >
-          {/* Header background glow */}
-          <div className="absolute -top-12 -right-12 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-          
+          <div aria-hidden="true" className="mx-auto -mt-3 mb-3 h-1 w-10 shrink-0 rounded-full bg-outline-variant/55 sm:hidden" />
           <button 
             onClick={() => setWalletModalOpen(false)}
-            className="absolute right-4 top-4 p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors z-10"
+            aria-label="Close wallet summary"
+            className="v35-focus-ring absolute right-4 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface sm:top-4"
           >
             <X className="w-5 h-5" />
           </button>
           
           {/* Title Header */}
-          <div className="flex items-center gap-3 mb-6 shrink-0">
-            <div className="p-3 bg-primary/10 rounded-2xl border border-primary/20 text-primary">
-              <Wallet className="w-6 h-6" />
+          <div className="mb-5 flex shrink-0 items-center gap-3 pr-11">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-on-surface">Wallet Summary</h2>
+              <h2 id="wallet-summary-title" className="text-lg font-semibold text-on-surface sm:text-xl">Wallet Summary</h2>
               <p className="text-xs text-on-surface-variant font-medium">Liquid cash, bank balances & total debt</p>
             </div>
           </div>
@@ -64,7 +63,7 @@ export function WalletSummaryModal() {
           {/* 3 Main Aesthetic Metric Cards */}
           <div className="space-y-3 mb-4 overflow-y-auto pr-1">
             {/* 1. Amount in Cash */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 flex items-center justify-between shadow-sm">
+            <div className="flex items-center justify-between rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
               <div className="flex items-center gap-3.5">
                 <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   <Banknote className="w-5 h-5" />
@@ -82,7 +81,7 @@ export function WalletSummaryModal() {
             </div>
 
             {/* 2. Amount in Bank */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 flex items-center justify-between shadow-sm">
+            <div className="flex items-center justify-between rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
               <div className="flex items-center gap-3.5">
                 <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30">
                   <Building2 className="w-5 h-5" />
@@ -100,7 +99,7 @@ export function WalletSummaryModal() {
             </div>
 
             {/* 3. Total Debt */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/20 flex items-center justify-between shadow-sm">
+            <div className="flex items-center justify-between rounded-2xl border border-outline-variant/25 bg-surface-container-low p-4">
               <div className="flex items-center gap-3.5">
                 <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
                   <CreditCard className="w-5 h-5" />

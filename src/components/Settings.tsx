@@ -141,487 +141,141 @@ export function Settings() {
   }
 
   return (
-    <div data-testid="page-settings" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in relative">
-      {/* Alert Modal */}
-      
+    <div data-testid="page-settings" className="w-full space-y-6 pb-24 md:pb-0 animate-fade-in relative">
       {alertConfig.isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-outline-variant/30 animate-scale-in">
-            <h3 className="text-lg font-bold text-on-surface mb-2">{alertConfig.title}</h3>
-            <p className="text-sm text-on-surface-variant mb-6 leading-relaxed whitespace-pre-line">{alertConfig.message}</p>
-            <div className="flex gap-3 justify-end">
-              {alertConfig.isConfirm && (
-                <button 
-                  onClick={() => setAlertConfig({ ...alertConfig, isOpen: false })}
-                  className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
-                >
-                  Cancel
-                </button>
-              )}
-              <button 
-                onClick={() => {
-                  if (alertConfig.isConfirm && alertConfig.onConfirm) {
-                    alertConfig.onConfirm();
-                  }
-                  setAlertConfig({ ...alertConfig, isOpen: false });
-                }}
-                className={`px-4 py-2 text-sm font-semibold rounded-xl ${alertConfig.isConfirm ? 'bg-error text-error-container-on hover:bg-error/90' : 'bg-primary text-on-primary hover:bg-primary/90'} transition-colors`}
-              >
-                {alertConfig.isConfirm ? 'Confirm' : 'OK'}
-              </button>
+        <div className="fixed inset-0 z-[240] flex items-end justify-center bg-black/65 p-0 backdrop-blur-sm md:items-center md:p-4">
+          <div role="dialog" aria-modal="true" aria-label={alertConfig.title} className="v35-surface w-full rounded-t-3xl p-5 shadow-2xl md:max-w-sm md:rounded-2xl md:p-6">
+            <h3 className="text-lg font-semibold text-on-surface">{alertConfig.title}</h3>
+            <p className="mt-2 whitespace-pre-line text-sm leading-6 text-on-surface-variant">{alertConfig.message}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              {alertConfig.isConfirm ? <button onClick={() => setAlertConfig({ ...alertConfig, isOpen: false })} className="v35-focus-ring min-h-10 rounded-xl px-4 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high">Cancel</button> : null}
+              <button onClick={() => { if (alertConfig.isConfirm && alertConfig.onConfirm) alertConfig.onConfirm(); setAlertConfig({ ...alertConfig, isOpen: false }); }} className={`v35-focus-ring min-h-10 rounded-xl px-4 text-sm font-semibold text-white ${alertConfig.isConfirm ? 'bg-error' : 'bg-primary'}`}>{alertConfig.isConfirm ? 'Confirm' : 'OK'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Profile Modal */}
       <EditProfileModal isOpen={isEditProfileOpen} onClose={() => setEditProfileOpen(false)} />
 
-      {/* Profile Section */}
-      <section>
-        <div className="bg-surface-container rounded-2xl p-6 border border-outline-variant/30 flex items-center gap-6">
-          <div className="relative group cursor-pointer shrink-0" onClick={() => fileInputRef.current?.click()}>
-            <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-primary p-0.5">
-              <div className="w-full h-full rounded-full overflow-hidden bg-surface-variant flex items-center justify-center">
-                {profile?.avatar ? (
-                  <img src={profile.avatar} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="text-3xl text-on-surface-variant font-bold">{profile?.name?.charAt(0) || 'F'}</div>
-                )}
-              </div>
-            </div>
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/*"
-              className="hidden"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-semibold text-on-surface">{profile?.name || 'Financial Sovereign'}</h2>
-            <button 
-              type="button"
-              aria-label="Edit profile"
-              title="Edit profile"
-              onClick={() => setEditProfileOpen(true)}
-              className="p-1.5 rounded-full bg-surface-variant text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-          </div>
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-on-surface sm:text-3xl">Settings & Manage ⚙️</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">Personalize CoinBuddy, protect your data, and manage the ledger tools that support the app.</p>
+      </header>
+
+      <section className="v35-surface flex items-center gap-4 rounded-2xl p-4 sm:p-5">
+        <button type="button" aria-label="Change profile photo" onClick={() => fileInputRef.current?.click()} className="v35-focus-ring flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-primary/25 bg-primary/10 text-xl font-semibold text-primary">
+          {profile?.avatar ? <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover" /> : (profile?.name?.charAt(0) || 'C')}
+        </button>
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-semibold text-on-surface">{profile?.name || 'CoinBuddy User'}</p>
+          <p className="mt-0.5 text-xs text-on-surface-variant">Your profile and preferences stay on this device.</p>
         </div>
+        <button type="button" aria-label="Edit profile" title="Edit profile" onClick={() => setEditProfileOpen(true)} className="v35-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-primary"><Edit2 className="h-4 w-4" /></button>
       </section>
 
-      {/* Preferences */}
       <section>
-        <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest mb-3 ml-2">Preferences</h3>
-        <div className="bg-surface-container rounded-2xl border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20">
-          <SettingToggle 
-            icon={theme === 'dark' ? Moon : Sun} 
-            title="Dark Theme" 
-            desc="Toggle dark and light appearance" 
-            checked={theme === 'dark'} 
-            onChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
-          />
+        <SettingSectionTitle title="Preferences" description="Appearance and core money settings" />
+        <div className="v35-surface overflow-hidden rounded-2xl divide-y divide-outline-variant/20">
+          <SettingToggle icon={theme === 'dark' ? Moon : Sun} title="Dark Theme" desc="Toggle dark and light appearance" checked={theme === 'dark'} onChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
 
-          <div className="flex flex-col p-4 hover:bg-surface-container-high transition-colors">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center text-primary shrink-0">
-                  <Palette className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="font-semibold text-on-surface text-sm mb-0.5">Color Theme</p>
-                  <p className="text-xs text-on-surface-variant">Select your primary color</p>
-                </div>
-              </div>
+          <div className="p-4 sm:px-5">
+            <div className="flex items-start gap-3">
+              <SettingIcon icon={Palette} />
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-on-surface">Color Theme</p><p className="mt-0.5 text-xs text-on-surface-variant">Choose the primary accent used across CoinBuddy.</p></div>
             </div>
-            <div className="flex items-center gap-3 pl-14 overflow-x-auto pb-1 scrollbar-hide">
-              {[
-                { id: 'blue', color: 'bg-blue-500' },
-                { id: 'green', color: 'bg-emerald-500' },
-                { id: 'purple', color: 'bg-purple-500' },
-                { id: 'orange', color: 'bg-orange-500' },
-                { id: 'pink', color: 'bg-pink-500' },
-              ].map(c => (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-label={`Use ${c.id} color theme`}
-                  aria-pressed={colorPalette === c.id}
-                  title={`Use ${c.id} color theme`}
-                  onClick={() => setColorPalette(c.id)}
-                  className={`w-8 h-8 shrink-0 rounded-full ${c.color} flex items-center justify-center transition-transform ${colorPalette === c.id ? 'ring-2 ring-on-surface ring-offset-2 ring-offset-surface-container scale-110' : 'hover:scale-110'}`}
-                >
-                  {colorPalette === c.id && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                </button>
+            <div className="mt-3 flex gap-3 pl-12">
+              {[{ id: 'blue', color: 'bg-blue-500' }, { id: 'green', color: 'bg-emerald-500' }, { id: 'purple', color: 'bg-purple-500' }, { id: 'orange', color: 'bg-orange-500' }, { id: 'pink', color: 'bg-pink-500' }].map(item => (
+                <button key={item.id} type="button" aria-label={`Use ${item.id} color theme`} aria-pressed={colorPalette === item.id} onClick={() => setColorPalette(item.id)} className={`v35-focus-ring flex h-8 w-8 items-center justify-center rounded-full ${item.color} ${colorPalette === item.id ? 'ring-2 ring-white ring-offset-2 ring-offset-[var(--cb-surface-1)]' : ''}`}>{colorPalette === item.id ? <span className="h-2 w-2 rounded-full bg-white" /> : null}</button>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors cursor-pointer group">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center text-primary shrink-0">
-                <DollarSign className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-on-surface text-sm mb-0.5">Currency</p>
-                <p className="text-xs text-on-surface-variant">Select your primary currency</p>
-              </div>
-            </div>
-            <select 
-              value={currency} 
-              onChange={(e) => setCurrency(e.target.value)}
-              className="bg-surface-container-highest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-            >
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="GBP">GBP (£)</option>
-              <option value="INR">INR (₹)</option>
-              <option value="JPY">JPY (¥)</option>
-            </select>
+          <div className="flex items-center gap-3 p-4 sm:px-5">
+            <SettingIcon icon={DollarSign} />
+            <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-on-surface">Currency</p><p className="mt-0.5 text-xs text-on-surface-variant">Primary display currency</p></div>
+            <select aria-label="Currency" value={currency} onChange={event => setCurrency(event.target.value)} className="v35-focus-ring min-h-10 rounded-xl border border-outline-variant/25 bg-surface-container px-3 text-sm text-on-surface"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option><option value="INR">INR (₹)</option><option value="JPY">JPY (¥)</option></select>
           </div>
-          <div className="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors cursor-pointer group">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center text-primary shrink-0">
-                <RefreshCw className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-on-surface text-sm mb-0.5">Month Cycle Date</p>
-                <p className="text-xs text-on-surface-variant">Day of month when cycle resets</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input 
-                type="number"
-                min="1"
-                max="31"
-                value={monthCycleDay}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  if (val >= 1 && val <= 31) setMonthCycleDay(val);
-                }}
-                className="bg-surface-container-highest border border-outline-variant/30 text-on-surface rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 w-20 font-numeric text-right"
-              />
-            </div>
+
+          <div className="flex items-center gap-3 p-4 sm:px-5">
+            <SettingIcon icon={RefreshCw} />
+            <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-on-surface">Month Cycle Date</p><p className="mt-0.5 text-xs text-on-surface-variant">Day when the financial cycle resets</p></div>
+            <input aria-label="Month Cycle Date" type="number" min="1" max="31" value={monthCycleDay} onChange={event => { const value = Number.parseInt(event.target.value); if (value >= 1 && value <= 31) setMonthCycleDay(value); }} className="v35-focus-ring w-20 rounded-xl border border-outline-variant/25 bg-surface-container px-3 py-2 text-right font-numeric text-sm text-on-surface" />
           </div>
-          <SettingToggle 
-            icon={Lock} 
-            title="Passcode Authentication" 
-            desc="Unlock app using a 4-digit PIN" 
-            checked={!!passcode} 
-            tourId="tour-security-toggle"
-            onChange={() => {
-              if (passcode) {
-                setPasscode(null);
-              } else {
-                setPinModalOpen(true);
-              }
-            }} 
-          />
-          <SettingToggle 
-            icon={Fingerprint} 
-            title="Biometric Authentication" 
-            desc="Unlock app using FaceID or Fingerprint" 
-            checked={biometric} 
-            onChange={() => setBiometric(!biometric)} 
-          />
         </div>
+      </section>
+
+      <section>
+        <SettingSectionTitle title="Security" description="Protect local access and verify ledger health" />
+        <div className="v35-surface overflow-hidden rounded-2xl divide-y divide-outline-variant/20">
+          <SettingToggle icon={Lock} title="Passcode Authentication" desc="Unlock CoinBuddy with a 4-digit PIN" checked={Boolean(passcode)} tourId="tour-security-toggle" onChange={() => { if (passcode) setPasscode(null); else setPinModalOpen(true); }} />
+          <SettingToggle icon={Fingerprint} title="Biometric Authentication" desc="Use Face ID or fingerprint when supported" checked={biometric} onChange={() => setBiometric(!biometric)} />
+          <button type="button" onClick={() => { setBackupInitialAction(undefined); setActiveSubScreen('backup'); }} className="v35-focus-ring flex min-h-[72px] w-full items-center gap-3 p-4 text-left hover:bg-surface-container-high/45 sm:px-5">
+            <SettingIcon icon={ShieldCheck} />
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-on-surface">Backup & Security</span><span className="mt-0.5 block text-xs text-on-surface-variant">Last backup: {backupInfo.lastBackupDate || 'Never'}</span></span>
+            <span className="hidden sm:block">{backupInfo.syncStatus === 'UP_TO_DATE' ? <span className="rounded-lg bg-[var(--cb-green-soft)] px-2 py-1 text-[10px] font-semibold text-[var(--cb-green)]">Up to date</span> : backupInfo.syncStatus === 'FAILED' ? <span className="rounded-lg bg-error/10 px-2 py-1 text-[10px] font-semibold text-error">Failed</span> : <span className="rounded-lg bg-surface-container-high px-2 py-1 text-[10px] font-semibold text-on-surface-variant">{backupInfo.syncStatus === 'PENDING_NETWORK' ? 'Pending network' : 'Not configured'}</span>}</span>
+            <ChevronRight className="h-4 w-4 text-on-surface-variant" />
+          </button>
+          <button type="button" onClick={() => { void handleIntegrityCheck(); }} className="v35-focus-ring flex min-h-[72px] w-full items-center gap-3 p-4 text-left hover:bg-surface-container-high/45 sm:px-5"><SettingIcon icon={ShieldCheck} /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-on-surface">Verify Data Integrity</span><span className="mt-0.5 block text-xs text-on-surface-variant">Audit balances, schedules, sharing, cards, Goals and settings.</span></span><ChevronRight className="h-4 w-4 text-on-surface-variant" /></button>
+        </div>
+        {integrityReport && !integrityReport.isHealthy ? <div className="mt-3 rounded-2xl border border-[var(--cb-amber)]/25 bg-[var(--cb-amber-soft)] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-semibold text-on-surface">Integrity actions</p><p className="mt-1 text-xs leading-5 text-on-surface-variant">Safe repair only fixes metadata that CoinBuddy can resolve without guessing ledger values.</p></div><button type="button" disabled={repairingIntegrity} onClick={() => { void handleRepairIntegrity(); }} className="v35-focus-ring min-h-10 shrink-0 rounded-xl bg-primary px-4 text-xs font-semibold text-white disabled:opacity-50">{repairingIntegrity ? 'Repairing…' : 'Repair safe issues'}</button></div><div className="mt-3 space-y-1">{integrityReport.issues.slice(0, 5).map(issue => <p key={`${issue.code}:${issue.entityId ?? issue.message}`} className="text-xs text-on-surface-variant">• {issue.message}</p>)}</div></div> : null}
       </section>
 
       <RecurringPayments />
 
-      {/* Data Management */}
       <section>
-        <div className="flex items-center gap-2 mb-3 ml-2">
-          <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest">Data Management</h3>
-          <Info className="w-4 h-4 text-on-surface-variant" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Backup & Security Settings Entry Point */}
-          <button
-            type="button"
-            onClick={() => { setBackupInitialAction(undefined); setActiveSubScreen('backup'); }}
-            className="col-span-1 md:col-span-2 w-full text-left bg-surface-container rounded-2xl p-5 border border-outline-variant/30 hover:border-primary/50 transition-all group flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-on-surface text-sm group-hover:text-primary transition-colors">
-                    Backup & Security
-                  </h4>
-                  {backupInfo.syncStatus === 'UP_TO_DATE' && (
-                    <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                      Up to Date
-                    </span>
-                  )}
-                  {backupInfo.syncStatus === 'PENDING_NETWORK' && (
-                    <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                      Pending Network
-                    </span>
-                  )}
-                  {backupInfo.syncStatus === 'NOT_CONFIGURED' && (
-                    <span className="text-[10px] font-bold bg-surface-variant text-on-surface-variant border border-outline-variant/30 px-2 py-0.5 rounded-full">
-                      Not Configured
-                    </span>
-                  )}
-                  {backupInfo.syncStatus === 'FAILED' && (
-                    <span className="text-[10px] font-bold bg-error/10 text-error border border-error/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      Sync Failed
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-on-surface-variant mt-0.5">
-                  Last Backup: <strong className="font-numeric text-on-surface">{backupInfo.lastBackupDate || 'Never'}</strong>
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary group-hover:translate-x-0.5 transition-all">
-              <span className="text-xs font-semibold hidden sm:inline">Manage</span>
-              <ChevronRight className="w-5 h-5" />
-            </div>
-          </button>
-
-          <DataCard
-            icon={FileSpreadsheet}
-            label="Excel .xlsx"
-            title="Export Excel"
-            desc="Download accounts, transactions, and categories as a spreadsheet for analysis."
-            onClick={() => { void handleExportExcel(); }}
-          />
-          <DataCard
-            icon={Upload}
-            label=".enc / JSON"
-            title="Restore Backup"
-            desc="Restore from a local encrypted backup, a legacy JSON backup, or Google Drive."
-            onClick={() => { setBackupInitialAction('restore'); setActiveSubScreen('backup'); }}
-          />
-          <DataCard
-            icon={ShieldCheck}
-            label="Full Audit"
-            title="Verify Data Integrity"
-            desc="Audit database structure, balances, schedules, SIP links, cards, categories, Goals, and settings."
-            onClick={() => { void handleIntegrityCheck(); }}
-          />
-          {integrityReport && !integrityReport.isHealthy && <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-bold text-on-surface">Integrity actions</p><p className="mt-1 text-xs leading-relaxed text-on-surface-variant">Safe repair can normalize category metadata, pause broken recurring schedules, clear invalid card due metadata, unlink invalid Goal account references, and remove orphan Goal links. Ledger balances and ambiguous SIP funding are never guessed.</p></div><button type="button" disabled={repairingIntegrity} onClick={() => { void handleRepairIntegrity(); }} className="min-h-10 shrink-0 rounded-xl bg-primary px-4 text-xs font-bold text-on-primary disabled:opacity-50">{repairingIntegrity ? 'Repairing…' : 'Repair safe issues'}</button></div>
-            <div className="mt-3 space-y-1.5">{integrityReport.issues.slice(0, 5).map(issue => <p key={`${issue.code}:${issue.entityId ?? issue.message}`} className="text-xs text-on-surface-variant">• {issue.message}</p>)}</div>
-          </div>}
-          <button
-            type="button"
-            className="w-full text-left bg-surface-container rounded-2xl p-5 border border-error/20 flex flex-col gap-3 hover:bg-error/10 transition-colors group"
-            onClick={() => {
-              showConfirm("Clear Storage", "Are you sure you want to permanently delete all data from this device? All transactions, accounts, schedules, events, categories, and settings will be wiped.", () => {
-                void clearAllData().then(() => {
-                  showAlert("Storage Cleared", "All local data has been successfully cleared.");
-                }).catch((error: unknown) => {
-                  showAlert("Clear Failed", getErrorMessage(error, 'Your local data could not be cleared.'));
-                });
-              });
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <Trash2 className="w-5 h-5 text-error" />
-              <span className="text-[10px] font-bold text-error/60 uppercase tracking-wider">Danger</span>
-            </div>
-            <div>
-              <h4 className="font-semibold text-on-surface group-hover:text-error transition-colors mb-1">Clear Local Storage</h4>
-              <p className="text-xs text-on-surface-variant">Permanently delete all data from this device.</p>
-            </div>
-          </button>
+        <SettingSectionTitle title="Data Management" description="Backup, export, demo data and local storage" />
+        <div className="v35-surface overflow-hidden rounded-2xl divide-y divide-outline-variant/20">
+          <SettingAction icon={FileSpreadsheet} title="Export Excel" desc="Download accounts, transactions and categories as an Excel workbook." onClick={() => { void handleExportExcel(); }} />
+          <SettingAction icon={Upload} title="Restore Backup" desc="Restore from encrypted local backup, legacy JSON or Google Drive." onClick={() => { setBackupInitialAction('restore'); setActiveSubScreen('backup'); }} />
+          <SettingAction icon={RefreshCw} title="Load demo data" desc="Replace this device's ledger with the realistic CoinBuddy sample." onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.4 sample covering accounts, cards, shared household expenses, reimbursements, shared loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} />
+          <SettingAction icon={Trash2} tone="danger" title="Clear Local Storage" desc="Permanently delete all local ledger data from this device." onClick={() => showConfirm('Clear Storage', 'Are you sure you want to permanently delete all data from this device? All transactions, accounts, schedules, events, categories, and settings will be wiped.', () => { void clearAllData().then(() => showAlert('Storage Cleared', 'All local data has been successfully cleared.')).catch((error: unknown) => showAlert('Clear Failed', getErrorMessage(error, 'Your local data could not be cleared.'))); })} />
         </div>
       </section>
 
-      {/* App Help */}
       <section>
-        <div className="flex items-center gap-2 mb-3 ml-2">
-          <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest">App Help</h3>
-        </div>
-        <div className="grid grid-cols-1 gap-4">
-          <button
-            type="button"
-            onClick={() => setOnboardingOpen(true)}
-            className="w-full text-left bg-surface-container rounded-2xl p-5 border border-outline-variant/30 hover:border-primary/50 transition-all group flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
-                <Info className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-on-surface group-hover:text-primary transition-colors mb-1">
-                  Feature Walkthrough & Tour
-                </h4>
-                <p className="text-xs text-on-surface-variant">
-                  Replay the onboarding walkthrough to learn about advanced ledger features.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setButtonTourOpen(true)}
-            className="w-full text-left bg-surface-container rounded-2xl p-5 border border-outline-variant/30 hover:border-primary/50 transition-all group flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
-                <LayoutList className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-on-surface group-hover:text-primary transition-colors mb-1">
-                  Interactive Button Tour
-                </h4>
-                <p className="text-xs text-on-surface-variant">
-                  Start an interactive spotlight tour of core action buttons.
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
-          </button>
-        </div>
-        <div className="mt-3 flex justify-center">
-          <button type="button" onClick={() => showConfirm('Load Demo Data', 'This replaces the current local CoinBuddy ledger on this device with a realistic v3.4 sample covering accounts, cards, shared household expenses, reimbursements, shared loans, recurring schedules, pending confirmations, Events, Goals, SIPs, affordability and planning. Your passcode and backup/security preferences are preserved. Export or back up real financial data first.', () => resetToDemoData())} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-[11px] font-semibold text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary" title="Replace this device's ledger with sample CoinBuddy data">
-            <RefreshCw className="h-3.5 w-3.5" /> Load demo data
-          </button>
+        <SettingSectionTitle title="App Help" description="Replay guidance whenever you need it" />
+        <div className="v35-surface overflow-hidden rounded-2xl divide-y divide-outline-variant/20">
+          <SettingAction icon={Info} title="Feature Walkthrough & Tour" desc="Replay the onboarding walkthrough for core CoinBuddy concepts." onClick={() => setOnboardingOpen(true)} />
+          <SettingAction icon={LayoutList} title="Interactive Button Tour" desc="Start the spotlight tour of important action buttons." onClick={() => setButtonTourOpen(true)} />
         </div>
       </section>
 
-      {/* Footer info */}
-      <section className="pt-8 border-t border-outline-variant/30 flex flex-col items-center gap-3">
-        <div className="bg-surface-container-highest px-4 py-2 rounded-full border border-outline-variant/50 flex items-center gap-3">
-          <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-            <ShieldCheck className="w-4 h-4 text-background" />
-          </div>
-          <span className="text-xs font-semibold text-on-surface">Coin Buddy V3.4</span>
-          <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-        </div>
+      <footer className="flex flex-col items-center gap-1 border-t border-outline-variant/20 pt-5 text-center text-[11px] text-on-surface-variant"><span>CoinBuddy · Local-first financial ledger</span><span className="font-numeric">Build {buildTimeFormatted}</span></footer>
 
-        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface-container/60 border border-outline-variant/20 text-xs font-medium text-on-surface-variant shadow-xs">
-          <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-          <span>CoinBuddy <strong className="font-numeric text-on-surface">v3.3</strong> • Build <strong className="font-numeric text-on-surface">{buildTimeFormatted}</strong></span>
-        </div>
-
-        <p className="text-[10px] text-on-surface-variant text-center leading-relaxed opacity-60">
-          © 2024 Fortified Financial Systems.<br/>Your data never leaves your pocket.
-        </p>
-      </section>
-
-      {isPinModalOpen && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-surface-container rounded-3xl w-full max-w-sm p-6 shadow-xl border border-outline-variant/30 flex flex-col items-center">
-            <h2 className="text-xl font-bold text-on-surface mb-2">{passcode ? 'Enter New Passcode' : 'Set Passcode'}</h2>
-            <p className="text-sm text-on-surface-variant mb-6">Enter a 4-digit PIN</p>
-            
-            <div className="flex gap-4 mb-8">
-              {[...Array(4)].map((_, i) => (
-                <div 
-                  key={i} 
-                  className={`w-4 h-4 rounded-full border-2 ${
-                    tempPin.length > i 
-                      ? 'bg-primary border-primary' 
-                      : 'border-outline-variant/50'
-                  } transition-all duration-200`}
-                />
-              ))}
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 w-full px-4 mb-6">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => {
-                    const newPin = tempPin + num;
-                    if (newPin.length <= 4) setTempPin(newPin);
-                    if (newPin.length === 4) {
-                      setTimeout(() => {
-                        setPasscode(newPin);
-                        setTempPin('');
-                        setPinModalOpen(false);
-                      }, 200);
-                    }
-                  }}
-                  className="w-14 h-14 rounded-full bg-surface-container-high hover:bg-surface-container-highest transition-colors text-xl font-semibold flex items-center justify-center mx-auto"
-                >
-                  {num}
-                </button>
-              ))}
-              <div />
-              <button
-                onClick={() => {
-                  const newPin = tempPin + '0';
-                  if (newPin.length <= 4) setTempPin(newPin);
-                  if (newPin.length === 4) {
-                    setTimeout(() => {
-                      setPasscode(newPin);
-                      setTempPin('');
-                      setPinModalOpen(false);
-                    }, 200);
-                  }
-                }}
-                className="w-14 h-14 rounded-full bg-surface-container-high hover:bg-surface-container-highest transition-colors text-xl font-semibold flex items-center justify-center mx-auto"
-              >
-                0
-              </button>
-              <button
-                onClick={() => setTempPin(prev => prev.slice(0, -1))}
-                className="w-14 h-14 rounded-full bg-surface-container-high hover:bg-surface-container-highest transition-colors text-base font-semibold flex items-center justify-center mx-auto text-on-surface-variant"
-              >
-                Del
-              </button>
-            </div>
-            
-            <button
-              onClick={() => {
-                setTempPin('');
-                setPinModalOpen(false);
-              }}
-              className="px-6 py-2 rounded-xl text-on-surface-variant hover:bg-surface-variant transition-colors"
-            >
-              Cancel
-            </button>
+      {isPinModalOpen ? (
+        <div className="fixed inset-0 z-[230] flex items-end justify-center bg-black/65 p-0 backdrop-blur-sm md:items-center md:p-4">
+          <div role="dialog" aria-modal="true" aria-label={passcode ? 'Enter New Passcode' : 'Set Passcode'} className="v35-surface w-full rounded-t-3xl p-5 md:max-w-sm md:rounded-2xl md:p-6">
+            <h2 className="text-center text-xl font-semibold text-on-surface">{passcode ? 'Enter New Passcode' : 'Set Passcode'}</h2>
+            <p className="mt-1 text-center text-sm text-on-surface-variant">Enter a 4-digit PIN</p>
+            <div className="my-6 flex justify-center gap-4">{[...Array(4)].map((_, index) => <div key={index} className={`h-3.5 w-3.5 rounded-full border-2 ${tempPin.length > index ? 'border-primary bg-primary' : 'border-outline-variant/50'}`} />)}</div>
+            <div className="mx-auto grid max-w-[260px] grid-cols-3 gap-3">{[1,2,3,4,5,6,7,8,9].map(num => <button key={num} onClick={() => { const next = tempPin + num; if (next.length <= 4) setTempPin(next); if (next.length === 4) window.setTimeout(() => { setPasscode(next); setTempPin(''); setPinModalOpen(false); }, 200); }} className="v35-focus-ring mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-high text-xl font-semibold text-on-surface">{num}</button>)}<div/><button onClick={() => { const next = tempPin + '0'; if (next.length <= 4) setTempPin(next); if (next.length === 4) window.setTimeout(() => { setPasscode(next); setTempPin(''); setPinModalOpen(false); }, 200); }} className="v35-focus-ring mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-high text-xl font-semibold text-on-surface">0</button><button onClick={() => setTempPin(value => value.slice(0, -1))} className="v35-focus-ring mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-surface-container-high text-sm font-semibold text-on-surface-variant">Del</button></div>
+            <button onClick={() => { setTempPin(''); setPinModalOpen(false); }} className="v35-focus-ring mt-5 w-full rounded-xl py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high">Cancel</button>
           </div>
         </div>
-      )}
-
+      ) : null}
     </div>
   );
 }
 
+function SettingSectionTitle({ title, description }: { title: string; description: string }) {
+  return <div className="mb-2 px-1"><h2 className="text-sm font-semibold text-on-surface">{title}</h2><p className="mt-0.5 text-xs text-on-surface-variant">{description}</p></div>;
+}
+
+function SettingIcon({ icon: Icon, danger = false }: { icon: ComponentType<SVGProps<SVGSVGElement>>; danger?: boolean }) {
+  return <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${danger ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'}`}><Icon className="h-4 w-4" /></span>;
+}
+
 function SettingToggle({ icon: Icon, title, desc, checked, onChange, tourId }: { icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; desc: string; checked: boolean; onChange: () => void; tourId?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} data-tour-id={tourId} className="w-full text-left flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors group" onClick={onChange}>
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-surface-container-highest flex items-center justify-center text-primary shrink-0">
-          <Icon className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="font-semibold text-on-surface text-sm mb-0.5">{title}</p>
-          <p className="text-xs text-on-surface-variant">{desc}</p>
-        </div>
-      </div>
-      <div className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background" style={{ backgroundColor: checked ? 'var(--primary)' : 'var(--surface-container-highest)' }}>
-        <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
-      </div>
+    <button type="button" role="switch" aria-checked={checked} data-tour-id={tourId} onClick={onChange} className="v35-focus-ring flex min-h-[72px] w-full items-center gap-3 p-4 text-left hover:bg-surface-container-high/45 sm:px-5">
+      <SettingIcon icon={Icon} />
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-on-surface">{title}</span><span className="mt-0.5 block text-xs text-on-surface-variant">{desc}</span></span>
+      <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-surface-container-highest'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} /></span>
     </button>
   );
 }
 
-function DataCard({ icon: Icon, label, title, desc, onClick }: { icon: ComponentType<SVGProps<SVGSVGElement>>; label: string; title: string; desc: string; onClick: () => void }) {
-  return (
-    <button type="button" className="w-full text-left bg-surface-container rounded-2xl p-5 border border-outline-variant/30 flex flex-col gap-3 hover:border-primary/50 transition-colors group" onClick={onClick}>
-      <div className="flex items-center justify-between">
-        <Icon className="w-5 h-5 text-primary" />
-        <span className="text-[10px] font-bold text-on-surface-variant tracking-wider uppercase">{label}</span>
-      </div>
-      <div>
-        <h4 className="font-semibold text-on-surface mb-1">{title}</h4>
-        <p className="text-xs text-on-surface-variant">{desc}</p>
-      </div>
-    </button>
-  );
+function SettingAction({ icon: Icon, title, desc, onClick, tone = 'default' }: { icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; desc: string; onClick: () => void; tone?: 'default' | 'danger' }) {
+  return <button type="button" onClick={onClick} className={`v35-focus-ring flex min-h-[72px] w-full items-center gap-3 p-4 text-left transition-colors sm:px-5 ${tone === 'danger' ? 'hover:bg-error/8' : 'hover:bg-surface-container-high/45'}`}><SettingIcon icon={Icon} danger={tone === 'danger'} /><span className="min-w-0 flex-1"><span className={`block text-sm font-semibold ${tone === 'danger' ? 'text-error' : 'text-on-surface'}`}>{title}</span><span className="mt-0.5 block text-xs leading-5 text-on-surface-variant">{desc}</span></span><ChevronRight className={`h-4 w-4 shrink-0 ${tone === 'danger' ? 'text-error/70' : 'text-on-surface-variant'}`} /></button>;
 }

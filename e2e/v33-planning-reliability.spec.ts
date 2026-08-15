@@ -1,9 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
-  const desktop = page.getByTitle(name);
-  const mobile = page.getByRole('button', { name, exact: true });
-  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function prepare(page: Page) {
@@ -19,6 +31,7 @@ async function prepare(page: Page) {
 test('v3.3 shows Upcoming Money and expandable affordability sources', async ({ page }) => {
   const errors = await prepare(page);
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
   await expect(page.getByText('Projected free cash', { exact: true })).toBeVisible();
   await page.getByLabel('Amount', { exact: true }).fill('1000');
@@ -31,9 +44,7 @@ test('v3.3 shows Upcoming Money and expandable affordability sources', async ({ 
 
 test('v3.3 Goal-linked transaction advances unlinked Goal after confirmation', async ({ page }) => {
   const errors = await prepare(page);
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await page.getByRole('button', { name: 'Add goal' }).click();
   await page.getByLabel('Goal name').fill('V33 Goal');
   await page.getByLabel('Target amount').fill('10000');
@@ -49,9 +60,7 @@ test('v3.3 Goal-linked transaction advances unlinked Goal after confirmation', a
   await page.locator('label').filter({ has: page.locator('input[name="toAccount"][value="acc_cash_01"]') }).click();
   await page.getByRole('button', { name: 'Save Transaction' }).click();
 
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   await expect(page.getByRole('article', { name: 'Goal V33 Goal' })).toContainText(/1,000/);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });

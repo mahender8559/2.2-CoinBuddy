@@ -1,9 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function openTab(page: Page, name: string) {
-  const desktop = page.getByTitle(name);
-  const mobile = page.getByRole('button', { name, exact: true });
-  if (await desktop.isVisible()) await desktop.click(); else await mobile.click();
+  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  const mobileNav = page.getByTestId('mobile-bottom-nav');
+  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
+    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
+    return;
+  }
+
+  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function prepare(page: Page) {
@@ -31,14 +43,13 @@ test('demo data loads a realistic v3.4 showcase and investment Goal stays non-li
   await expect(page.getByText('SIP: Liquid Mutual Fund', { exact: true })).toBeVisible();
   await expect(page.getByText('Investment SIP', { exact: true })).toBeVisible();
 
-  await openTab(page, 'Manage');
-  await page.getByRole('button', { name: 'Categories', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Goals', exact: true }).click();
+  await openTab(page, 'Goals');
   const emergency = page.getByRole('article', { name: 'Goal Emergency Fund' });
   await expect(emergency).toContainText('Liquid Mutual Fund');
   await expect(emergency).toContainText(/excluded from affordability liquid cash and protected reserves/i);
 
   await openTab(page, 'Insights');
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
   await expect(page.getByText('Projected free cash', { exact: true })).toBeVisible();
 

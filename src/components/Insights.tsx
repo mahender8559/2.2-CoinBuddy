@@ -20,7 +20,7 @@ import { AffordabilityPlanner } from './AffordabilityPlanner';
 import { UpcomingMoney } from './UpcomingMoney';
 import { getPersonalLiabilityExposure } from '../domain/loanSharing';
 
-export function Insights() {
+export function Insights({ embedded = false }: { embedded?: boolean } = {}) {
   const { 
     transactions, 
     formatCurrency, 
@@ -334,18 +334,15 @@ const monthlyTrends = useMemo(() => {
   const sankeyHeight = Math.max(460, sankeyData.nodes.length * 72 + 80);
 
   return (
-    <div data-testid="page-insights" className="w-full space-y-8 pb-24 md:pb-0 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Financial Intelligence</p>
+    <div data-testid={embedded ? "advanced-insights-content" : "page-insights"} className="w-full space-y-6 animate-fade-in">
+      {!embedded ? (<>
+        <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-bold text-on-surface">Analytics & Category Trends</h2>
+          <p className="text-sm text-on-surface-variant">Detailed financial analytics and planning tools.</p>
         </div>
-      </div>
-
-      <UpcomingMoney />
-
-      <AffordabilityPlanner />
+        <UpcomingMoney />
+        <AffordabilityPlanner />
+      </>) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-surface-container-low border border-outline-variant/30 rounded-3xl p-5">
