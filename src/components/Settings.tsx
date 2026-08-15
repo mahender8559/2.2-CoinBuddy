@@ -3,6 +3,7 @@ import { Edit2, ShieldCheck, RefreshCw, Fingerprint, Lock, Upload, Trash2, Info,
 import { useAppContext } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { BackupSecurity } from './BackupSecurity';
+import { AutomationCenter } from './AutomationCenter';
 import { RecurringPayments } from './RecurringPayments';
 import { exportToExcel } from '../utils/exportExcel';
 import type { ComponentType, SVGProps } from 'react';
@@ -35,8 +36,6 @@ export function Settings() {
     syncStatus: 'NOT_CONFIGURED',
   });
 
-  // Backup configuration is persisted in SQLite. Keep this summary derived from
-  // that canonical source instead of showing legacy placeholder dates.
   useEffect(() => {
     const handleNavigate = () => {
       setBackupInitialAction(undefined);
@@ -221,6 +220,7 @@ export function Settings() {
         {integrityReport && !integrityReport.isHealthy ? <div className="mt-3 rounded-2xl border border-[var(--cb-amber)]/25 bg-[var(--cb-amber-soft)] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-semibold text-on-surface">Integrity actions</p><p className="mt-1 text-xs leading-5 text-on-surface-variant">Safe repair only fixes metadata that CoinBuddy can resolve without guessing ledger values.</p></div><button type="button" disabled={repairingIntegrity} onClick={() => { void handleRepairIntegrity(); }} className="v35-focus-ring min-h-10 shrink-0 rounded-xl bg-primary px-4 text-xs font-semibold text-white disabled:opacity-50">{repairingIntegrity ? 'Repairing…' : 'Repair safe issues'}</button></div><div className="mt-3 space-y-1">{integrityReport.issues.slice(0, 5).map(issue => <p key={`${issue.code}:${issue.entityId ?? issue.message}`} className="text-xs text-on-surface-variant">• {issue.message}</p>)}</div></div> : null}
       </section>
 
+      <AutomationCenter />
       <RecurringPayments />
 
       <section>

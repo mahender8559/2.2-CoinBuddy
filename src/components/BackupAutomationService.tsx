@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { BackupManager, BackupStorageAdapter, DEFAULT_BACKUP_SETTINGS, getNextAutoBackupAt, type BackupSettings } from '../utils/backupManager';
+import { AutomationRuntime } from './AutomationRuntime';
 
 function normalize(value: unknown): BackupSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_BACKUP_SETTINGS };
@@ -74,5 +75,5 @@ export function BackupAutomationService() {
     return () => { cancelled = true; if (timer) clearTimeout(timer); window.removeEventListener('online', onOnline); };
   }, [config, exportLedgerData, setStoredSetting]);
 
-  return null;
+  return <AutomationRuntime />;
 }

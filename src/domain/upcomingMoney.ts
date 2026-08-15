@@ -62,9 +62,10 @@ function accountGroup(account?: Account): string {
 function classify(type: 'income' | 'expense' | 'transfer' | 'INCOME' | 'EXPENSE' | 'TRANSFER', toAccount: Account | undefined, goalId?: string): UpcomingMoneyKind {
   const normalized = String(type).toUpperCase();
   if (normalized === 'INCOME') return 'INCOME';
+  if (goalId) return 'SAVINGS';
   if (normalized === 'EXPENSE') return 'OBLIGATION';
   if (toAccount?.type === 'liability') return 'OBLIGATION';
-  if (goalId || accountGroup(toAccount) === 'investment') return 'SAVINGS';
+  if (accountGroup(toAccount) === 'investment') return 'SAVINGS';
   return 'TRANSFER';
 }
 
@@ -133,7 +134,6 @@ export function buildUpcomingMoneyProjection(input: UpcomingMoneyInput): Upcomin
     }
   }
 
-  // Explicit card due amounts are obligations when a recurring payment does not already cover the card in the period.
   for (const card of input.creditCards) {
     if (!card.dueDate || !inRange(card.dueDate, input.startDate, input.endDate) || amount(card.dueAmount) <= 0) continue;
     const alreadyCovered = items.some(item => item.kind === 'OBLIGATION' && item.toAccountId === card.id);
@@ -146,7 +146,6 @@ export function buildUpcomingMoneyProjection(input: UpcomingMoneyInput): Upcomin
     });
   }
 
-  // Loan EMI metadata provides a fallback when no recurring rule exists.
   for (const account of input.accounts) {
     if (account.type !== 'liability' || account.is_archived === 1 || !account.nextEMIDate || !inRange(account.nextEMIDate, input.startDate, input.endDate) || amount(account.monthlyEMI) <= 0) continue;
     const alreadyCovered = items.some(item => item.kind === 'OBLIGATION' && item.toAccountId === account.id);
@@ -157,7 +156,6 @@ export function buildUpcomingMoneyProjection(input: UpcomingMoneyInput): Upcomin
     });
   }
 
-  // Active goals protect at least their planned monthly amount. Explicit Goal-linked schedules cover this floor first.
   for (const goal of input.savingsGoals.filter(goal => goal.isActive && goal.monthlyContribution > 0)) {
     const explicitlyScheduled = items.filter(item => item.goalId === goal.id && item.kind === 'SAVINGS').reduce((sum, item) => sum + item.amount, 0);
     const uncovered = Math.max(0, amount(goal.monthlyContribution) - explicitlyScheduled);

@@ -1,8 +1,9 @@
 import { Account, Transaction } from '../types';
+import { buildPendingConfirmationSummary } from '../domain/automation';
 
 export interface EmiNotification {
   id: string;
-  type: 'UPCOMING_EMI' | 'MISSED_EMI';
+  type: 'UPCOMING_EMI' | 'MISSED_EMI' | 'PENDING_CONFIRMATION';
   accountId: string;
   accountName: string;
   title: string;
@@ -19,7 +20,8 @@ export interface EmiNotification {
 
 /**
   * Evaluates active loans against transactions to verify if the EMI has been paid for the current cycle.
-  * Generates advisory and urgent advocate notifications for unpaid upcoming or overdue EMIs.
+  * Generates advisory and urgent advocate notifications for unpaid upcoming or overdue EMIs,
+  * plus a reminder when scheduled transactions are waiting for explicit confirmation.
   */
 export function calculateEmiReminders(
   accounts: Account[],
@@ -28,6 +30,7 @@ export function calculateEmiReminders(
   const notifications: EmiNotification[] = [];
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   // Filter active loans (liabilities that are bank loans / loans / mortgages or have an EMI amount)
   const activeLoans = accounts.filter(acc => {
@@ -130,6 +133,32 @@ export function calculateEmiReminders(
     }
   }
 
+  const pending = buildPendingConfirmationSummary(transactions, todayKey);
+  if (pending.actionableCount > 0) {
+    const oldestKey = pending.oldestDueDate ?? todayKey;
+    const oldestDate = new Date(`${oldestKey}T12:00:00`);
+    const detail = [
+      pending.overdueCount > 0 ? `${pending.overdueCount} overdue` : '',
+      pending.dueTodayCount > 0 ? `${pending.dueTodayCount} due today` : '',
+    ].filter(Boolean).join(' · ');
+    notifications.push({
+      id: `notif_pending_confirmations_${todayKey}`,
+      type: 'PENDING_CONFIRMATION',
+      accountId: 'scheduled-confirmations',
+      accountName: 'Scheduled confirmations',
+      title: `⏳ ${pending.actionableCount} scheduled ${pending.actionableCount === 1 ? 'entry needs' : 'entries need'} confirmation`,
+      body: `${detail}. Open CoinBuddy to confirm, edit, or reject these scheduled entries. Pending entries do not affect balances.`,
+      dueDate: oldestDate,
+      dueDateFormatted: oldestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+      monthlyEmi: 0,
+      lateFeeFixedAmount: 0,
+      lateFeeInterestRate: 0,
+      gracePeriodDays: 0,
+      daysRemainingOrOverdue: Math.min(0, Math.round((oldestDate.getTime() - today.getTime()) / (1000 * 3600 * 24))),
+      isPaid: false,
+    });
+  }
+
   return notifications;
 }
 
@@ -168,16 +197,26 @@ export function registerDailyCronWorker(onTrigger: () => void): () => void {
   };
 }
 
+function stableNotificationTag(title: string, body: string): string {
+  const value = `${title}\u0000${body}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `coinbuddy-${(hash >>> 0).toString(36)}`;
+}
+
 /**
   * Attempts to dispatch a Web Native Push Notification if permitted.
   */
-export function triggerNativeNotification(title: string, body: string) {
+export function triggerNativeNotification(title: string, body: string, tag = stableNotificationTag(title, body)) {
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification(title, {
         body,
         icon: '/favicon.ico',
-        tag: 'emi-advocate-reminder'
+        tag
       });
     } catch (e) {
       console.warn('Native notification dispatch prevented:', e);

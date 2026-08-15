@@ -4,11 +4,15 @@ import { CurrencyInput } from './CurrencyInput';
 import { V35ModalFrame } from './ui/V35ModalFrame';
 import { X, Utensils, Car, Briefcase, Zap, Home, ShoppingBag, Banknote, Plus, ShieldCheck, Layers, ChevronUp, ChevronDown, Calendar as CalendarIcon, Edit3, Lock, CreditCard, Landmark, Check, AlertTriangle, Sparkles } from 'lucide-react';
 import { icons } from '../icons';
+import { buildTransactionMetadataSuggestion } from '../domain/automation';
 import type { Transaction } from '../types';
 
+function normalizeCategoryReference(value: string): string {
+  return value.trim().replace(/^#/, '').replace(/[\s_-]+/g, '').toLowerCase();
+}
 
 export function AddTransactionModal() {
-  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, savingsGoals, createEvent, setManageCategoriesOpen } = useAppContext();
+  const { isAddModalOpen, setAddModalOpen, addTransaction, updateTransaction, editingTransaction, setEditingTransaction, formatCurrency, getCurrencySymbol, accounts, creditCards, categories, events, recurringRules, savingsGoals, transactions, createEvent, setManageCategoriesOpen } = useAppContext();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -32,6 +36,8 @@ export function AddTransactionModal() {
   const availableCategories = useMemo(() => {
     return categories.filter(c => type === 'income' ? c.type === 'income' : c.type !== 'income');
   }, [categories, type]);
+
+  const historySuggestion = useMemo(() => editingTransaction ? null : buildTransactionMetadataSuggestion({ title, type, transactions }), [editingTransaction, title, type, transactions]);
 
   const isTransferToLiability = type === 'transfer' && toAccountId && accounts.find(a => a.id === toAccountId)?.type === 'liability';
   const transferToLiability = isTransferToLiability ? accounts.find(a => a.id === toAccountId) : null;
@@ -112,6 +118,32 @@ export function AddTransactionModal() {
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [isAddModalOpen]);
+
+  const applyHistorySuggestion = () => {
+    if (!historySuggestion) return;
+
+    if (historySuggestion.category && type !== 'transfer') {
+      const normalized = normalizeCategoryReference(historySuggestion.category);
+      const suggestedCategory = availableCategories.find(item => normalizeCategoryReference(item.id) === normalized || normalizeCategoryReference(item.name) === normalized);
+      if (suggestedCategory) setCategoryId(suggestedCategory.id);
+    }
+
+    if (type === 'transfer') {
+      const suggestedSource = assets.find(item => item.id === historySuggestion.fromAccountId);
+      if (suggestedSource) setFromAccountId(suggestedSource.id);
+      const sourceId = suggestedSource?.id ?? fromAccountId;
+      const suggestedDestination = activeAccounts.find(item => item.id === historySuggestion.toAccountId && item.id !== sourceId);
+      if (suggestedDestination) setToAccountId(suggestedDestination.id);
+    } else if (historySuggestion.accountId) {
+      const suggestedAccount = activeAccounts.find(item => item.id === historySuggestion.accountId && (type !== 'income' || item.type === 'asset'));
+      if (suggestedAccount) setAccount(suggestedAccount.id);
+    }
+
+    if (historySuggestion.eventId) {
+      const suggestedEvent = events.find(item => item.id === historySuggestion.eventId);
+      if (suggestedEvent) setGroupId(suggestedEvent.name);
+    }
+  };
 
   if (!isAddModalOpen) return null;
 
@@ -231,6 +263,14 @@ export function AddTransactionModal() {
     setEditingTransaction(null);
     setAddModalOpen(false);
   };
+
+  const suggestedCategoryName = historySuggestion?.category
+    ? categories.find(item => normalizeCategoryReference(item.id) === normalizeCategoryReference(historySuggestion.category!) || normalizeCategoryReference(item.name) === normalizeCategoryReference(historySuggestion.category!))?.name
+    : undefined;
+  const suggestedAccountName = historySuggestion?.accountId ? accounts.find(item => item.id === historySuggestion.accountId)?.name : undefined;
+  const suggestedFromName = historySuggestion?.fromAccountId ? accounts.find(item => item.id === historySuggestion.fromAccountId)?.name : undefined;
+  const suggestedToName = historySuggestion?.toAccountId ? accounts.find(item => item.id === historySuggestion.toAccountId)?.name : undefined;
+  const suggestedEventName = historySuggestion?.eventId ? events.find(item => item.id === historySuggestion.eventId)?.name : undefined;
 
   return (
     <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title">
@@ -584,6 +624,26 @@ export function AddTransactionModal() {
               <Edit3 className="w-5 h-5 text-on-surface-variant absolute right-5 bottom-5 pointer-events-none" />
             </div>
           </div>
+
+          {historySuggestion && (
+            <div data-testid="transaction-history-suggestion" className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-on-surface">Use details from past transactions?</p>
+                  <p className="mt-1 text-xs leading-5 text-on-surface-variant">{historySuggestion.explanation}</p>
+                </div>
+                <button type="button" onClick={applyHistorySuggestion} className="v35-focus-ring min-h-9 shrink-0 rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary">Apply</button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-on-surface-variant">
+                {suggestedCategoryName ? <span className="rounded-lg bg-surface-container-high px-2 py-1">Category · {suggestedCategoryName}</span> : null}
+                {suggestedAccountName ? <span className="rounded-lg bg-surface-container-high px-2 py-1">Account · {suggestedAccountName}</span> : null}
+                {suggestedFromName ? <span className="rounded-lg bg-surface-container-high px-2 py-1">From · {suggestedFromName}</span> : null}
+                {suggestedToName ? <span className="rounded-lg bg-surface-container-high px-2 py-1">To · {suggestedToName}</span> : null}
+                {suggestedEventName ? <span className="rounded-lg bg-surface-container-high px-2 py-1">Event · {suggestedEventName}</span> : null}
+              </div>
+            </div>
+          )}
 
           <div className="sticky bottom-0 z-10 -mx-5 flex gap-3 border-t border-outline-variant/20 bg-surface-container/95 px-5 pb-1 pt-4 backdrop-blur sm:-mx-6 sm:px-6">
             {editingTransaction && (
