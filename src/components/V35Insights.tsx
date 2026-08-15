@@ -5,6 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { AnimatedNumber } from './AnimatedNumber';
 import { AffordabilityPlanner } from './AffordabilityPlanner';
 import { UpcomingMoney } from './UpcomingMoney';
+import { SmarterPlanningDashboard } from './SmarterPlanningDashboard';
 import { LoanAmortizationExplorer } from './LoanAmortizationExplorer';
 import { Insights as DeepInsights } from './Insights';
 import { getPersonalLiabilityExposure } from '../domain/loanSharing';
@@ -181,7 +182,7 @@ export function V35Insights() {
         </div>
       ) : null}
 
-      {view === 'planning' ? <div className="space-y-5" data-testid="insights-planning"><UpcomingMoney /><AffordabilityPlanner /></div> : null}
+      {view === 'planning' ? <div className="space-y-5" data-testid="insights-planning"><SmarterPlanningDashboard /><UpcomingMoney /><AffordabilityPlanner /></div> : null}
 
       {view === 'debt' ? (
         <div className="space-y-4" data-testid="insights-debt">
