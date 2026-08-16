@@ -11,7 +11,11 @@ async function prepareDemo(page: Page) {
   const demo = page.getByRole('button', { name: /Load demo data/i });
   await expect(demo).toBeVisible();
   await demo.click();
+  const demoReload = page.waitForEvent('load', { timeout: 30_000 });
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  // resetToDemoData persists asynchronously and then reloads the page. Do not
+  // begin a durability mutation until that authoritative demo snapshot is done.
+  await demoReload;
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
 }
 
