@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepare(page: Page) {
   await page.addInitScript(() => {
@@ -14,22 +15,12 @@ async function prepare(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
 }
 
-async function openDestination(page: Page, destination: 'Insights' | 'Settings') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
-
 test('v3.5 Insights uses focused views and preserves deep tools', async ({ page }, testInfo: TestInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
-  await openDestination(page, 'Insights');
+  await openAppDestination(page, 'Insights');
 
   await expect(page.getByTestId('page-insights')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
@@ -62,7 +53,7 @@ test('v3.5 Settings keeps important controls in compact groups', async ({ page }
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
-  await openDestination(page, 'Settings');
+  await openAppDestination(page, 'Settings');
 
   await expect(page.getByTestId('page-settings')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Settings & Manage ⚙️', exact: true })).toBeVisible();
