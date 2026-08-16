@@ -302,8 +302,6 @@ test('effective loan-rate revision survives reload and becomes the current loan 
   await expect(modal).toBeVisible();
   await modal.locator('#new-interest-rate').fill('9.75');
   await modal.locator('#loan-rate-effective-date').fill(await localDateKey(page));
-  await modal.getByText('Adjustment strategy', { exact: true }).click();
-  await modal.getByRole('radio', { name: 'Option B: Maintain Loan Tenure', exact: true }).check();
   const updateRateButton = modal.getByRole('button', { name: 'Update Rate', exact: true });
   await expect(updateRateButton).toBeEnabled();
   await updateRateButton.click();
