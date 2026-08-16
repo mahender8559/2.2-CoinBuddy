@@ -68,6 +68,182 @@
   padding-block: 10px !important;
 }
 
+/* Icon-bearing labels and controls. */
+.cb-finance-label-row,
+.cb-finance-section-title,
+.cb-finance-toggle-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cb-finance-label-icon,
+.cb-finance-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #7fa8e8;
+}
+
+.cb-finance-control-icon {
+  pointer-events: none;
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  transform: translateY(-50%);
+  color: #7890ad;
+}
+
+[data-v35-form-system="locked"] .cb-finance-control-with-icon input.cb-finance-field,
+[data-v35-form-system="locked"] .cb-finance-control-with-icon select.cb-finance-field {
+  padding-left: 39px !important;
+}
+
+.cb-finance-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cb-finance-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+/* Account selection is intentionally a compact radio-card grid rather than a
+   dropdown. CoinBuddy usually has only a few accounts, so all choices remain
+   visible while keeping native radio semantics for keyboard and test access. */
+.cb-account-choice-fieldset {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cb-account-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 8px;
+  max-height: 178px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px;
+}
+
+.cb-account-choice {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 9px;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid #263951;
+  border-radius: 12px;
+  background: #0d1929;
+  color: #dce5f0;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+
+.cb-account-choice:hover {
+  border-color: #3a5270;
+  background: #102037;
+}
+
+.cb-account-choice:active {
+  transform: translateY(1px);
+}
+
+.cb-account-choice:has(input:focus-visible) {
+  outline: 2px solid #4d8cff;
+  outline-offset: 2px;
+}
+
+.cb-account-choice.is-selected {
+  border-color: #4d87ff;
+  background: linear-gradient(180deg, rgba(45, 125, 255, .16), rgba(45, 125, 255, .08));
+  box-shadow: inset 0 0 0 1px rgba(77, 135, 255, .12), 0 7px 18px rgba(13, 72, 170, .10);
+}
+
+.cb-account-choice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #14253a;
+  color: #91b8ff;
+}
+
+.cb-account-choice.is-selected .cb-account-choice-icon {
+  background: rgba(45, 125, 255, .20);
+  color: #b2ceff;
+}
+
+.cb-account-choice-copy {
+  min-width: 0;
+}
+
+.cb-account-choice-name,
+.cb-account-choice-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-account-choice-name {
+  color: #f3f7fc;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.cb-account-choice-meta {
+  margin-top: 2px;
+  color: #778aa1;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.cb-account-choice-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid #3a4d64;
+  border-radius: 50%;
+  color: transparent;
+}
+
+.cb-account-choice.is-selected .cb-account-choice-check {
+  border-color: #4d87ff;
+  background: #2d7dff;
+  color: white;
+}
+
+.cb-account-choice-empty {
+  padding: 12px;
+  border: 1px dashed #30435b;
+  border-radius: 12px;
+  color: #7f90a5;
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.cb-transfer-account-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 /* The transaction amount is intentionally payment-app sized, not a normal
    40/44px text control. Keep this selector stronger than every legacy rule. */
 [data-testid="transaction-form-sheet"] input#transaction-amount.cb-amount-input {
@@ -129,5 +305,32 @@
     height: 68px !important;
     padding-left: 46px !important;
     font-size: clamp(36px, 12vw, 48px) !important;
+  }
+
+  .cb-transfer-account-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .cb-account-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 164px;
+  }
+
+  .cb-account-choice {
+    grid-template-columns: 30px minmax(0, 1fr) 18px;
+    gap: 7px;
+    min-height: 56px;
+    padding: 8px;
+  }
+
+  .cb-account-choice-icon {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 370px) {
+  .cb-account-choice-grid {
+    grid-template-columns: 1fr;
   }
 }
