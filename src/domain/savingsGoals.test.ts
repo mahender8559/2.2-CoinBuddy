@@ -46,7 +46,8 @@ describe('savings goals', () => {
 
   it('normalizes malformed stored goals safely', () => {
     const goals = normalizeSavingsGoals([{ id: 'x', name: '', targetAmount: -5, monthlyContribution: -2 }, { id: 'y', name: 'Laptop', targetAmount: 80000 }]);
-    expect(goals).toHaveLength(1);
-    expect(goals[0].name).toBe('Laptop');
+    expect(goals).toHaveLength(2);
+    expect(goals[0]).toMatchObject({ name: 'Savings goal', targetAmount: 0, monthlyContribution: 0, isActive: false });
+    expect(goals[1].name).toBe('Laptop');
   });
 });
