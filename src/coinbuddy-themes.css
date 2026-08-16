@@ -547,7 +547,6 @@ body {
 [data-testid="wallet-summary-sheet"] [class*="bg-[#0d1929]"],
 [data-testid="wallet-summary-sheet"] [class*="bg-[#122238]"] { background: var(--surface-container-lowest) !important; }
 [data-testid="wallet-summary-sheet"] [class*="border-[#"] { border-color: var(--outline-variant) !important; }
-# wallet-summary-title { color: var(--on-surface) !important; }
 [data-testid="wallet-summary-sheet"] .text-white,
 [data-testid="wallet-summary-sheet"] [class*="text-[#e"],
 [data-testid="wallet-summary-sheet"] [class*="text-[#c"],
@@ -560,7 +559,6 @@ body {
 [data-testid="wallet-summary-sheet"] button[aria-label="Back from wallet summary"]:hover,
 [data-testid="wallet-summary-sheet"] button[aria-label="Close wallet summary"]:hover { background: var(--surface-container) !important; color: var(--on-surface) !important; }
 
-/* Fix selector typo defensively for browsers: the id selector above is not relied on. */
 #wallet-summary-title { color: var(--on-surface) !important; }
 
 /* Theme preview cards in Settings. */
