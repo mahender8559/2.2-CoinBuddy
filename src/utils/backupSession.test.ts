@@ -33,7 +33,8 @@ describe('backup credential session', () => {
   });
 
   it('migrates a legacy plaintext setting into verifier plus memory session', async () => {
-    const migrated = await migrateLegacyBackupSettings({ hasPassword: true, backupPassword: 'legacy-secret' });
+    const legacySettings: { hasPassword: boolean; backupPassword?: string; backupPasswordVerifier?: string } = { hasPassword: true, backupPassword: 'legacy-secret' };
+    const migrated = await migrateLegacyBackupSettings(legacySettings);
     expect(migrated).not.toHaveProperty('backupPassword');
     expect(migrated.backupPasswordVerifier).toBeTruthy();
     expect(getSessionBackupPassword()).toBe('legacy-secret');

@@ -293,7 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onPersistenceWarning = (event: Event) => {
+    const onPersistenceWarning: EventListener = (event) => {
       const message = (event as CustomEvent<string>).detail;
       if (message) showToast(message);
     };
