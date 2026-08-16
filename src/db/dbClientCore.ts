@@ -89,13 +89,15 @@ function setPersistenceGeneration(db: any, generation: number): void {
   db.run(`UPDATE ${PERSISTENCE_META_TABLE} SET value = ? WHERE key = ?`, [Math.max(0, Math.trunc(generation)), PERSISTENCE_GENERATION_KEY]);
 }
 
-function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number {
+function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number | null {
   let probe: any;
   try {
     probe = new SQL.Database(snapshot);
+    const integrity = probe.exec('PRAGMA integrity_check;')[0]?.values?.[0]?.[0];
+    if (String(integrity).toLowerCase() !== 'ok') return null;
     return readPersistenceGeneration(probe);
   } catch {
-    return 0;
+    return null;
   } finally {
     try { probe?.close(); } catch { /* best effort */ }
   }
@@ -290,13 +292,23 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
     readOpfsSnapshot(),
     readSnapshot().catch(error => { console.warn('IndexedDB snapshot read failed:', error); return null; }),
   ]);
+  const opfsGeneration = opfsSnapshot ? inspectSnapshotGeneration(SQL, opfsSnapshot) : null;
+  const indexedDbGeneration = indexedDbSnapshot ? inspectSnapshotGeneration(SQL, indexedDbSnapshot) : null;
   const candidates = [
-    ...(opfsSnapshot ? [{ source: 'OPFS' as const, generation: inspectSnapshotGeneration(SQL, opfsSnapshot), snapshot: opfsSnapshot }] : []),
-    ...(indexedDbSnapshot ? [{ source: 'INDEXED_DB' as const, generation: inspectSnapshotGeneration(SQL, indexedDbSnapshot), snapshot: indexedDbSnapshot }] : []),
+    ...(opfsSnapshot && opfsGeneration !== null ? [{ source: 'OPFS' as const, generation: opfsGeneration, snapshot: opfsSnapshot }] : []),
+    ...(indexedDbSnapshot && indexedDbGeneration !== null ? [{ source: 'INDEXED_DB' as const, generation: indexedDbGeneration, snapshot: indexedDbSnapshot }] : []),
   ];
+  const invalidPrimarySnapshot = Boolean(
+    (opfsSnapshot && opfsGeneration === null) ||
+    (indexedDbSnapshot && indexedDbGeneration === null),
+  );
   const selected = selectNewestPersistenceCandidate(candidates);
   let saved = selected?.snapshot ?? null;
-  const diverged = persistenceCopiesDiverged(candidates, snapshotsMatch);
+  const diverged = invalidPrimarySnapshot || persistenceCopiesDiverged(candidates, snapshotsMatch);
+
+  if (!saved && (opfsSnapshot || indexedDbSnapshot)) {
+    throw new Error('CoinBuddy found local ledger snapshots, but none passed SQLite integrity verification. The primary copies were left untouched so a recovery snapshot can be restored safely.');
+  }
 
   if (!saved) {
     const legacy = localStorage.getItem(DB_STORAGE_KEY);
