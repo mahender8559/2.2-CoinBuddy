@@ -381,10 +381,14 @@ export function Dashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  rejectTransaction(pendingConfirmTx.id);
-                  setPendingConfirmTx(null);
-                  setPendingConfirmError('');
+                onClick={async () => {
+                  const outcome = await rejectTransaction(pendingConfirmTx.id);
+                  if (outcome.success) {
+                    setPendingConfirmTx(null);
+                    setPendingConfirmError('');
+                  } else {
+                    setPendingConfirmError(outcome.error || 'This scheduled transaction could not be skipped.');
+                  }
                 }}
                 className="flex-1 bg-error/10 hover:bg-error/20 text-error font-semibold py-3 px-4 rounded-2xl text-sm transition-colors cursor-pointer"
               >
@@ -392,8 +396,8 @@ export function Dashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const outcome = approveTransaction(pendingConfirmTx.id, pendingConfirmDate);
+                onClick={async () => {
+                  const outcome = await approveTransaction(pendingConfirmTx.id, pendingConfirmDate);
                   if (outcome.success) {
                     setPendingConfirmTx(null);
                     setPendingConfirmError('');
