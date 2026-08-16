@@ -60,6 +60,10 @@ test('locked finance form system uses the new responsive amount-first design', a
   expect(await category.evaluate(element => element.tagName)).toBe('SELECT');
   await expect(transaction.locator('.cb-finance-control-icon svg').first()).toBeVisible();
 
+  const description = transaction.getByLabel('What was this for?');
+  const descriptionPadding = await description.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft));
+  expect(descriptionPadding).toBeGreaterThanOrEqual(40);
+
   await expect(transaction.getByLabel('Notes')).toBeAttached();
   await expect(transaction.getByText('More options', { exact: true })).toBeVisible();
   await transaction.getByRole('button', { name: /Close edit transaction/i }).click();
@@ -90,4 +94,45 @@ test('locked finance form system uses the new responsive amount-first design', a
   expect(viewport).not.toBeNull();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('transfer account cards stay before the action and remain readable', async ({ page }) => {
+  await prepareDemo(page);
+  await page.goto('/?tab=dashboard');
+  await page.getByRole('button', { name: /add transaction/i }).first().click();
+  await page.getByRole('button', { name: 'Transfer', exact: true }).click();
+
+  const transaction = page.getByTestId('transaction-form-sheet');
+  const transferGroups = transaction.locator('.cb-transfer-account-groups');
+  const submit = transaction.getByRole('button', { name: 'Transfer Money', exact: true });
+  await expect(transferGroups).toBeVisible();
+  await expect(submit).toBeVisible();
+  expect(await transaction.locator('input[name="fromAccount"]').count()).toBeGreaterThan(0);
+  expect(await transaction.locator('input[name="toAccount"]').count()).toBeGreaterThan(0);
+
+  const layout = await transaction.evaluate(element => {
+    const form = element.querySelector('.cb-finance-form');
+    const groups = element.querySelector('.cb-transfer-account-groups');
+    const action = element.querySelector('.cb-finance-submit');
+    if (!form || !groups || !action) return null;
+    return {
+      groupIndex: Array.from(form.children).indexOf(groups),
+      actionIndex: Array.from(form.children).indexOf(action),
+      groupOrder: Number.parseInt(getComputedStyle(groups).order || '0', 10),
+      actionOrder: Number.parseInt(getComputedStyle(action).order || '0', 10),
+    };
+  });
+  expect(layout).not.toBeNull();
+  expect(layout!.groupIndex).toBeLessThan(layout!.actionIndex);
+  expect(layout!.groupOrder).toBe(0);
+  expect(layout!.actionOrder).toBeGreaterThan(layout!.groupOrder);
+
+  const metadata = transaction.locator('.cb-account-choice-meta').first();
+  await expect(metadata).toBeVisible();
+  expect(await metadata.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('normal');
+
+  const titleInput = transaction.getByLabel('Transfer title (optional)');
+  expect(await titleInput.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
+
+  await transaction.getByRole('button', { name: /Close add transaction/i }).click();
 });
