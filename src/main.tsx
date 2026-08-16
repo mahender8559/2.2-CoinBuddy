@@ -10,6 +10,7 @@ import './locked-form-system.css';
 import './locked-form-fixes.css';
 import './locked-form-transaction-polish.css';
 import './theme-compatibility.css';
+import './theme-palette-overrides.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
