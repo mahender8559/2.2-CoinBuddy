@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import { validateEnvironment } from '../src/utils/envValidation.js';
 
 const COOKIE = 'coinbuddy_drive_session';
 const STATE_COOKIE = 'coinbuddy_drive_state';
@@ -17,9 +16,11 @@ export function validateGoogleDriveEnvironment() {
   key();
 }
 
-// Enforce environment validation at module load in production so server fails securely.
+// Fail securely in production without importing client-side TypeScript into
+// the serverless API module. This keeps the OAuth functions directly loadable
+// by Node/Vercel and validates every credential they actually require.
 if (process.env.NODE_ENV === 'production') {
-  validateEnvironment();
+  validateGoogleDriveEnvironment();
 }
 
 export function appUrl(req) {
@@ -73,6 +74,9 @@ export function startAuthorization(req, res) {
 export async function finishAuthorization(req, res) {
   validateGoogleDriveEnvironment();
   if (!req.query.state || req.query.state !== parseCookies(req)[STATE_COOKIE]) throw new Error('Google Drive connection could not be verified. Please try again.');
+  // The OAuth state is single-use for this connection attempt. Clear it as soon
+  // as it has been verified so a later callback cannot reuse the same browser state.
+  setCookie(res, STATE_COOKIE, '', 0);
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: required('GOOGLE_CLIENT_ID'), client_secret: required('GOOGLE_CLIENT_SECRET'), redirect_uri: callbackUrl(req), grant_type: 'authorization_code' }) });
   const tokens = await tokenResponse.json();
   if (!tokenResponse.ok) throw new Error(tokens.error_description || 'Google token exchange failed.');
@@ -92,9 +96,10 @@ export async function driveToken(req, res) {
   const session = parseCookies(req)[COOKIE];
   if (!session) throw new Error('Google Drive is not connected.');
   const { refreshToken } = unsealSession(session);
+  if (!refreshToken) throw new Error('Google Drive session is invalid. Reconnect Google Drive.');
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: required('GOOGLE_CLIENT_ID'), client_secret: required('GOOGLE_CLIENT_SECRET'), refresh_token: refreshToken, grant_type: 'refresh_token' }) });
   const tokens = await response.json();
-  if (!response.ok) throw new Error('Google Drive authorization expired. Reconnect Google Drive.');
+  if (!response.ok || !tokens.access_token) throw new Error('Google Drive authorization expired. Reconnect Google Drive.');
   return tokens.access_token;
 }
 
