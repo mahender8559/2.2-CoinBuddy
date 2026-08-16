@@ -14,71 +14,188 @@ function replaceBetween(file, startMarker, endMarker, replacement) {
   write(file, source.slice(0, start) + replacement + source.slice(end));
 }
 
-replaceOnce('src/utils/backupManager.ts', "import { migrateBackupDataToLatest } from './ledgerSchema';", "import { migrateBackupDataToLatest } from './ledgerSchema';\nimport { getSessionBackupPassword } from './backupSession';");
-replaceOnce('src/utils/backupManager.ts', "  backupPassword?: string;\n  authExpired?: boolean;", "  /** @deprecated Legacy-only field. Never persist a raw backup password. */\n  backupPassword?: string;\n  backupPasswordVerifier?: string;\n  authExpired?: boolean;");
-replaceOnce('src/utils/backupManager.ts', "export async function isDuplicateLedgerRestore(current: unknown, candidate: unknown): Promise<boolean> {\n  const [currentFingerprint, candidateFingerprint] = await Promise.all([\n    createLedgerFingerprint(current),\n    createLedgerFingerprint(candidate),\n  ]);\n  return currentFingerprint === candidateFingerprint;\n}\n", "export async function isDuplicateLedgerRestore(current: unknown, candidate: unknown): Promise<boolean> {\n  const [currentFingerprint, candidateFingerprint] = await Promise.all([\n    createLedgerFingerprint(current),\n    createLedgerFingerprint(candidate),\n  ]);\n  return currentFingerprint === candidateFingerprint;\n}\n\nexport async function assertRestoreIsNotDuplicate(current: unknown, candidate: unknown): Promise<void> {\n  if (await isDuplicateLedgerRestore(current, candidate)) {\n    throw new Error('This backup contains the same ledger already on this device. Nothing was restored.');\n  }\n}\n");
-replaceOnce('src/utils/backupManager.ts', "      await Promise.all(expired.map(async (backup: { id: string }) => {\n        const deleteResponse = await fetch(`/api/google-drive/delete?id=${encodeURIComponent(backup.id)}`, { method: 'DELETE' });\n        if (!deleteResponse.ok) {\n          const error = await deleteResponse.json().catch(() => ({}));\n          throw new Error(error.error || 'Unable to delete an expired Google Drive backup.');\n        }\n      }));\n      return;", "      const results = await Promise.allSettled(expired.map(async (backup: { id: string }) => {\n        const deleteResponse = await fetch(`/api/google-drive/delete?id=${encodeURIComponent(backup.id)}`, { method: 'DELETE' });\n        if (!deleteResponse.ok) {\n          const error = await deleteResponse.json().catch(() => ({}));\n          throw new Error(error.error || 'Unable to delete an expired Google Drive backup.');\n        }\n      }));\n      const failures = results.filter(result => result.status === 'rejected');\n      if (failures.length) console.warn(`Google Drive retention could not delete ${failures.length} expired backup(s).`);\n      return;");
-replaceOnce('src/utils/backupManager.ts', "    if (!settings.hasPassword || !settings.backupPassword) {\n      return null;\n    }\n\n    try {", "    const sessionPassword = getSessionBackupPassword() ?? settings.backupPassword;\n    if (!settings.hasPassword || !sessionPassword) {\n      return null;\n    }\n\n    try {");
-replaceOnce('src/utils/backupManager.ts', "        settings.backupPassword,\n        settings.storageProvider,", "        sessionPassword,\n        settings.storageProvider,");
+replaceOnce('src/db/dbClientCore.ts',
+  "import { buildInvestmentSipRule, investmentSipRuleId, isInvestmentSipAccount } from '../domain/investmentSip';",
+  "import { buildInvestmentSipRule, investmentSipRuleId, isInvestmentSipAccount } from '../domain/investmentSip';\nimport { persistenceCopiesDiverged, persistenceWriteWarning, selectNewestPersistenceCandidate } from './persistenceStrategy';");
 
-replaceOnce('src/components/BackupSecurity.tsx', "  isDuplicateLedgerRestore,\n} from '../utils/backupManager';", "  assertRestoreIsNotDuplicate,\n} from '../utils/backupManager';\nimport {\n  createBackupPasswordVerifier,\n  getSessionBackupPassword,\n  migrateLegacyBackupSettings,\n  sanitizeBackupSettings,\n  setSessionBackupPassword,\n  verifyBackupPassword,\n} from '../utils/backupSession';");
-replaceBetween('src/components/BackupSecurity.tsx', "  const [config, setConfig] = useState<BackupSettings>(() => {", "  const [settingsLoaded, setSettingsLoaded] = useState(false);", "  const [config, setConfig] = useState<BackupSettings>(() => ({ ...DEFAULT_BACKUP_SETTINGS }));\n  const [backupSessionReady, setBackupSessionReady] = useState(() => Boolean(getSessionBackupPassword()));\n");
-replaceBetween('src/components/BackupSecurity.tsx', "  useEffect(() => {\n    void getStoredSetting('backupConfig').then(saved => {", "  // SQLite is canonical; localStorage is read once above only for migration.", `  useEffect(() => {
-    void (async () => {
-      let raw: BackupSettings | null = null;
-      const saved = await getStoredSetting('backupConfig');
-      if (saved && typeof saved === 'object') raw = saved as BackupSettings;
-      if (!raw) {
-        const legacy = localStorage.getItem('coinbuddy_backup_config');
-        if (legacy) {
-          try { raw = JSON.parse(legacy) as BackupSettings; } catch { /* ignore malformed legacy settings */ }
-          localStorage.removeItem('coinbuddy_backup_config');
-        }
-      }
-      const normalized: BackupSettings = { ...DEFAULT_BACKUP_SETTINGS, ...(raw ?? {}), storageProvider: raw?.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL', isWifiOnly: false };
-      const migrated = await migrateLegacyBackupSettings(normalized);
-      const sanitized = sanitizeBackupSettings(migrated);
-      setConfig(sanitized);
-      setBackupSessionReady(Boolean(getSessionBackupPassword()));
-      if (raw?.backupPassword) await setStoredSetting('backupConfig', sanitized);
-      setSettingsLoaded(true);
-    })();
-  }, [getStoredSetting, setStoredSetting]);
+replaceOnce('src/db/dbClientCore.ts',
+  "/** Reject malformed backups before clearing the existing ledger. */",
+  `const PERSISTENCE_META_TABLE = 'coinbuddy_persistence_meta';
+const PERSISTENCE_GENERATION_KEY = 'ledger_generation';
 
-`);
-replaceOnce('src/components/BackupSecurity.tsx', "    void setStoredSetting('backupConfig', config).then(() => window.dispatchEvent(new Event('coinbuddy_backup_config_changed')));", "    void setStoredSetting('backupConfig', sanitizeBackupSettings(config)).then(() => window.dispatchEvent(new Event('coinbuddy_backup_config_changed')));");
-replaceOnce('src/components/BackupSecurity.tsx', "    if (!config.hasPassword || !config.backupPassword) {\n      setIsPasswordModalOpen(true);\n      setBackupErrorMessage('Set a backup password before creating an encrypted backup.');\n      return;\n    }", "    const sessionPassword = getSessionBackupPassword();\n    if (!config.hasPassword || !sessionPassword) {\n      setIsPasswordModalOpen(true);\n      setBackupErrorMessage(config.hasPassword ? 'Unlock backup encryption for this session before reconnecting.' : 'Set a backup password before creating an encrypted backup.');\n      return;\n    }");
-replaceOnce('src/components/BackupSecurity.tsx', "        config.backupPassword,\n        config.storageProvider,", "        sessionPassword,\n        config.storageProvider,");
-replaceOnce('src/components/BackupSecurity.tsx', "    if (!config.hasPassword || !config.backupPassword) {\n      setIsPasswordModalOpen(true);\n      setBackupErrorMessage('Set a backup password before creating an encrypted backup.');\n      return;\n    }", "    const sessionPassword = getSessionBackupPassword();\n    if (!config.hasPassword || !sessionPassword) {\n      setIsPasswordModalOpen(true);\n      setBackupErrorMessage(config.hasPassword ? 'Enter your backup password once to unlock backups for this session.' : 'Set a backup password before creating an encrypted backup.');\n      return;\n    }");
-replaceOnce('src/components/BackupSecurity.tsx', "        config.backupPassword,\n        config.storageProvider,", "        sessionPassword,\n        config.storageProvider,");
-replaceBetween('src/components/BackupSecurity.tsx', "  const handleSavePassword = (e: React.FormEvent) => {", "  // Local file upload parser for restore", `  const handleSavePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdError(null);
-    if (config.hasPassword) {
-      const validOldPassword = await verifyBackupPassword(oldPwdInput, config.backupPasswordVerifier);
-      if (!validOldPassword) { setPwdError('Current backup password is incorrect'); return; }
-      if (!backupSessionReady) {
-        setSessionBackupPassword(oldPwdInput); setBackupSessionReady(true); setIsPasswordModalOpen(false); setOldPwdInput('');
-        setBackupSuccessMessage('Backup encryption unlocked for this session.'); return;
+function ensurePersistenceMetadata(db: any): void {
+  db.run(\`CREATE TABLE IF NOT EXISTS \${PERSISTENCE_META_TABLE} (key TEXT PRIMARY KEY, value INTEGER NOT NULL)\`);
+  db.run(\`INSERT OR IGNORE INTO \${PERSISTENCE_META_TABLE} (key, value) VALUES (?, 0)\`, [PERSISTENCE_GENERATION_KEY]);
+}
+
+function readPersistenceGeneration(db: any): number {
+  try {
+    const result = db.exec(\`SELECT value FROM \${PERSISTENCE_META_TABLE} WHERE key = 'ledger_generation' LIMIT 1\`);
+    const value = Number(result[0]?.values?.[0]?.[0] ?? 0);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setPersistenceGeneration(db: any, generation: number): void {
+  ensurePersistenceMetadata(db);
+  db.run(\`UPDATE \${PERSISTENCE_META_TABLE} SET value = ? WHERE key = ?\`, [Math.max(0, Math.trunc(generation)), PERSISTENCE_GENERATION_KEY]);
+}
+
+function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number {
+  let probe: any;
+  try {
+    probe = new SQL.Database(snapshot);
+    return readPersistenceGeneration(probe);
+  } catch {
+    return 0;
+  } finally {
+    try { probe?.close(); } catch { /* best effort */ }
+  }
+}
+
+function opfsIsAvailable(): boolean {
+  return typeof navigator !== 'undefined' && Boolean((navigator.storage as any)?.getDirectory);
+}
+
+function notifyPersistenceWarning(message: string): void {
+  console.warn(message);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('coinbuddy_persistence_warning', { detail: message }));
+}
+
+/** Reject malformed backups before clearing the existing ledger. */`);
+
+replaceOnce('src/db/dbClientCore.ts',
+  "async function readOpfsSnapshot(): Promise<Uint8Array | null> {\n  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;",
+  "async function readOpfsSnapshot(): Promise<Uint8Array | null> {\n  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;");
+replaceOnce('src/db/dbClientCore.ts',
+  "async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {\n  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;",
+  "async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {\n  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;");
+
+replaceBetween('src/db/dbClientCore.ts',
+  'export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {',
+  'export async function deletePersistedDatabase(): Promise<void> {',
+  `export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
+  const SQL = await initSqlJs({ locateFile: (file) => file.endsWith('.wasm') ? sqlWasmUrl : file });
+
+  const [opfsSnapshot, indexedDbSnapshot] = await Promise.all([
+    readOpfsSnapshot(),
+    readSnapshot().catch(error => { console.warn('IndexedDB snapshot read failed:', error); return null; }),
+  ]);
+  const candidates = [
+    ...(opfsSnapshot ? [{ source: 'OPFS' as const, generation: inspectSnapshotGeneration(SQL, opfsSnapshot), snapshot: opfsSnapshot }] : []),
+    ...(indexedDbSnapshot ? [{ source: 'INDEXED_DB' as const, generation: inspectSnapshotGeneration(SQL, indexedDbSnapshot), snapshot: indexedDbSnapshot }] : []),
+  ];
+  const selected = selectNewestPersistenceCandidate(candidates);
+  let saved = selected?.snapshot ?? null;
+  const diverged = persistenceCopiesDiverged(candidates, snapshotsMatch);
+
+  if (!saved) {
+    const legacy = localStorage.getItem(DB_STORAGE_KEY);
+    if (legacy) {
+      saved = base64ToUint8Array(legacy);
+      await writeSnapshot(saved);
+      const verifiedSnapshot = await readSnapshot();
+      if (!verifiedSnapshot || verifiedSnapshot.byteLength !== saved.byteLength) {
+        throw new Error('Legacy ledger migration could not be verified; the original backup was preserved.');
       }
+      await writeOpfsSnapshot(saved).catch(() => false);
+      localStorage.removeItem(DB_STORAGE_KEY);
     }
-    if (!pwdInput) return setPwdError('Password cannot be empty');
-    if (pwdInput.length < 4) return setPwdError('Password must be at least 4 characters long');
-    if (pwdInput !== pwdConfirm) return setPwdError('Passwords do not match');
-    const verifier = await createBackupPasswordVerifier(pwdInput);
-    setSessionBackupPassword(pwdInput); setBackupSessionReady(true);
-    setConfig(prev => sanitizeBackupSettings({ ...prev, hasPassword: true, backupPasswordVerifier: verifier }));
-    setIsPasswordModalOpen(false); setOldPwdInput(''); setPwdInput(''); setPwdConfirm(''); setPwdError(null);
-    setBackupSuccessMessage('Master backup password updated successfully!');
-    setTimeout(() => setBackupSuccessMessage(null), 4000);
-  };
+  }
+
+  const isNewDatabase = !saved;
+  const db = saved ? new SQL.Database(saved) : new SQL.Database();
+  const shouldSkipDemoSeed = localStorage.getItem(SKIP_DEMO_SEED_KEY) === 'true';
+
+  db.run(SQLITE_PRAGMA_SETUP);
+  db.run(CREATE_TABLES_SQL);
+  for (const migration of SQLITE_MIGRATIONS) {
+    try { db.run(migration); }
+    catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
+    }
+  }
+  migrateTransactionTypeConstraint(db);
+  ensurePersistenceMetadata(db);
+
+  if (shouldSkipDemoSeed) localStorage.removeItem(SKIP_DEMO_SEED_KEY);
+
+  const driver = createDriver(db, isNewDatabase, shouldSkipDemoSeed);
+  if (diverged && selected) {
+    notifyPersistenceWarning(\`Local ledger copies disagreed. CoinBuddy selected the newer \${selected.source === 'OPFS' ? 'OPFS' : 'IndexedDB'} snapshot (generation \${selected.generation}) and is repairing redundancy.\`);
+    try { await persistDatabase(driver); }
+    catch (error) { console.warn('Persistence redundancy repair could not complete:', error); }
+  }
+  return driver;
+}
+
+export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
+  ensurePersistenceMetadata(driver.rawDb);
+  const previousGeneration = readPersistenceGeneration(driver.rawDb);
+  const nextGeneration = previousGeneration + 1;
+  setPersistenceGeneration(driver.rawDb, nextGeneration);
+  const snapshot = driver.rawDb.export() as Uint8Array;
+  let indexedDbError: unknown;
+  let opfsError: unknown;
+  let indexedDbSaved = false;
+  let opfsSaved = false;
+  const opfsAvailable = opfsIsAvailable();
+
+  try {
+    await writeSnapshot(snapshot);
+    const verified = await readSnapshot();
+    if (!verified || !snapshotsMatch(snapshot, verified)) throw new Error('IndexedDB verification failed after write.');
+    indexedDbSaved = true;
+  } catch (error) {
+    indexedDbError = error;
+  }
+
+  if (opfsAvailable) {
+    try { opfsSaved = await writeOpfsSnapshot(snapshot); }
+    catch (error) { opfsError = error; }
+  }
+
+  if (!indexedDbSaved && !opfsSaved) {
+    setPersistenceGeneration(driver.rawDb, previousGeneration);
+    const cause = indexedDbError ?? opfsError ?? new Error('No persistent browser storage is available.');
+    throw new Error(\`Unable to save your ledger locally: \${cause instanceof Error ? cause.message : String(cause)}\`);
+  }
+
+  const warning = persistenceWriteWarning({ indexedDbSaved, opfsSaved, opfsAvailable });
+  if (warning) notifyPersistenceWarning(warning);
+}
 
 `);
-replaceOnce('src/components/BackupSecurity.tsx', "        if (await isDuplicateLedgerRestore(exportLedgerData(), upgradedData)) {\n          throw new Error('This backup contains the same ledger already on this device. Nothing was restored.');\n        }", "        await assertRestoreIsNotDuplicate(exportLedgerData(), upgradedData);");
-replaceOnce('src/components/BackupSecurity.tsx', "            <span>{config.hasPassword ? 'Change Password' : 'Set Backup Password'}</span>", "            <span>{config.hasPassword ? (backupSessionReady ? 'Change Password' : 'Unlock Backups') : 'Set Backup Password'}</span>");
-replaceOnce('src/components/BackupSecurity.tsx', "                    {config.hasPassword ? 'Change Backup Password' : 'Set Backup Password'}", "                    {config.hasPassword ? (backupSessionReady ? 'Change Backup Password' : 'Unlock Backup Encryption') : 'Set Backup Password'}");
-replaceOnce('src/components/BackupSecurity.tsx', "                    required\n                    value={pwdInput}", "                    required={!config.hasPassword || backupSessionReady}\n                    disabled={config.hasPassword && !backupSessionReady}\n                    value={pwdInput}");
-replaceOnce('src/components/BackupSecurity.tsx', "                    required\n                    value={pwdConfirm}", "                    required={!config.hasPassword || backupSessionReady}\n                    disabled={config.hasPassword && !backupSessionReady}\n                    value={pwdConfirm}");
-replaceOnce('src/components/BackupSecurity.tsx', "                  Save Password\n", "                  {config.hasPassword && !backupSessionReady ? 'Unlock Backups' : 'Save Password'}\n");
 
-console.log('Backup security and retention hardening staged.');
+replaceOnce('src/db/dbClientCore.ts',
+  "  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;",
+  "  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;");
+
+replaceOnce('src/context/AppContext.tsx',
+  "  const getStoredSetting = useCallback(async (key: string): Promise<unknown> => {",
+  `  useEffect(() => {
+    const onPersistenceWarning = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (message) showToast(message);
+    };
+    window.addEventListener('coinbuddy_persistence_warning', onPersistenceWarning);
+    return () => window.removeEventListener('coinbuddy_persistence_warning', onPersistenceWarning);
+  }, [showToast]);
+
+  const getStoredSetting = useCallback(async (key: string): Promise<unknown> => {`);
+replaceOnce('src/context/AppContext.tsx',
+  "      window.alert(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);",
+  "      showToast(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);");
+replaceOnce('src/context/AppContext.tsx',
+  "      window.alert(`Your shared-finance change was not saved: ${error instanceof Error ? error.message : String(error)}`);",
+  "      showToast(`Your shared-finance change was not saved: ${error instanceof Error ? error.message : String(error)}`);");
+replaceOnce('src/context/AppContext.tsx',
+  "      window.alert(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);",
+  "      showToast(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);");
+replaceOnce('src/context/AppContext.tsx',
+  "      window.alert(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);",
+  "      showToast(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);");
+
+console.log('Persistence generation and save-error UX hardening staged.');
