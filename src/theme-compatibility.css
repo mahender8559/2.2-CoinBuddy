@@ -1,0 +1,307 @@
+/*
+ * CoinBuddy theme compatibility bridge.
+ *
+ * The V3.5 visual layer and the locked form redesign were originally authored
+ * against dark-only navy tokens. The app itself already has a proper
+ * light/dark + accent theme system, so this final stylesheet maps the legacy
+ * visual tokens back onto that system without changing finance behaviour.
+ */
+
+/* Selected accent palette must also drive legacy V3.5 / locked-form accents. */
+html.theme-blue { --cb-accent: #00639c; }
+html.theme-green { --cb-accent: #15803d; }
+html.theme-purple { --cb-accent: #7e22ce; }
+html.theme-orange { --cb-accent: #c2410c; }
+html.theme-pink { --cb-accent: #be185d; }
+
+html.dark.theme-blue { --cb-accent: #4c8dff; }
+html.dark.theme-green { --cb-accent: #4ade80; }
+html.dark.theme-purple { --cb-accent: #c084fc; }
+html.dark.theme-orange { --cb-accent: #fb923c; }
+html.dark.theme-pink { --cb-accent: #f472b6; }
+
+html[class*="theme-"] {
+  --cb-blue: var(--cb-accent);
+  --cb-blue-strong: var(--cb-accent);
+  --cb-blue-soft: color-mix(in srgb, var(--cb-accent) 14%, transparent);
+  --cb-blue-glow: color-mix(in srgb, var(--cb-accent) 28%, transparent);
+  --cb-form-blue: var(--cb-accent);
+  --cb-form-blue-hover: color-mix(in srgb, var(--cb-accent) 88%, white);
+  --cb-form-blue-soft: color-mix(in srgb, var(--cb-accent) 15%, transparent);
+  --cb-locked-blue: var(--cb-accent);
+}
+
+/* Light-mode equivalents for the legacy dark-only V3.5 tokens. */
+html:not(.dark) {
+  --cb-bg: var(--background);
+  --cb-bg-deep: var(--surface-container-low);
+  --cb-surface-1: var(--surface-container-lowest);
+  --cb-surface-2: var(--surface-container-low);
+  --cb-surface-3: var(--surface-container);
+  --cb-surface-hover: var(--surface-container-high);
+  --cb-border: var(--outline-variant);
+  --cb-border-soft: color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  --cb-text: var(--on-surface);
+  --cb-text-secondary: var(--on-surface);
+  --cb-text-muted: var(--on-surface-variant);
+  --cb-text-disabled: color-mix(in srgb, var(--on-surface-variant) 62%, transparent);
+
+  --cb-form-backdrop: rgba(15, 23, 42, 0.30);
+  --cb-form-panel: var(--surface-container-lowest);
+  --cb-form-panel-deep: var(--surface-container-low);
+  --cb-form-field: var(--surface-container-lowest);
+  --cb-form-field-hover: var(--surface-container-low);
+  --cb-form-border: var(--outline-variant);
+  --cb-form-border-strong: var(--outline);
+  --cb-form-label: var(--on-surface);
+  --cb-form-help: var(--on-surface-variant);
+
+  --cb-locked-bg: var(--background);
+  --cb-locked-panel: var(--surface-container-lowest);
+  --cb-locked-panel-2: var(--surface-container-low);
+  --cb-locked-field: var(--surface-container-lowest);
+  --cb-locked-border: var(--outline-variant);
+  --cb-locked-border-soft: color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  --cb-locked-text: var(--on-surface);
+  --cb-locked-muted: var(--on-surface-variant);
+}
+
+/* Shared V3.5 cards must follow the selected appearance. */
+html:not(.dark) .v35-surface {
+  background: linear-gradient(180deg, var(--surface-container-lowest), var(--surface-container-low)) !important;
+  border-color: color-mix(in srgb, var(--outline-variant) 78%, transparent) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07) !important;
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) .v35-surface-hover:hover {
+  border-color: color-mix(in srgb, var(--cb-accent) 36%, var(--outline-variant)) !important;
+  background: var(--surface-container-lowest) !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10) !important;
+}
+
+/* Navigation was intentionally translucent navy in V3.5; make it thematic. */
+html:not(.dark) [data-testid="mobile-bottom-nav"],
+html:not(.dark) [data-testid="desktop-sidebar"] {
+  background: color-mix(in srgb, var(--surface-container-lowest) 94%, transparent) !important;
+  border-color: var(--outline-variant) !important;
+  box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.06);
+}
+
+/* Locked finance forms: preserve the approved geometry while changing only
+ * appearance colors between light/dark and accent palettes. */
+html:not(.dark) [data-v35-form-system="locked"],
+html:not(.dark) [role="dialog"]:has(#goal-form-title),
+html:not(.dark) [role="dialog"]:has(#category-form-title) {
+  background: linear-gradient(180deg, var(--surface-container-lowest), var(--surface-container-low)) !important;
+  border-color: var(--outline-variant) !important;
+  color: var(--on-surface) !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18) !important;
+}
+
+html:not(.dark) .cb-finance-header {
+  background: color-mix(in srgb, var(--surface-container-lowest) 92%, transparent) !important;
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) .cb-finance-title,
+html:not(.dark) .cb-finance-toggle-title,
+html:not(.dark) .cb-account-choice-name {
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) .cb-finance-subtitle,
+html:not(.dark) .cb-finance-label,
+html:not(.dark) .cb-finance-hint,
+html:not(.dark) .cb-finance-section > summary,
+html:not(.dark) .cb-finance-toggle-description,
+html:not(.dark) .cb-account-choice-meta,
+html:not(.dark) .cb-account-choice-empty {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) .cb-finance-icon-button {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) .cb-finance-icon-button:hover {
+  background: var(--surface-container) !important;
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) [data-v35-form-system="locked"] input.cb-finance-field:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html:not(.dark) [data-v35-form-system="locked"] select.cb-finance-field,
+html:not(.dark) [data-v35-form-system="locked"] textarea.cb-finance-field,
+html:not(.dark) .cb-finance-field {
+  background: var(--surface-container-lowest) !important;
+  border-color: var(--outline-variant) !important;
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) .cb-finance-field::placeholder {
+  color: color-mix(in srgb, var(--on-surface-variant) 78%, transparent) !important;
+}
+
+html:not(.dark) .cb-finance-field:focus {
+  background: var(--surface-container-lowest) !important;
+  border-color: var(--cb-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cb-accent) 14%, transparent) !important;
+}
+
+html:not(.dark) .cb-finance-label-icon,
+html:not(.dark) .cb-finance-toggle-icon,
+html:not(.dark) .cb-finance-control-icon {
+  color: var(--cb-accent) !important;
+}
+
+html:not(.dark) .cb-finance-segmented {
+  background: var(--surface-container-low) !important;
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) .cb-finance-segmented button {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) .cb-amount-hero {
+  background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--cb-accent) 9%, transparent), transparent 58%), var(--surface-container-low) !important;
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) .cb-amount-label,
+html:not(.dark) .cb-amount-symbol {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) [data-testid="transaction-form-sheet"] input#transaction-amount.cb-amount-input,
+html:not(.dark) .cb-amount-input {
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) .cb-finance-section {
+  background: var(--surface-container-lowest) !important;
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) .cb-finance-section-body {
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) .cb-finance-toggle {
+  background: var(--surface-container-high) !important;
+  border-color: var(--outline) !important;
+}
+
+html:not(.dark) .cb-finance-toggle.is-on {
+  background: var(--cb-accent) !important;
+  border-color: var(--cb-accent) !important;
+}
+
+html:not(.dark) .cb-account-kind,
+html:not(.dark) .cb-account-choice {
+  background: var(--surface-container-lowest) !important;
+  border-color: var(--outline-variant) !important;
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) .cb-account-choice:hover {
+  background: var(--surface-container-low) !important;
+  border-color: var(--outline) !important;
+}
+
+html:not(.dark) .cb-account-choice-icon {
+  background: color-mix(in srgb, var(--cb-accent) 10%, var(--surface-container-low)) !important;
+  color: var(--cb-accent) !important;
+}
+
+html:not(.dark) .cb-account-choice-check {
+  border-color: var(--outline) !important;
+}
+
+html[class*="theme-"] .cb-account-choice.is-selected,
+html[class*="theme-"] .cb-account-kind[aria-pressed="true"] {
+  border-color: var(--cb-accent) !important;
+  background: color-mix(in srgb, var(--cb-accent) 12%, var(--surface-container-lowest)) !important;
+  color: var(--cb-accent) !important;
+}
+
+html[class*="theme-"] .cb-account-choice.is-selected .cb-account-choice-icon {
+  background: color-mix(in srgb, var(--cb-accent) 18%, transparent) !important;
+  color: var(--cb-accent) !important;
+}
+
+html[class*="theme-"] .cb-account-choice.is-selected .cb-account-choice-check {
+  background: var(--cb-accent) !important;
+  border-color: var(--cb-accent) !important;
+}
+
+html[class*="theme-"] .cb-account-choice:has(input:focus-visible) {
+  outline-color: var(--cb-accent) !important;
+}
+
+/* Non-semantic primary actions should use the selected accent. Expense,
+ * income and destructive/success actions keep their semantic red/green. */
+html[class*="theme-"] .cb-submit-primary,
+html[class*="theme-"] .v35-form-sheet button[type="submit"]:not(.cb-submit-danger):not(.cb-submit-success):not(.cb-submit-purple),
+html[class*="theme-"] [role="dialog"]:has(#category-form-title) button.w-full.bg-primary,
+html[class*="theme-"] [role="dialog"]:has(#goal-form-title) button.w-full.bg-primary {
+  background: var(--cb-accent) !important;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--cb-accent) 20%, transparent) !important;
+}
+
+/* Wallet Summary is a floating quick-peek modal and had hardcoded navy utility
+ * colors. Keep its information hierarchy but let the surrounding surfaces and
+ * neutral text follow light mode. */
+html:not(.dark) [data-testid="wallet-summary-sheet"] {
+  background: linear-gradient(180deg, var(--surface-container-lowest), var(--surface-container-low)) !important;
+  border-color: var(--outline-variant) !important;
+  color: var(--on-surface) !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] > div:first-child {
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="bg-[#0d1929]"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="bg-[#122238]"] {
+  background: var(--surface-container-lowest) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="bg-[#251a24]"] {
+  background: color-mix(in srgb, var(--error-container) 58%, var(--surface-container-lowest)) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="border-[#"] {
+  border-color: var(--outline-variant) !important;
+}
+
+html:not(.dark) #wallet-summary-title,
+html:not(.dark) [data-testid="wallet-summary-sheet"] .text-white,
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#e"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#c"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#b"] {
+  color: var(--on-surface) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#7"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#6"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] [class*="text-[#9"] {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] button[aria-label="Back from wallet summary"],
+html:not(.dark) [data-testid="wallet-summary-sheet"] button[aria-label="Close wallet summary"] {
+  color: var(--on-surface-variant) !important;
+}
+
+html:not(.dark) [data-testid="wallet-summary-sheet"] button[aria-label="Back from wallet summary"]:hover,
+html:not(.dark) [data-testid="wallet-summary-sheet"] button[aria-label="Close wallet summary"]:hover {
+  background: var(--surface-container) !important;
+  color: var(--on-surface) !important;
+}
+
+/* Keep the drag handle visible in both appearances. */
+html:not(.dark) .v35-modal-frame > .v35-sheet-handle.v35-sheet-handle {
+  background: var(--outline) !important;
+}
