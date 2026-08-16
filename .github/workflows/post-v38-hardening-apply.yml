@@ -42,3 +42,5 @@ jobs:
           git add -A
           git commit -m "fix: apply post-v3.8 quality hardening"
           git push origin HEAD:fix/post-v38-quality-hardening
+
+# Temporary branch-only workflow. Remove before handing the branch back for local QA.
