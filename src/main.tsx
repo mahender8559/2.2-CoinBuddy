@@ -8,6 +8,7 @@ import './v35-form-showcase.css';
 import './v35-form-markup-exact.css';
 import './locked-form-system.css';
 import './locked-form-fixes.css';
+import './locked-form-transaction-polish.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
