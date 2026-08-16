@@ -18,20 +18,21 @@ test('v3.5 shell exposes intentional mobile and desktop navigation', async ({ pa
     await expect(page.getByTestId('app-header')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Add Transaction' })).toBeVisible();
 
-    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More' }).click();
-    await expect(page.getByRole('dialog', { name: 'More navigation' })).toBeVisible();
-    await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Accounts' }).click();
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Menu', exact: true }).click();
+    const menu = page.getByRole('dialog', { name: 'Money tools navigation', exact: true });
+    await expect(menu).toBeVisible();
+    await menu.getByRole('button', { name: 'Accounts', exact: true }).click();
     await expect(page.getByTestId('page-accounts')).toBeVisible();
 
-    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Sharing' }).click();
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Sharing', exact: true }).click();
     await expect(page.getByText('What do you want to do?')).toBeVisible();
   } else {
     await expect(page.getByTestId('desktop-sidebar')).toBeVisible();
     await expect(page.getByTestId('mobile-bottom-nav')).toBeHidden();
     await expect(page.getByTestId('app-header')).toBeVisible();
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Sharing' }).click();
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Sharing', exact: true }).click();
     await expect(page.getByText('What do you want to do?')).toBeVisible();
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Accounts' }).click();
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Accounts', exact: true }).click();
     await expect(page.getByTestId('page-accounts')).toBeVisible();
   }
 
