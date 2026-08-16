@@ -1,22 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-async function openTab(page: Page, name: string) {
-  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
-    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
+import { openAppDestination } from './helpers/navigation';
 
 async function loadDemo(page: Page) {
   await page.addInitScript(() => {
@@ -41,7 +24,7 @@ test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async 
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await loadDemo(page);
 
-  await openTab(page, 'Sharing');
+  await openAppDestination(page, 'Sharing');
 
   await expect(page.getByTestId('sharing-hub')).toBeVisible();
   await expect(page.getByText('What do you want to do?', { exact: true })).toBeVisible();
@@ -84,11 +67,11 @@ test('v3.4 Sharing hub keeps shared-finance tasks focused and navigable', async 
   await expect(loan).toContainText(/Rohan Rao/);
   await expect(loan).toContainText(/Direct lender payments/i);
 
-  await openTab(page, 'Insights');
+  await openAppDestination(page, 'Insights');
   await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
 
-  await openTab(page, 'Settings');
+  await openAppDestination(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Settings & Manage ⚙️', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Verify Data Integrity/i }).click();
   await expect(page.getByText('Integrity Verified', { exact: true })).toBeVisible();
