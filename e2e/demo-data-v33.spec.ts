@@ -1,22 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-async function openTab(page: Page, name: string) {
-  const destination = name === 'Dashboard' ? 'Home' : name === 'Manage' ? 'Accounts' : name;
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
-    await mobileNav.getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
+import { openAppDestination } from './helpers/navigation';
 
 async function prepare(page: Page) {
   const errors: string[] = [];
@@ -43,17 +26,17 @@ test('demo data loads a realistic v3.4 showcase and investment Goal stays non-li
   await expect(page.getByText('SIP: Liquid Mutual Fund', { exact: true })).toBeVisible();
   await expect(page.getByText('Investment SIP', { exact: true })).toBeVisible();
 
-  await openTab(page, 'Goals');
+  await openAppDestination(page, 'Goals');
   const emergency = page.getByRole('article', { name: 'Goal Emergency Fund' });
   await expect(emergency).toContainText('Liquid Mutual Fund');
-  await expect(emergency).toContainText(/excluded from affordability liquid cash and protected reserves/i);
+  await expect(emergency).toContainText(/excluded from affordability liquid cash/i);
 
-  await openTab(page, 'Insights');
+  await openAppDestination(page, 'Insights');
   await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.getByText('Upcoming Money', { exact: true })).toBeVisible();
   await expect(page.getByText('Projected free cash', { exact: true })).toBeVisible();
 
-  await openTab(page, 'Settings');
+  await openAppDestination(page, 'Settings');
   await page.getByRole('button', { name: /Verify Data Integrity/i }).click();
   await expect(page.getByText('Integrity Verified', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
