@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepareDemo(page: Page) {
   await page.addInitScript(() => {
@@ -11,10 +12,7 @@ async function prepareDemo(page: Page) {
   await demo.click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await page.goto('/?tab=manage');
-  await page.evaluate(() => {
-    document.dispatchEvent(new CustomEvent('coinbuddy:manage-destination', { detail: 'Goals' }));
-  });
+  await openAppDestination(page, 'Goals');
   await expect(page.getByTestId('page-goals')).toBeVisible();
 }
 
@@ -43,7 +41,11 @@ test('Goal can link multiple asset accounts and restores them when edited', asyn
   await expect(goal).toBeVisible();
   await expect(goal.getByText(/Progress tracked from/)).toBeVisible();
 
-  await goal.getByRole('button', { name: 'Edit Multi Account Goal', exact: true }).click();
+  await page.reload();
+  await openAppDestination(page, 'Goals');
+  const restoredGoal = page.getByRole('article', { name: 'Goal Multi Account Goal' });
+  await expect(restoredGoal).toBeVisible();
+  await restoredGoal.getByRole('button', { name: 'Edit Multi Account Goal', exact: true }).click();
   const editDialog = page.getByRole('dialog', { name: 'Edit Goal', exact: true });
   await expect(editDialog).toBeVisible();
   await editDialog.getByText('More options', { exact: true }).click();
