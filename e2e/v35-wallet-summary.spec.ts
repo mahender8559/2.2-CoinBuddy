@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openWalletSummary } from './helpers/navigation';
 
 async function prepareDemo(page: Page) {
   await page.addInitScript(() => {
@@ -15,21 +16,9 @@ async function prepareDemo(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
 }
 
-async function openWallet(page: Page) {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('app-header').getByRole('button', { name: 'Wallet Summary', exact: true }).click();
-    return;
-  }
-
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Wallet Summary', exact: true }).click();
-}
-
 test('wallet summary is a compact floating assets and liabilities quick peek', async ({ page }) => {
   await prepareDemo(page);
-  await page.goto('/?tab=dashboard');
-  await openWallet(page);
+  await openWalletSummary(page);
 
   const wallet = page.getByTestId('wallet-summary-sheet');
   await expect(wallet).toBeVisible();
@@ -63,6 +52,18 @@ test('wallet summary is a compact floating assets and liabilities quick peek', a
   expect(bounds!.y).toBeGreaterThan(8);
   expect(bounds!.x + bounds!.width).toBeLessThan(viewport!.width - 8);
   expect(bounds!.y + bounds!.height).toBeLessThan(viewport!.height - 8);
+
+  const radius = await wallet.evaluate(element => {
+    const styles = getComputedStyle(element);
+    return {
+      topLeft: Number.parseFloat(styles.borderTopLeftRadius),
+      bottomLeft: Number.parseFloat(styles.borderBottomLeftRadius),
+      bottomRight: Number.parseFloat(styles.borderBottomRightRadius),
+    };
+  });
+  expect(radius.bottomLeft).toBeGreaterThanOrEqual(16);
+  expect(radius.bottomRight).toBeGreaterThanOrEqual(16);
+  expect(Math.abs(radius.topLeft - radius.bottomLeft)).toBeLessThanOrEqual(2);
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
