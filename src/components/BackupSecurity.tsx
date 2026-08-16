@@ -15,8 +15,16 @@ import {
   BackupMetadata,
   DEFAULT_BACKUP_SETTINGS,
   getNextAutoBackupAt,
-  isDuplicateLedgerRestore,
+  assertRestoreIsNotDuplicate,
 } from '../utils/backupManager';
+import {
+  createBackupPasswordVerifier,
+  getSessionBackupPassword,
+  migrateLegacyBackupSettings,
+  sanitizeBackupSettings,
+  setSessionBackupPassword,
+  verifyBackupPassword,
+} from '../utils/backupSession';
 
 interface BackupSecurityProps {
   onBack: () => void;
@@ -27,57 +35,36 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
   const { accounts, transactions, categories, creditCards, currency, exportLedgerData, importLedgerData, verifyDataIntegrity, getStoredSetting, setStoredSetting } = useAppContext();
 
   // 1. State Management (Settings Store)
-  const [config, setConfig] = useState<BackupSettings>(() => {
-    const saved = localStorage.getItem('coinbuddy_backup_config');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          isAutoBackupEnabled: parsed.isAutoBackupEnabled ?? parsed.autoBackupEnabled ?? true,
-          backupFrequency: (parsed.backupFrequency || parsed.frequency || 'DAILY').toUpperCase() as any,
-          storageProvider: (parsed.storageProvider || (parsed.storageDestination === 'Google Drive' ? 'GOOGLE_DRIVE' : 'LOCAL')) as any,
-          isWifiOnly: parsed.isWifiOnly ?? parsed.wifiOnly ?? true,
-          hasPassword: Boolean(parsed.hasPassword && parsed.backupPassword),
-          backupPassword: parsed.hasPassword ? parsed.backupPassword : undefined,
-          lastBackupMetadata: parsed.lastBackupMetadata || (parsed.lastBackupDate ? {
-            date: parsed.lastBackupDate,
-            filename: parsed.lastBackupFilename || 'legacy_backup.enc',
-            size: parsed.lastBackupSize || '',
-            syncStatus: parsed.syncStatus || 'UP_TO_DATE',
-            accountCount: accounts.length,
-            transactionCount: transactions.length,
-            storageProvider: 'LOCAL',
-          } : undefined)
-        };
-      } catch (e) {}
-    }
-    return DEFAULT_BACKUP_SETTINGS;
-  });
+  const [config, setConfig] = useState<BackupSettings>(() => ({ ...DEFAULT_BACKUP_SETTINGS }));
+  const [backupSessionReady, setBackupSessionReady] = useState(() => Boolean(getSessionBackupPassword()));
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
-    void getStoredSetting('backupConfig').then(saved => {
-      if (saved && typeof saved === 'object') {
-        const stored = saved as BackupSettings;
-        setConfig({
-          ...stored,
-          storageProvider: stored.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL',
-          isWifiOnly: false,
-        });
-      } else {
+    void (async () => {
+      let raw: BackupSettings | null = null;
+      const saved = await getStoredSetting('backupConfig');
+      if (saved && typeof saved === 'object') raw = saved as BackupSettings;
+      if (!raw) {
         const legacy = localStorage.getItem('coinbuddy_backup_config');
         if (legacy) {
-          try { const parsed = JSON.parse(legacy) as BackupSettings; setConfig({ ...parsed, storageProvider: parsed.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL', isWifiOnly: false }); localStorage.removeItem('coinbuddy_backup_config'); } catch { /* ignore malformed legacy settings */ }
+          try { raw = JSON.parse(legacy) as BackupSettings; } catch { /* ignore malformed legacy settings */ }
+          localStorage.removeItem('coinbuddy_backup_config');
         }
       }
+      const normalized: BackupSettings = { ...DEFAULT_BACKUP_SETTINGS, ...(raw ?? {}), storageProvider: raw?.storageProvider === 'GOOGLE_DRIVE' ? 'GOOGLE_DRIVE' : 'LOCAL', isWifiOnly: false };
+      const migrated = await migrateLegacyBackupSettings(normalized);
+      const sanitized = sanitizeBackupSettings(migrated);
+      setConfig(sanitized);
+      setBackupSessionReady(Boolean(getSessionBackupPassword()));
+      if (raw?.backupPassword) await setStoredSetting('backupConfig', sanitized);
       setSettingsLoaded(true);
-    });
-  }, [getStoredSetting]);
+    })();
+  }, [getStoredSetting, setStoredSetting]);
 
   // SQLite is canonical; localStorage is read once above only for migration.
   useEffect(() => {
     if (!settingsLoaded) return;
-    void setStoredSetting('backupConfig', config).then(() => window.dispatchEvent(new Event('coinbuddy_backup_config_changed')));
+    void setStoredSetting('backupConfig', sanitizeBackupSettings(config)).then(() => window.dispatchEvent(new Event('coinbuddy_backup_config_changed')));
   }, [config, settingsLoaded, setStoredSetting]);
 
   // UI Feedback States
@@ -183,9 +170,10 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
 
   // Reconnect Storage Provider Action Handler
   const handleReconnectStorageProvider = async () => {
-    if (!config.hasPassword || !config.backupPassword) {
+    const sessionPassword = getSessionBackupPassword();
+    if (!config.hasPassword || !sessionPassword) {
       setIsPasswordModalOpen(true);
-      setBackupErrorMessage('Set a backup password before creating an encrypted backup.');
+      setBackupErrorMessage(config.hasPassword ? 'Unlock backup encryption for this session before reconnecting.' : 'Set a backup password before creating an encrypted backup.');
       return;
     }
     setIsReconnecting(true);
@@ -198,7 +186,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
 
       // 2. Perform fresh backup to verify connectivity
       const metadata = await BackupManager.executeManualBackup(
-        config.backupPassword,
+        sessionPassword,
         config.storageProvider,
         exportLedgerData()
       );
@@ -245,9 +233,10 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
 
   // 2. Wiring the 'Backup Now' Action
   const handleBackupNow = async () => {
-    if (!config.hasPassword || !config.backupPassword) {
+    const sessionPassword = getSessionBackupPassword();
+    if (!config.hasPassword || !sessionPassword) {
       setIsPasswordModalOpen(true);
-      setBackupErrorMessage('Set a backup password before creating an encrypted backup.');
+      setBackupErrorMessage(config.hasPassword ? 'Enter your backup password once to unlock backups for this session.' : 'Set a backup password before creating an encrypted backup.');
       return;
     }
     setIsBackingUp(true);
@@ -256,7 +245,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
 
     try {
       const metadata = await BackupManager.executeManualBackup(
-        config.backupPassword,
+        sessionPassword,
         config.storageProvider,
         exportLedgerData()
       );
@@ -277,36 +266,24 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
   };
 
   // Password Save Handler
-  const handleSavePassword = (e: React.FormEvent) => {
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (config.hasPassword && oldPwdInput !== config.backupPassword) {
-      setPwdError('Old password is incorrect');
-      return;
-    }
-    if (!pwdInput) {
-      setPwdError('Password cannot be empty');
-      return;
-    }
-    if (pwdInput.length < 4) {
-      setPwdError('Password must be at least 4 characters long');
-      return;
-    }
-    if (pwdInput !== pwdConfirm) {
-      setPwdError('Passwords do not match');
-      return;
-    }
-
-    setConfig(prev => ({
-      ...prev,
-      hasPassword: true,
-      backupPassword: pwdInput
-    }));
-
-    setIsPasswordModalOpen(false);
-    setOldPwdInput('');
-    setPwdInput('');
-    setPwdConfirm('');
     setPwdError(null);
+    if (config.hasPassword) {
+      const validOldPassword = await verifyBackupPassword(oldPwdInput, config.backupPasswordVerifier);
+      if (!validOldPassword) { setPwdError('Current backup password is incorrect'); return; }
+      if (!backupSessionReady) {
+        setSessionBackupPassword(oldPwdInput); setBackupSessionReady(true); setIsPasswordModalOpen(false); setOldPwdInput('');
+        setBackupSuccessMessage('Backup encryption unlocked for this session.'); return;
+      }
+    }
+    if (!pwdInput) return setPwdError('Password cannot be empty');
+    if (pwdInput.length < 4) return setPwdError('Password must be at least 4 characters long');
+    if (pwdInput !== pwdConfirm) return setPwdError('Passwords do not match');
+    const verifier = await createBackupPasswordVerifier(pwdInput);
+    setSessionBackupPassword(pwdInput); setBackupSessionReady(true);
+    setConfig(prev => sanitizeBackupSettings({ ...prev, hasPassword: true, backupPasswordVerifier: verifier }));
+    setIsPasswordModalOpen(false); setOldPwdInput(''); setPwdInput(''); setPwdConfirm(''); setPwdError(null);
     setBackupSuccessMessage('Master backup password updated successfully!');
     setTimeout(() => setBackupSuccessMessage(null), 4000);
   };
@@ -415,9 +392,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
         // 1. Upgrade schema
         const upgradedData = upgradeBackupData(decryptedRawJSON, { recomputeBalances: false });
 
-        if (await isDuplicateLedgerRestore(exportLedgerData(), upgradedData)) {
-          throw new Error('This backup contains the same ledger already on this device. Nothing was restored.');
-        }
+        await assertRestoreIsNotDuplicate(exportLedgerData(), upgradedData);
         
         // 2. Hydrate database
         // importLedgerData persists and refreshes the SQLite projection before it resolves.
@@ -723,7 +698,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
             className="bg-surface-container-high hover:bg-surface-variant border border-outline-variant/30 text-on-surface px-4 py-2.5 rounded-xl font-bold text-xs transition-colors shrink-0 flex items-center gap-2"
           >
             <Key className="w-4 h-4 text-primary" />
-            <span>{config.hasPassword ? 'Change Password' : 'Set Backup Password'}</span>
+            <span>{config.hasPassword ? (backupSessionReady ? 'Change Password' : 'Unlock Backups') : 'Set Backup Password'}</span>
           </button>
         </div>
       </div>
@@ -742,7 +717,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-on-surface">
-                    {config.hasPassword ? 'Change Backup Password' : 'Set Backup Password'}
+                    {config.hasPassword ? (backupSessionReady ? 'Change Backup Password' : 'Unlock Backup Encryption') : 'Set Backup Password'}
                   </h3>
                   <p className="text-xs text-on-surface-variant">Create a master passphrase to encrypt backups</p>
                 </div>
@@ -788,7 +763,8 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                 <div className="relative">
                   <input
                     type={showPwd ? 'text' : 'password'}
-                    required
+                    required={!config.hasPassword || backupSessionReady}
+                    disabled={config.hasPassword && !backupSessionReady}
                     value={pwdInput}
                     onChange={(e) => setPwdInput(e.target.value)}
                     placeholder="Enter passphrase"
@@ -812,7 +788,8 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                 <div className="relative">
                   <input
                     type={showConfirmPwd ? 'text' : 'password'}
-                    required
+                    required={!config.hasPassword || backupSessionReady}
+                    disabled={config.hasPassword && !backupSessionReady}
                     value={pwdConfirm}
                     onChange={(e) => setPwdConfirm(e.target.value)}
                     placeholder="Re-enter passphrase"
@@ -844,7 +821,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                   type="submit"
                   className="w-1/2 py-3 rounded-xl bg-primary text-on-primary font-bold text-xs hover:bg-primary/90 transition-colors shadow-sm"
                 >
-                  Save Password
+                  {config.hasPassword && !backupSessionReady ? 'Unlock Backups' : 'Save Password'}
                 </button>
               </div>
             </form>

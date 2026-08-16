@@ -6,6 +6,7 @@
 
 import { base64ToUint8Array, bufferToBase64 } from './encoding';
 import { migrateBackupDataToLatest } from './ledgerSchema';
+import { getSessionBackupPassword } from './backupSession';
 
 export interface BackupMetadata {
   date: string;
@@ -27,7 +28,9 @@ export interface BackupSettings {
   storageProvider: 'LOCAL' | 'GOOGLE_DRIVE' | 'CUSTOM';
   isWifiOnly: boolean;
   hasPassword: boolean;
+  /** @deprecated Legacy-only field. Never persist a raw backup password. */
   backupPassword?: string;
+  backupPasswordVerifier?: string;
   authExpired?: boolean;
   lastBackupMetadata?: BackupMetadata;
   /** Persisted so a remount or settings save cannot start another backup period early. */
@@ -99,6 +102,12 @@ export async function isDuplicateLedgerRestore(current: unknown, candidate: unkn
     createLedgerFingerprint(candidate),
   ]);
   return currentFingerprint === candidateFingerprint;
+}
+
+export async function assertRestoreIsNotDuplicate(current: unknown, candidate: unknown): Promise<void> {
+  if (await isDuplicateLedgerRestore(current, candidate)) {
+    throw new Error('This backup contains the same ledger already on this device. Nothing was restored.');
+  }
 }
 
 export function getBackupIntervalMs(frequency: BackupSettings['backupFrequency']): number {
@@ -450,13 +459,15 @@ export class BackupStorageAdapter {
         new Date(b.modifiedTime || 0).getTime() - new Date(a.modifiedTime || 0).getTime()
       );
       const expired = backups.slice(maxFiles);
-      await Promise.all(expired.map(async (backup: { id: string }) => {
+      const results = await Promise.allSettled(expired.map(async (backup: { id: string }) => {
         const deleteResponse = await fetch(`/api/google-drive/delete?id=${encodeURIComponent(backup.id)}`, { method: 'DELETE' });
         if (!deleteResponse.ok) {
           const error = await deleteResponse.json().catch(() => ({}));
           throw new Error(error.error || 'Unable to delete an expired Google Drive backup.');
         }
       }));
+      const failures = results.filter(result => result.status === 'rejected');
+      if (failures.length) console.warn(`Google Drive retention could not delete ${failures.length} expired backup(s).`);
       return;
     }
 
@@ -646,7 +657,8 @@ export class BackupManager {
       };
     }
 
-    if (!settings.hasPassword || !settings.backupPassword) {
+    const sessionPassword = getSessionBackupPassword() ?? settings.backupPassword;
+    if (!settings.hasPassword || !sessionPassword) {
       return null;
     }
 
@@ -656,7 +668,7 @@ export class BackupManager {
       }
 
       const metadata = await this.executeManualBackup(
-        settings.backupPassword,
+        sessionPassword,
         settings.storageProvider,
         ledgerData,
         { downloadLocal: false },
