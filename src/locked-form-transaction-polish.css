@@ -1,0 +1,113 @@
+/*
+ * Final transaction-form polish loaded after all legacy V3.5 compatibility
+ * layers. Keep the locked form in its JSX order and make mobile account cards
+ * readable without sacrificing the compact two-column picker.
+ */
+
+/* Legacy showcase CSS assigns flex order to transaction children based on old
+ * markup (including :has(input[name="fromAccount"])). Reset every direct child
+ * so the new form follows DOM order, then pin the submit action to the end. */
+[data-testid="transaction-form-sheet"] .cb-finance-form {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+[data-testid="transaction-form-sheet"] .cb-finance-form > * {
+  order: 0 !important;
+}
+
+[data-testid="transaction-form-sheet"] .cb-finance-form > .cb-finance-submit {
+  order: 100 !important;
+}
+
+/* The older showcase layer also applies generic input padding with !important.
+ * Give icon-bearing locked controls enough reserved space so the icon and text
+ * never occupy the same pixels. */
+[data-testid="transaction-form-sheet"] .cb-finance-control-with-icon > .cb-finance-control-icon {
+  left: 13px !important;
+  width: 16px;
+  height: 16px;
+}
+
+[data-testid="transaction-form-sheet"] .cb-finance-control-with-icon input.cb-finance-field,
+[data-testid="transaction-form-sheet"] .cb-finance-control-with-icon select.cb-finance-field {
+  padding-left: 42px !important;
+}
+
+/* Account choices: name remains a single concise line, while metadata/balance
+ * may wrap onto a second line instead of being clipped on narrow phones. */
+[data-testid="transaction-form-sheet"] .cb-account-choice-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+[data-testid="transaction-form-sheet"] .cb-account-choice-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+[data-testid="transaction-form-sheet"] .cb-account-choice-meta {
+  display: block;
+  margin-top: 3px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+@media (max-width: 639px) {
+  [data-testid="transaction-form-sheet"] .cb-account-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 218px;
+  }
+
+  [data-testid="transaction-form-sheet"] .cb-account-choice {
+    grid-template-columns: 28px minmax(0, 1fr) 18px;
+    align-items: start;
+    gap: 7px;
+    min-height: 72px;
+    padding: 9px 8px;
+  }
+
+  [data-testid="transaction-form-sheet"] .cb-account-choice-icon {
+    width: 28px;
+    height: 28px;
+    margin-top: 1px;
+  }
+
+  [data-testid="transaction-form-sheet"] .cb-account-choice-check {
+    width: 18px;
+    height: 18px;
+    margin-top: 5px;
+  }
+
+  [data-testid="transaction-form-sheet"] .cb-account-choice-name {
+    font-size: 11.5px;
+  }
+
+  [data-testid="transaction-form-sheet"] .cb-account-choice-meta {
+    font-size: 9.25px;
+    line-height: 1.35;
+  }
+
+  /* A transfer has two independent account groups. Keep both above the action
+   * and give each group enough breathing room before the next legend. */
+  [data-testid="transaction-form-sheet"] .cb-transfer-account-groups {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
+
+@media (max-width: 370px) {
+  [data-testid="transaction-form-sheet"] .cb-account-choice-grid {
+    grid-template-columns: 1fr;
+    max-height: 260px;
+  }
+}
