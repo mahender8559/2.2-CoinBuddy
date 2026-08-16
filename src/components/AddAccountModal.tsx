@@ -100,7 +100,7 @@ export function AddAccountModal() {
         (transaction.isOpeningBalance || transaction.transaction_type === 'OPENING_BALANCE') &&
         (transaction.account === editingCreditCard.id || transaction.toAccountId === editingCreditCard.id || transaction.fromAccountId === editingCreditCard.id)
       );
-      setBalance(openingTx ? Math.abs(openingTx.amount).toString() : String(editingCreditCard.balance || 0));
+      setBalance(openingTx ? Math.abs(openingTx.amount).toString() : '0');
       setLiabilityType('Credit Card');
       setDueAmount(String(editingCreditCard.dueAmount ?? ''));
       setDueDate(editingCreditCard.dueDate || '');
@@ -115,7 +115,7 @@ export function AddAccountModal() {
         (transaction.isOpeningBalance || transaction.transaction_type === 'OPENING_BALANCE') &&
         (transaction.account === editingAccount.id || transaction.toAccountId === editingAccount.id || transaction.fromAccountId === editingAccount.id)
       );
-      setBalance(openingTx ? Math.abs(openingTx.amount).toString() : String(editingAccount.balance || 0));
+      setBalance(openingTx ? Math.abs(openingTx.amount).toString() : '0');
       if (editingAccount.type === 'asset') {
         setGroup(editingAccount.group || 'Bank Account');
         setInvestmentMethod(editingAccount.investmentMethod || 'SIP');
@@ -214,7 +214,7 @@ export function AddAccountModal() {
     setGroup(nextMode === 'investment' ? 'Investment' : 'Bank Account');
   };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return showError('Enter a name.');
     if (balance === '' || !Number.isFinite(Number(balance))) return showError('Enter a valid balance.');
@@ -223,8 +223,8 @@ export function AddAccountModal() {
     if (mode === 'account') {
       const accountData = { name: name.trim(), type: 'asset' as const, balance: numBalance, group };
       try {
-        if (editingAccount) updateAccount(editingAccount.id, accountData);
-        else addAccount(accountData);
+        const result = editingAccount ? await updateAccount(editingAccount.id, accountData) : await addAccount(accountData);
+        if (!result.success) return showError(result.error || 'Unable to save this account.');
       } catch (err: unknown) {
         return showError(getErrorMessage(err, 'Unable to save this account.'));
       }
@@ -249,8 +249,10 @@ export function AddAccountModal() {
         } : {}),
       };
       try {
-        if (editingAccount) updateAccount(editingAccount.id, investmentData, { sipSourceAccountId });
-        else addAccount(investmentData, { sipSourceAccountId });
+        const result = editingAccount
+          ? await updateAccount(editingAccount.id, investmentData, { sipSourceAccountId })
+          : await addAccount(investmentData, { sipSourceAccountId });
+        if (!result.success) return showError(result.error || 'Unable to save this investment.');
       } catch (err: unknown) {
         return showError(getErrorMessage(err, 'Unable to save this investment.'));
       }
@@ -270,11 +272,9 @@ export function AddAccountModal() {
         limit: Math.abs(Number(limit) || 0),
       };
       try {
-        if (editingCreditCard) updateCreditCard(editingCreditCard.id, cardData);
-        else {
-          if (editingAccount) deleteAccount(editingAccount.id);
-          addCreditCard(cardData);
-        }
+        if (editingAccount && !editingCreditCard) return showError('Changing an existing account into a credit card is not supported. Delete it and add a credit card separately.');
+        const result = editingCreditCard ? await updateCreditCard(editingCreditCard.id, cardData) : await addCreditCard(cardData);
+        if (!result.success) return showError(result.error || 'Unable to save this credit card.');
       } catch (err: unknown) {
         return showError(getErrorMessage(err, 'Unable to save this credit card.'));
       }
@@ -323,11 +323,11 @@ export function AddAccountModal() {
     };
 
     try {
-      if (editingCreditCard) {
-        deleteAccount(editingCreditCard.id);
-        addAccount(loanData, { loanSharing });
-      } else if (editingAccount) updateAccount(editingAccount.id, loanData, { loanSharing });
-      else addAccount(loanData, { loanSharing });
+      if (editingCreditCard) return showError('Changing an existing credit card into a loan is not supported. Delete it and add the loan separately.');
+      const result = editingAccount
+        ? await updateAccount(editingAccount.id, loanData, { loanSharing })
+        : await addAccount(loanData, { loanSharing });
+      if (!result.success) return showError(result.error || 'Unable to save this loan.');
     } catch (err: unknown) {
       return showError(getErrorMessage(err, 'Unable to save this loan.'));
     }

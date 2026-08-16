@@ -112,7 +112,7 @@ export function PayCardModal() {
 
   const close = () => setPayCardModalState({ isOpen: false, cardId: null });
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const paymentAmount = Number(amount);
     if (!amount || isNaN(paymentAmount) || paymentAmount <= 0) return;
@@ -129,8 +129,12 @@ export function PayCardModal() {
     }
 
     const isFull = principalReduction >= balance;
-    if (selectedCard) payCreditCard(selectedCard.id, paymentAmount, fromAccountId);
-    else if (selectedLiability) payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId);
+    const result = selectedCard
+      ? await payCreditCard(selectedCard.id, paymentAmount, fromAccountId)
+      : selectedLiability
+        ? await payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId)
+        : { success: false, error: 'Payment target could not be found.' };
+    if (!result.success) return showError(result.error || 'Unable to save this payment.');
 
     setCelebration({
       active: true,

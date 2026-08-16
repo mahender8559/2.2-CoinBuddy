@@ -54,6 +54,7 @@ import { isSafeMathError, safeCompute, SAFE_MATH_ERRORS, getSafeNumericValue } f
 import { hashPasscode, isPasscodeHash, verifyPasscode as verifyPasscodeHash } from '../utils/passcode';
 import { getCycleDetailsForDay } from '../utils/cycles';
 import { isEventAssignableTransaction } from '../domain/eventRules';
+import { applyLoanRevisionProjection } from '../domain/loanRevisionProjection';
 import { advanceRecurringDate, shouldCreateInitialOccurrence, toLocalDateKey } from '../domain/recurring';
 import { ensureCategoryAffordabilityClass } from '../domain/categoryAffordability';
 import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
@@ -87,6 +88,7 @@ import {
 export { applyUndoRedoCommand };
 export type { UndoRedoCommand, AccountUndoState };
 type LoanSharingSaveConfig = { isShared: boolean; personalResponsibilityPercent: number; contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>> };
+type MutationResult = { success: boolean; error?: string };
 type LedgerImportData = {
   accounts?: Account[];
   transactions?: Transaction[];
@@ -131,21 +133,21 @@ interface AppContextType {
   getAccountBalance: (accountId: string) => number;
   accounts: Account[];
   calculateEmiSplit?: (balance: number, annualRate: number, emi: number) => { interestAmount: number; principalAmount: number };
-  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
-  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => void;
-  deleteAccount: (id: string) => void;
+  addAccount: (account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => Promise<MutationResult>;
+  updateAccount: (id: string, account: Omit<Account, 'id'>, options?: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig }) => Promise<MutationResult>;
+  deleteAccount: (id: string) => Promise<MutationResult>;
   editingAccount: Account | null;
   setEditingAccount: (account: Account | null) => void;
   editingCreditCard: CreditCardInfo | null;
   setEditingCreditCard: (card: CreditCardInfo | null) => void;
-  transferFunds: (amount: number, fromId: string, toId: string) => void;
+  transferFunds: (amount: number, fromId: string, toId: string) => Promise<MutationResult>;
   netWorth: number;
   transactions: Transaction[];
   addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<{ success: boolean; error?: string }>;
-  updateTransaction: (id: string, tx: Omit<Transaction, 'id'>) => { success: boolean; error?: string };
-  deleteTransaction: (id: string) => void;
-  approveTransaction: (id: string, date?: string) => { success: boolean; error?: string };
-  rejectTransaction: (id: string) => void;
+  updateTransaction: (id: string, tx: Omit<Transaction, 'id'>) => Promise<MutationResult>;
+  deleteTransaction: (id: string) => Promise<MutationResult>;
+  approveTransaction: (id: string, date?: string) => Promise<MutationResult>;
+  rejectTransaction: (id: string) => Promise<MutationResult>;
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
   recurringRules: RecurringRule[];
@@ -200,22 +202,22 @@ interface AppContextType {
   payCardModalState: {isOpen: boolean, cardId: string | null};
   setPayCardModalState: (val: {isOpen: boolean, cardId: string | null}) => void;
   loanRevisions: LoanRevision[];
-  addLoanRevision: (revision: Omit<LoanRevision, 'id'>) => void;
-  deleteLoanRevision: (id: string) => void;
+  addLoanRevision: (revision: Omit<LoanRevision, 'id'>) => Promise<MutationResult>;
+  deleteLoanRevision: (id: string) => Promise<MutationResult>;
   creditCards: CreditCardInfo[];
-  addCreditCard: (card: Omit<CreditCardInfo, 'id'>) => void;
-  updateCreditCard: (id: string, card: Omit<CreditCardInfo, 'id'>) => void;
-  payCreditCard: (cardId: string, amount: number, fromAccountId?: string) => void;
-  payLiability: (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => void;
-  deleteCreditCard: (cardId: string) => void;
+  addCreditCard: (card: Omit<CreditCardInfo, 'id'>) => Promise<MutationResult>;
+  updateCreditCard: (id: string, card: Omit<CreditCardInfo, 'id'>) => Promise<MutationResult>;
+  payCreditCard: (cardId: string, amount: number, fromAccountId?: string) => Promise<MutationResult>;
+  payLiability: (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => Promise<MutationResult>;
+  deleteCreditCard: (cardId: string) => Promise<MutationResult>;
   categories: Category[];
   events: Event[];
-  createEvent: (name: string) => Event;
+  createEvent: (name: string) => Promise<Event | null>;
   fetchEvents: () => Event[];
-  groupTransactionsToEvent: (transactionIds: string[], eventId: string | null) => void;
-  addCategory: (category: Omit<Category, 'id'>) => void;
-  updateCategory: (id: string, category: Omit<Category, 'id'>) => void;
-  deleteCategory: (id: string) => void;
+  groupTransactionsToEvent: (transactionIds: string[], eventId: string | null) => Promise<MutationResult>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<MutationResult>;
+  updateCategory: (id: string, category: Omit<Category, 'id'>) => Promise<MutationResult>;
+  deleteCategory: (id: string) => Promise<MutationResult>;
   profile: { name: string; email: string; avatar: string; offlineReady: boolean };
   setProfile: (val: { name: string; email: string; avatar: string; offlineReady: boolean }) => void;
   monthCycleDay: number;
@@ -505,7 +507,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loanRevisions: LoanRevision[];
     recurringRules: RecurringRule[];
   }) => {
-    setAccountRecords(stripAccountBalances(state.accounts));
+    setAccountRecords(stripAccountBalances(applyLoanRevisionProjection(state.accounts, state.loanRevisions)));
     setTransactions(state.transactions);
     setCategories(state.categories);
     setEvents(state.events);
@@ -996,320 +998,201 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return persistDbAction(() => skipRecurringRuleOccurrence(dbDriver, id));
   };
 
-  const updateTransaction = (id: string, newTx: Omit<Transaction, 'id'>): { success: boolean; error?: string } => {
+  const updateTransaction = async (id: string, newTx: Omit<Transaction, 'id'>): Promise<MutationResult> => {
     const existingTx = transactions.find(t => t.id === id);
-    if (existingTx?.isOpeningBalance) {
+    if (!existingTx) return { success: false, error: 'Transaction could not be found.' };
+    if (existingTx.isOpeningBalance) {
       throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
     }
-    if (existingTx?.transaction_type === 'BALANCE_ADJUSTMENT') {
+    if (existingTx.transaction_type === 'BALANCE_ADJUSTMENT') {
       throw new Error('Balance adjustments are immutable. Delete the adjustment and reconcile again if a correction is needed.');
     }
-    if (existingTx && existingTx.type !== newTx.type) {
+    if (existingTx.type !== newTx.type) {
       throw new Error('Transaction type cannot be changed after creation. Please delete and recreate the transaction if needed.');
     }
     const validation = validateTransaction(newTx, accounts, existingTx);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
+    if (!validation.valid) return { success: false, error: validation.error };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
 
-    const updatedTx = { ...newTx, id };
-    const nextTxs = transactions.map(t => t.id === id ? updatedTx : t);
+    const normalizedTx = { ...newTx, amount: Math.abs(Number(newTx.amount)) };
+    const updatedTx: Transaction = { ...normalizedTx, id };
+    const saved = await persistDbAction(() => updateTransactionRow(dbDriver, id, normalizedTx));
+    if (!saved) return { success: false, error: 'The transaction update could not be saved.' };
 
     pushCommand({
       entityType: 'transaction',
       actionType: 'update',
       previousState: existingTx,
-      newState: updatedTx
+      newState: updatedTx,
     });
-
-    setTransactions(nextTxs);
-
-    if (dbDriver) {
-      persistDbAction(() => updateTransactionRow(dbDriver, id, newTx));
-    }
-
     return { success: true };
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string): Promise<MutationResult> => {
     const tx = transactions.find(t => t.id === id);
-    if (tx?.isOpeningBalance) {
+    if (!tx) return { success: false, error: 'Transaction could not be found.' };
+    if (tx.isOpeningBalance) {
       throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
     }
-    if (tx) {
-      const nextTxs = transactions.filter(t => t.id !== id);
-      pushCommand({
-        entityType: 'transaction',
-        actionType: 'delete',
-        previousState: tx,
-        newState: null
-      });
-      setTransactions(nextTxs);
-      showToast('Transaction deleted', 'Undo', handleUndo);
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
 
-      if (dbDriver) {
-        persistDbAction(() => deleteTransactionRow(dbDriver, id));
-      }
-    } else {
-      setTransactions(txs => txs.filter(t => t.id !== id));
-      showToast('Transaction deleted', 'Undo', handleUndo);
-    }
+    const saved = await persistDbAction(() => deleteTransactionRow(dbDriver, id));
+    if (!saved) return { success: false, error: 'The transaction could not be deleted.' };
+
+    pushCommand({
+      entityType: 'transaction',
+      actionType: 'delete',
+      previousState: tx,
+      newState: null,
+    });
+    showToast('Transaction deleted', 'Undo', handleUndo);
+    return { success: true };
   };
 
-  const approveTransaction = (id: string, userSelectedDate?: string): { success: boolean; error?: string } => {
+  const approveTransaction = async (id: string, userSelectedDate?: string): Promise<MutationResult> => {
     const tx = transactions.find(t => t.id === id);
     if (!tx) return { success: false, error: 'Scheduled transaction could not be found.' };
     if (tx.is_verified !== 0) return { success: true };
-
-    // Confirmation is the point where a scheduled transaction becomes real,
-    // so normal balance/credit-limit validation is intentionally enforced here.
     return updateTransaction(id, {
       ...tx,
       date: userSelectedDate || tx.date,
-      is_verified: 1
+      is_verified: 1,
     });
   };
 
-  const rejectTransaction = (id: string) => {
-    deleteTransaction(id);
+  const rejectTransaction = (id: string): Promise<MutationResult> => deleteTransaction(id);
+
+  const addLoanRevision = async (revision: Omit<LoanRevision, 'id'>): Promise<MutationResult> => {
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    if (!accounts.some(account => account.id === revision.accountId)) return { success: false, error: 'Loan account could not be found.' };
+    const newRev: LoanRevision = { ...revision, id: crypto.randomUUID() };
+    const saved = await persistDbAction(() => insertLoanRevisionRow(dbDriver, newRev));
+    return saved ? { success: true } : { success: false, error: 'The loan revision could not be saved.' };
   };
 
-  const addLoanRevision = (revision: Omit<LoanRevision, 'id'>) => {
-    const newId = crypto.randomUUID();
-    const accId = revision.accountId;
-    const newRev: LoanRevision = {
-      ...revision,
-      id: newId,
-      accountId: accId,
-      effectiveDate: revision.effectiveDate,
-      newInterestRate: revision.newInterestRate,
-      newEmi: revision.newEmi,
-      newTenureMonths: revision.newTenureMonths,
-      paymentFrequency: revision.paymentFrequency,
-    };
-
-    setLoanRevisions(prev => [...prev, newRev]);
-    setAccountRecords(prevAccs => prevAccs.map(acc => {
-      if (acc.id === accId) {
-        const existing = acc.revisions || [];
-        return {
-          ...acc,
-          interestRate: newRev.newInterestRate,
-          monthlyEMI: newRev.newEmi,
-          tenureMonths: newRev.newTenureMonths,
-          paymentFrequency: newRev.paymentFrequency || acc.paymentFrequency,
-          revisions: [...existing, newRev]
-        };
-      }
-      return acc;
-    }));
-
-    if (dbDriver) {
-      persistDbAction(() => insertLoanRevisionRow(dbDriver, newRev));
-    }
-  };
-
-  const deleteLoanRevision = (id: string) => {
+  const deleteLoanRevision = async (id: string): Promise<MutationResult> => {
     const revision = loanRevisions.find(item => item.id === id);
-    if (!revision) return;
-    const accountsBeforeDelete = accountRecords;
-    setLoanRevisions(prev => prev.filter(r => r.id !== id));
-    setAccountRecords(prevAccs => prevAccs.map(acc => {
-      if (acc.revisions) {
-        return {
-          ...acc,
-          revisions: acc.revisions.filter(r => r.id !== id)
-        };
-      }
-      return acc;
-    }));
-
-    if (dbDriver) {
-      persistDbAction(() => deleteLoanRevisionRow(dbDriver, id));
-    }
+    if (!revision) return { success: false, error: 'Loan revision could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    const saved = await persistDbAction(() => deleteLoanRevisionRow(dbDriver, id));
+    if (!saved) return { success: false, error: 'The loan revision could not be deleted.' };
     showToast('Loan revision deleted', 'Undo', () => {
-      setLoanRevisions(prev => prev.some(item => item.id === revision.id) ? prev : [...prev, revision]);
-      setAccountRecords(accountsBeforeDelete);
-      if (dbDriver) persistDbAction(() => insertLoanRevisionRow(dbDriver, revision));
+      void persistDbAction(() => insertLoanRevisionRow(dbDriver, revision));
     });
+    return { success: true };
   };
 
-  const addCreditCard = (card: Omit<CreditCardInfo, 'id'>) => {
+  const addCreditCard = async (card: Omit<CreditCardInfo, 'id'>): Promise<MutationResult> => {
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     const newId = crypto.randomUUID();
-    const initialBalance = card.balance || 0;
+    const initialBalance = Math.max(0, Number(card.balance) || 0);
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
     const newAccount: Account = { id: newId, name: card.name, type: 'liability', group: 'Credit Card', balance: 0, limit: card.limit };
+    const openingTransactionId = initialBalance > 0 ? crypto.randomUUID() : undefined;
+    const saved = await persistDbAction(() => insertCreditCardAccount(dbDriver, newAccount, newCard, initialBalance, openingTransactionId));
+    return saved ? { success: true } : { success: false, error: 'The credit card could not be saved.' };
+  };
 
-    setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
-    setAccountRecords(prev => [newAccount, ...prev]);
-
-    let openingTx: Transaction | null = null;
-    if (initialBalance > 0) {
-      const now = new Date();
-      const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      const newOpeningTx: Transaction = {
-        id: crypto.randomUUID(),
-        title: 'Opening Balance',
-        subtitle: `${formattedDate} • Initial Debt`,
-        amount: initialBalance,
-        date: now.toISOString(),
-        category: '#opening',
-        icon: 'CreditCard',
-        type: 'expense',
-        account: newId,
-        fromAccountId: newId,
-        isOpeningBalance: true,
-        transaction_type: 'OPENING_BALANCE'
-      };
-      openingTx = newOpeningTx;
-      setTransactions(prev => [newOpeningTx, ...prev]);
-    }
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await insertCreditCardAccount(dbDriver, newAccount, newCard, initialBalance, openingTx?.id);
-      });
-    }
-  };  
-  const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
+  const updateCreditCard = async (id: string, card: Omit<CreditCardInfo, 'id'>): Promise<MutationResult> => {
     const targetAccount = accounts.find(a => a.id === id);
-    if (!targetAccount) return;
-
+    if (!targetAccount) return { success: false, error: 'Credit card account could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     if (card.limit < targetAccount.balance) {
       throw new Error('Credit limit cannot be lower than the current outstanding balance.');
     }
 
-    const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening') &&
+    const existingOpening = transactions.find(t =>
+      (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
     );
-
     const updatedCard: CreditCardInfo = { ...card, id, balance: 0 };
+    const openingAmount = Math.max(0, Number(card.balance) || 0);
+    let newOpeningTx: Transaction | null = null;
+    if (!existingOpening && openingAmount > 0) {
+      const now = new Date();
+      newOpeningTx = {
+        id: crypto.randomUUID(),
+        title: 'Opening Balance',
+        subtitle: `${now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • Initial Debt`,
+        amount: openingAmount,
+        date: now.toISOString(),
+        category: '#opening',
+        icon: 'CreditCard',
+        type: 'expense',
+        account: id,
+        fromAccountId: id,
+        isOpeningBalance: true,
+        transaction_type: 'OPENING_BALANCE',
+      };
+    }
 
-    if (existingTxIndex >= 0) {
-      const newAmount = card.balance;
-      setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? { ...t, amount: newAmount } : t));
-      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
-      setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
-    } else {
-      if (card.balance > 0) {
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const openingTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: card.balance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'CreditCard',
-          type: 'expense',
-          account: id,
-          fromAccountId: id,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-        setTransactions(prev => [...prev, openingTx]);
-        if (dbDriver) {
-          persistDbAction(() => insertTransactionRow(dbDriver, openingTx));
-        }
+    const saved = await persistDbAction(async () => {
+      await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: 0 });
+      if (existingOpening) {
+        if (openingAmount > 0) await updateOpeningBalance(dbDriver, id, openingAmount);
+        else await deleteTransactionRow(dbDriver, existingOpening.id);
+      } else if (newOpeningTx) {
+        await insertTransactionRow(dbDriver, newOpeningTx);
       }
-      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
-      setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
-    }
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: 0 });
-        // The entered card balance is an opening-ledger transaction, not card
-        // metadata. Persist its edit through the same authoritative path used
-        // for normal account opening balances.
-        if (existingTxIndex >= 0) {
-          await updateOpeningBalance(dbDriver, id, card.balance);
-        }
-        await updateCreditCardRow(dbDriver, updatedCard);
-      });
-    }
+      await updateCreditCardRow(dbDriver, updatedCard);
+    });
+    return saved ? { success: true } : { success: false, error: 'The credit card update could not be saved.' };
   };
 
-  const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
+  const addAccount = async (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}): Promise<MutationResult> => {
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     const newId = crypto.randomUUID();
-    const initialBalance = account.balance || 0;
+    const initialBalance = Math.max(0, Number(account.balance) || 0);
     const newAccount: Account = { ...account, id: newId, balance: 0 };
-    
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
       const now = new Date();
       const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      
-      if (account.type === 'asset') {
-        openingTx = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: initialBalance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'Landmark',
-          type: 'income',
-          account: newId,
-          toAccountId: newId,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-      } else if (account.type === 'liability') {
-        openingTx = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Debt`,
-          amount: initialBalance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'Landmark',
-          type: 'expense',
-          account: newId,
-          fromAccountId: newId,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-      }
+      openingTx = {
+        id: crypto.randomUUID(),
+        title: 'Opening Balance',
+        subtitle: `${formattedDate} • ${account.type === 'asset' ? 'Initial Balance' : 'Initial Debt'}`,
+        amount: initialBalance,
+        date: now.toISOString(),
+        category: '#opening',
+        icon: 'Landmark',
+        type: account.type === 'asset' ? 'income' : 'expense',
+        account: newId,
+        toAccountId: account.type === 'asset' ? newId : undefined,
+        fromAccountId: account.type === 'liability' ? newId : undefined,
+        isOpeningBalance: true,
+        transaction_type: 'OPENING_BALANCE',
+      };
     }
 
-    pushCommand({
-      entityType: 'account',
-      actionType: 'add',
-      previousState: null,
-      newState: { account: newAccount, openingTx }
-    });
-
-    setAccountRecords(prev => [newAccount, ...prev]);
-    if (openingTx) {
-      setTransactions(prev => [openingTx, ...prev]);
-    }
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await dbDriver.execute('BEGIN TRANSACTION');
-        try {
-          await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
-          await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
-          }
-          await dbDriver.execute('COMMIT');
-          if (options.loanSharing) await refreshSharedFinance(dbDriver);
-        } catch (error) {
-          await dbDriver.execute('ROLLBACK');
-          throw error;
+    const saved = await persistDbAction(async () => {
+      await dbDriver.execute('BEGIN TRANSACTION');
+      try {
+        await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
+        await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
+        if (account.type === 'liability' && options.loanSharing) {
+          await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+          await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
         }
-      });
-    }
+        await dbDriver.execute('COMMIT');
+      } catch (error) {
+        await dbDriver.execute('ROLLBACK');
+        throw error;
+      }
+    });
+    if (!saved) return { success: false, error: 'The account could not be saved.' };
+    if (options.loanSharing) await refreshSharedFinance(dbDriver).catch(error => console.error('Unable to refresh loan sharing after account save:', error));
+
+    const complexMetadata = account.group === 'Investment' || Boolean(options.loanSharing);
+    if (complexMetadata) clearStacks();
+    else pushCommand({ entityType: 'account', actionType: 'add', previousState: null, newState: { account: newAccount, openingTx } });
+    return { success: true };
   };
 
-  const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
+  const updateAccount = async (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}): Promise<MutationResult> => {
     const targetAccount = accounts.find(a => a.id === id);
-    if (!targetAccount) return;
+    if (!targetAccount) return { success: false, error: 'Account could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
 
     if (targetAccount.type === 'liability' && account.type === 'liability' && account.limit !== targetAccount.limit) {
       const newLimit = Math.max(0, Number(account.limit ?? 0));
@@ -1318,153 +1201,133 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const existingTxIndex = transactions.findIndex(t => 
+    const existingOpening = transactions.find(t =>
       (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
       (t.account === id || t.toAccountId === id || t.fromAccountId === id)
-    );
-    
-
-    if (existingTxIndex >= 0) {
-      const newAmount = account.balance;
-      const updatedTx = { ...transactions[existingTxIndex], amount: newAmount };
-      const mergedAccount = {
-        ...account,
-        id,
-        balance: 0,
-        originalPrincipal: account.originalPrincipal || targetAccount.originalPrincipal || account.balance
+    ) ?? null;
+    const openingAmount = Math.max(0, Number(account.balance) || 0);
+    const mergedAccount: Account = {
+      ...account,
+      id,
+      balance: 0,
+      originalPrincipal: account.originalPrincipal || targetAccount.originalPrincipal || (account.type === 'liability' ? openingAmount : undefined),
+    };
+    let nextOpeningTx: Transaction | null = null;
+    if (existingOpening && openingAmount > 0) {
+      nextOpeningTx = { ...existingOpening, amount: openingAmount };
+    } else if (!existingOpening && openingAmount > 0) {
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      nextOpeningTx = {
+        id: crypto.randomUUID(),
+        title: 'Opening Balance',
+        subtitle: `${formattedDate} • ${account.type === 'asset' ? 'Initial Balance' : 'Initial Debt'}`,
+        amount: openingAmount,
+        date: now.toISOString(),
+        category: '#opening',
+        icon: account.type === 'asset' ? 'Landmark' : (account.group === 'Credit Card' ? 'CreditCard' : 'Building'),
+        type: account.type === 'asset' ? 'income' : 'expense',
+        account: id,
+        toAccountId: account.type === 'asset' ? id : undefined,
+        fromAccountId: account.type === 'liability' ? id : undefined,
+        isOpeningBalance: true,
+        transaction_type: 'OPENING_BALANCE',
       };
-      pushCommand({
-        entityType: 'account',
-        actionType: 'update',
-        previousState: { account: targetAccount, openingTx: transactions[existingTxIndex] },
-        newState: { account: mergedAccount, openingTx: updatedTx }
-      });
-
-      setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? updatedTx : t));
-      setAccountRecords(accs => accs.map(a => a.id === id ? mergedAccount : a));
-      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
-
-      if (dbDriver) {
-        persistDbAction(async () => {
-          await updateAccountRow(dbDriver, mergedAccount);
-          await updateOpeningBalance(dbDriver, id, account.balance);
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
-            await refreshSharedFinance(dbDriver);
-          }
-        });
-      }
-    } else {
-      let newOpeningTx: Transaction | null = null;
-      if (account.balance > 0) {
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const openingTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: account.balance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: account.type === 'asset' ? 'Landmark' : (account.group === 'Credit Card' ? 'CreditCard' : 'Building'),
-          type: account.type === 'asset' ? 'income' : 'expense',
-          account: id,
-          toAccountId: account.type === 'asset' ? id : undefined,
-          fromAccountId: account.type === 'liability' ? id : undefined,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-        newOpeningTx = openingTx;
-        setTransactions(prev => [...prev, openingTx]);
-      }
-      pushCommand({
-        entityType: 'account',
-        actionType: 'update',
-        previousState: { account: targetAccount, openingTx: null },
-        newState: { account: { ...account, id, balance: 0 }, openingTx: newOpeningTx }
-      });
-      setAccountRecords(accs => accs.map(a => a.id === id ? { ...account, id, balance: 0 } : a));
-      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
-
-      const mergedAccount = { ...account, id, balance: 0 };
-      if (dbDriver) {
-        persistDbAction(async () => {
-          await updateAccountRow(dbDriver, mergedAccount);
-          if (newOpeningTx) await insertTransactionRow(dbDriver, newOpeningTx);
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
-            await refreshSharedFinance(dbDriver);
-          }
-        });
-      }
     }
+
+    const saved = await persistDbAction(async () => {
+      await updateAccountRow(dbDriver, mergedAccount);
+      if (existingOpening) {
+        if (openingAmount > 0) await updateOpeningBalance(dbDriver, id, openingAmount);
+        else await deleteTransactionRow(dbDriver, existingOpening.id);
+      } else if (nextOpeningTx) {
+        await insertTransactionRow(dbDriver, nextOpeningTx);
+      }
+      await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: openingAmount }, options.sipSourceAccountId);
+      if (account.type === 'liability' && options.loanSharing) {
+        await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+        await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+      }
+    });
+    if (!saved) return { success: false, error: 'The account update could not be saved.' };
+    if (options.loanSharing) await refreshSharedFinance(dbDriver).catch(error => console.error('Unable to refresh loan sharing after account update:', error));
+
+    const complexMetadata = targetAccount.group === 'Investment' || account.group === 'Investment' || Boolean(options.loanSharing) || loanSharingRules.some(rule => rule.accountId === id);
+    if (complexMetadata) clearStacks();
+    else pushCommand({
+      entityType: 'account',
+      actionType: 'update',
+      previousState: { account: targetAccount, openingTx: existingOpening },
+      newState: { account: mergedAccount, openingTx: nextOpeningTx },
+    });
+    return { success: true };
   };
 
-  const deleteAccount = (id: string) => {
+  const deleteAccount = async (id: string): Promise<MutationResult> => {
     const targetAccount = accounts.find(a => a.id === id);
-    if (!targetAccount) return;
+    if (!targetAccount) return { success: false, error: 'Account could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+
     const openingTransactions = transactions.filter(transaction =>
       (transaction.isOpeningBalance || transaction.category === '#opening' || transaction.transaction_type === 'OPENING_BALANCE') &&
       (transaction.account === id || transaction.toAccountId === id || transaction.fromAccountId === id)
     );
     const relatedCard = creditCards.find(card => card.id === id);
-    clearStacks();
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await deleteAccountInDB(dbDriver, id);
-      });
-    }
-
-    const hasHistory = transactions.some(t => {
-      const isOpening = t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE';
+    const hasHistory = transactions.some(transaction => {
+      const isOpening = transaction.isOpeningBalance || transaction.category === '#opening' || transaction.transaction_type === 'OPENING_BALANCE';
       if (isOpening) return false;
-
-      const isInvolved = t.account === id || t.fromAccountId === id || t.toAccountId === id;
-      return isInvolved;
+      return transaction.account === id || transaction.fromAccountId === id || transaction.toAccountId === id;
     });
-
-    if (!hasHistory) {
-      setTransactions(prev => prev.filter(t => !(
-        (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
-        (t.account === id || t.fromAccountId === id || t.toAccountId === id)
-      )));
-      setAccountRecords(prev => prev.filter(a => a.id !== id));
-      setCreditCardRecords(prev => prev.filter(c => c.id !== id));
-    } else {
-      if (Math.abs(targetAccount.balance) > 0.0001) {
-        throw new Error("Account must have a zero balance before closing. Please transfer funds or log an expense.");
-      }
-      setAccountRecords(prev => prev.map(a => a.id === id ? { ...a, is_archived: 1 } : a));
-      setCreditCardRecords(prev => prev.filter(c => c.id !== id));
+    if (hasHistory && Math.abs(targetAccount.balance) > 0.0001) {
+      throw new Error('Account must have a zero balance before closing. Please transfer funds or log an expense.');
     }
-    showToast(hasHistory ? 'Account archived' : 'Account deleted', 'Undo', () => {
-      if (hasHistory) {
-        setAccountRecords(prev => prev.map(account => account.id === id ? { ...account, is_archived: 0 } : account));
-        if (relatedCard) setCreditCardRecords(prev => prev.some(card => card.id === id) ? prev : [relatedCard, ...prev]);
-        if (dbDriver) persistDbAction(() => updateAccountRow(dbDriver, { ...targetAccount, is_archived: 0 }));
-      } else {
-        setAccountRecords(prev => prev.some(account => account.id === id) ? prev : [targetAccount, ...prev]);
-        setTransactions(prev => [...openingTransactions.filter(transaction => !prev.some(existing => existing.id === transaction.id)), ...prev]);
-        if (relatedCard) setCreditCardRecords(prev => prev.some(card => card.id === id) ? prev : [relatedCard, ...prev]);
-        if (dbDriver) persistDbAction(async () => {
-          await insertAccountRow(dbDriver, targetAccount, 0);
-          for (const transaction of openingTransactions) await insertTransactionRow(dbDriver, transaction);
-          if (relatedCard) await insertCreditCardRow(dbDriver, relatedCard);
-        });
+
+    const hasComplexMetadata = targetAccount.group === 'Investment' || loanSharingRules.some(rule => rule.accountId === id);
+    const saved = await persistDbAction(async () => {
+      if (!hasHistory && targetAccount.group === 'Investment' && targetAccount.investmentMethod === 'SIP') {
+        await syncInvestmentSipRecurringRule(dbDriver, id, { ...targetAccount, investmentMethod: 'Lump Sum', monthlySIPAmount: 0 }, undefined);
       }
+      await deleteAccountInDB(dbDriver, id);
+      if (hasHistory && relatedCard) await deleteCreditCardRow(dbDriver, id);
     });
+    if (!saved) return { success: false, error: 'The account could not be deleted.' };
+
+    clearStacks();
+    if (!hasHistory && hasComplexMetadata) {
+      showToast('Account deleted');
+      return { success: true };
+    }
+
+    showToast(hasHistory ? 'Account archived' : 'Account deleted', 'Undo', () => {
+      void (async () => {
+        if (hasHistory) {
+          await persistDbAction(async () => {
+            await updateAccountRow(dbDriver, { ...targetAccount, is_archived: 0, balance: 0 });
+            if (relatedCard) await insertCreditCardRow(dbDriver, relatedCard);
+          });
+          return;
+        }
+        await persistDbAction(async () => {
+          await dbDriver.execute('BEGIN TRANSACTION');
+          try {
+            await insertAccountRow(dbDriver, { ...targetAccount, balance: 0 }, 0, undefined, false);
+            for (const transaction of openingTransactions) await insertTransactionRow(dbDriver, transaction);
+            if (relatedCard) await insertCreditCardRow(dbDriver, relatedCard);
+            await dbDriver.execute('COMMIT');
+          } catch (error) {
+            await dbDriver.execute('ROLLBACK');
+            throw error;
+          }
+        });
+      })();
+    });
+    return { success: true };
   };
 
-  const transferFunds = (amount: number, fromId: string, toId: string) => {
+  const transferFunds = (amount: number, fromId: string, toId: string): Promise<MutationResult> => {
     const fromAccount = accounts.find(a => a.id === fromId);
     const toAccount = accounts.find(a => a.id === toId);
-
-    void addTransaction({
+    return addTransaction({
       title: `Transfer: ${fromAccount?.name || 'Unknown'} to ${toAccount?.name || 'Unknown'}`,
       subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       amount: Math.abs(amount),
@@ -1477,34 +1340,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const payCreditCard = (cardId: string, amount: number, fromAccountId?: string) => {
+  const payCreditCard = (cardId: string, amount: number, fromAccountId?: string): Promise<MutationResult> => {
     const defaultAsset = fromAccountId || accounts.find(a => a.type === 'asset')?.id || 'checking';
-    transferFunds(amount, defaultAsset, cardId);
+    return transferFunds(amount, defaultAsset, cardId);
   };
 
-  const payLiability = async (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => {
-    if (pendingLiabilityPayments.current.has(id)) {
-      window.alert('A payment for this liability is already being saved. Please wait.');
-      return;
-    }
+  const payLiability = async (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string): Promise<MutationResult> => {
+    if (pendingLiabilityPayments.current.has(id)) return { success: false, error: 'A payment for this liability is already being saved.' };
     pendingLiabilityPayments.current.add(id);
     try {
-      if (!dbDriver) {
-        window.alert('The local ledger is still loading. Please try again in a moment.');
-        return;
-      }
-
+      if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
       const defaultAsset = fromAccountId || accounts.find(a => a.type === 'asset')?.id || 'checking';
       const liabilityAcc = accounts.find(a => a.id === id);
+      if (!liabilityAcc) return { success: false, error: 'Liability account could not be found.' };
 
       let pAmount = principalAmount;
       let iAmount = interestAmount;
-
       if (pAmount === undefined || iAmount === undefined) {
-        if (liabilityAcc && (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined)) {
-          const rate = liabilityAcc.interestRate ?? 0;
-          const type = liabilityAcc.interestCalculationType || 'REDUCING';
-          const split = calculateEmiSplit(liabilityAcc.balance, rate, amount, type);
+        if (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined) {
+          const split = calculateEmiSplit(liabilityAcc.balance, liabilityAcc.interestRate ?? 0, amount, liabilityAcc.interestCalculationType || 'REDUCING');
           pAmount = split.principalAmount;
           iAmount = split.interestAmount;
         } else {
@@ -1515,33 +1369,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const principal = Math.max(0, Number(pAmount ?? 0));
       const interest = Math.max(0, Number(iAmount ?? 0));
-      if (!Number.isFinite(principal) || !Number.isFinite(interest) || principal + interest <= 0) {
-        window.alert('Payment amount must be a positive number.');
-        return;
-      }
+      if (!Number.isFinite(principal) || !Number.isFinite(interest) || principal + interest <= 0) return { success: false, error: 'Payment amount must be a positive number.' };
 
       const sourceAccount = accounts.find(account => account.id === defaultAsset);
-      if (sourceAccount?.type === 'asset') {
+      if (!sourceAccount) return { success: false, error: 'Payment source account could not be found.' };
+      if (sourceAccount.type === 'asset') {
         const subtype = sourceAccount.group?.trim().toUpperCase();
-        const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT'
-          ? -Math.max(0, sourceAccount.overdraftLimit ?? 0)
-          : 0;
+        const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT' ? -Math.max(0, sourceAccount.overdraftLimit ?? 0) : 0;
         if (sourceAccount.balance - (principal + interest) < minimumBalance) {
-          window.alert(minimumBalance === 0
+          return { success: false, error: minimumBalance === 0
             ? `Insufficient funds in ${sourceAccount.name}. Asset balance cannot drop below 0.`
-            : `Insufficient funds in ${sourceAccount.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`);
-          return;
+            : `Insufficient funds in ${sourceAccount.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.` };
         }
       }
 
       const now = new Date();
       const subtitle = `Today • ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       const paymentTransactions: Transaction[] = [];
-
       if (principal > 0) {
         const principalTx: Transaction = {
           id: crypto.randomUUID(),
-          title: `Transfer: ${sourceAccount?.name || 'Unknown'} to ${liabilityAcc?.name || 'Unknown'}`,
+          title: `Transfer: ${sourceAccount.name} to ${liabilityAcc.name}`,
           subtitle,
           amount: principal,
           date: now.toISOString(),
@@ -1552,17 +1400,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toAccountId: id,
         };
         const validation = validateTransaction(principalTx, accounts);
-        if (!validation.valid) {
-          window.alert(validation.error || 'The principal payment is invalid.');
-          return;
-        }
+        if (!validation.valid) return { success: false, error: validation.error || 'The principal payment is invalid.' };
         paymentTransactions.push(principalTx);
       }
-
       if (interest > 0) {
         const interestTx: Transaction = {
           id: crypto.randomUUID(),
-          title: `Interest Payment: ${liabilityAcc?.name || 'Loan'}`,
+          title: `Interest Payment: ${liabilityAcc.name}`,
           subtitle,
           amount: interest,
           date: now.toISOString(),
@@ -1575,32 +1419,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
           isInterestOnly: true,
         };
         const validation = validateTransaction(interestTx, accounts);
-        if (!validation.valid) {
-          window.alert(validation.error || 'The interest payment is invalid.');
-          return;
-        }
+        if (!validation.valid) return { success: false, error: validation.error || 'The interest payment is invalid.' };
         paymentTransactions.push(interestTx);
       }
 
       const saved = await persistDbAction(() => insertLiabilityPaymentRows(dbDriver, paymentTransactions));
-      if (saved) {
-        pushCommand({
-          entityType: 'transactionBatch',
-          actionType: 'add',
-          previousState: null,
-          newState: paymentTransactions,
-        });
-      }
+      if (!saved) return { success: false, error: 'The liability payment could not be saved.' };
+      pushCommand({ entityType: 'transactionBatch', actionType: 'add', previousState: null, newState: paymentTransactions });
+      return { success: true };
     } finally {
       pendingLiabilityPayments.current.delete(id);
     }
   };
 
-  const deleteCreditCard = (cardId: string) => {
+  const deleteCreditCard = async (cardId: string): Promise<MutationResult> => {
     const card = creditCards.find(item => item.id === cardId);
-    if (!card) return;
-    setCreditCardRecords(cards => cards.filter(c => c.id !== cardId));
-    showToast('Credit card removed', 'Undo', () => setCreditCardRecords(cards => cards.some(item => item.id === card.id) ? cards : [card, ...cards]));
+    if (!card) return { success: false, error: 'Credit card could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    const saved = await persistDbAction(() => deleteCreditCardRow(dbDriver, cardId));
+    if (!saved) return { success: false, error: 'The credit card could not be removed.' };
+    showToast('Credit card removed', 'Undo', () => { void persistDbAction(() => insertCreditCardRow(dbDriver, card)); });
+    return { success: true };
   };
 
   const persistSavingsGoals = useCallback(async (nextGoals: SavingsGoal[]): Promise<boolean> => {
@@ -1637,59 +1476,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return ok;
   };
 
-  const addCategory = (category: Omit<Category, 'id'>) => {
+  const addCategory = async (category: Omit<Category, 'id'>): Promise<MutationResult> => {
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     const newCategory: Category = ensureCategoryAffordabilityClass({ ...category, id: crypto.randomUUID() });
-    setCategories(prev => [newCategory, ...prev]);
-    if (dbDriver) {
-      persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
-    }
+    const saved = await persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
+    return saved ? { success: true } : { success: false, error: 'The category could not be saved.' };
   };
 
-  const updateCategory = (id: string, category: Omit<Category, 'id'>) => {
+  const updateCategory = async (id: string, category: Omit<Category, 'id'>): Promise<MutationResult> => {
+    if (!categories.some(item => item.id === id)) return { success: false, error: 'Category could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     const normalizedCategory: Category = ensureCategoryAffordabilityClass({ ...category, id });
-    setCategories(cats => cats.map(c => c.id === id ? { ...c, ...normalizedCategory } : c));
-    if (dbDriver) {
-      persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
-    }
+    const saved = await persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
+    return saved ? { success: true } : { success: false, error: 'The category update could not be saved.' };
   };
 
-  const createEvent = (name: string): Event => {
+  const createEvent = async (name: string): Promise<Event | null> => {
     const normalizedName = name.trim();
     if (!normalizedName) throw new Error('Event name is required.');
     const existing = events.find(event => event.name.localeCompare(normalizedName, undefined, { sensitivity: 'accent' }) === 0);
     if (existing) return existing;
+    if (!dbDriver) return null;
     const event: Event = { id: crypto.randomUUID(), name: normalizedName, createdAt: new Date().toISOString() };
-    setEvents(previous => [event, ...previous]);
-    if (dbDriver) persistDbAction(() => insertEventRow(dbDriver, event));
-    return event;
+    const saved = await persistDbAction(() => insertEventRow(dbDriver, event));
+    return saved ? event : null;
   };
 
   const fetchEvents = () => events;
 
-const groupTransactionsToEvent = (transactionIds: string[], eventId: string | null) => {
-  const ids = transactionIds.filter(id => {
-    const transaction = transactions.find(item => item.id === id);
-    return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
-  });
-  if (!ids.length) return;
-  setTransactions(previous => previous.map(transaction =>
-    ids.includes(transaction.id) ? { ...transaction, eventId: eventId ?? undefined } : transaction
-  ));
-  if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
-};
-
-
-  const deleteCategory = (id: string) => {
-    const category = categories.find(item => item.id === id);
-    if (!category) return;
-    setCategories(cats => cats.filter(c => c.id !== id));
-    if (dbDriver) {
-      persistDbAction(() => deleteCategoryRow(dbDriver, id));
-    }
-    showToast('Category deleted', 'Undo', () => {
-      setCategories(cats => cats.some(item => item.id === category.id) ? cats : [category, ...cats]);
-      if (dbDriver) persistDbAction(() => insertCategoryRow(dbDriver, category));
+  const groupTransactionsToEvent = async (transactionIds: string[], eventId: string | null): Promise<MutationResult> => {
+    const ids = transactionIds.filter(id => {
+      const transaction = transactions.find(item => item.id === id);
+      return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
     });
+    if (!ids.length) return { success: false, error: 'No eligible transactions were selected.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    const saved = await persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
+    return saved ? { success: true } : { success: false, error: 'The event assignment could not be saved.' };
+  };
+
+  const deleteCategory = async (id: string): Promise<MutationResult> => {
+    const category = categories.find(item => item.id === id);
+    if (!category) return { success: false, error: 'Category could not be found.' };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
+    const saved = await persistDbAction(() => deleteCategoryRow(dbDriver, id));
+    if (!saved) return { success: false, error: 'The category could not be deleted.' };
+    showToast('Category deleted', 'Undo', () => { void persistDbAction(() => insertCategoryRow(dbDriver, category)); });
+    return { success: true };
   };
 
   const formatCurrency = (amount: number | string) => {
@@ -1794,14 +1627,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
         throw new Error('Import failed. Your existing ledger was left unchanged.');
       }
       const refreshed = await loadStateFromDatabase(dbDriver);
-      setAccountRecords(stripAccountBalances(refreshed.accounts));
-      setTransactions(refreshed.transactions);
-      setCategories(refreshed.categories);
-      setEvents(refreshed.events);
-      setCreditCardRecords(stripCardBalances(refreshed.creditCards));
-      setWidgets(refreshed.widgets);
-      setLoanRevisions(refreshed.loanRevisions);
-      setRecurringRules(refreshed.recurringRules);
+      setStateFromDbState(refreshed);
       await ensureSelfPerson(dbDriver, 'Me');
       await refreshSharedFinance(dbDriver);
       const restoredAppSettings = await loadAppSettings(dbDriver);
@@ -1814,13 +1640,14 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
         setIntegrityWarning(null);
       }
     } else {
-      if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
+      const importedLoanRevisions = Array.isArray(data.loanRevisions) ? data.loanRevisions : [];
+      if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(applyLoanRevisionProjection(data.accounts, importedLoanRevisions)));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);
       if (data.categories && Array.isArray(data.categories)) setCategories(data.categories);
       if (data.events && Array.isArray(data.events)) setEvents(data.events);
       if (data.creditCards && Array.isArray(data.creditCards)) setCreditCardRecords(stripCardBalances(data.creditCards));
       if (data.widgets && Array.isArray(data.widgets)) setWidgets(data.widgets);
-      if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(data.loanRevisions);
+      if (data.loanRevisions && Array.isArray(data.loanRevisions)) setLoanRevisions(importedLoanRevisions);
       if (data.recurringRules && Array.isArray(data.recurringRules)) setRecurringRules(data.recurringRules);
       setAffordabilitySettingsState(normalizeAffordabilitySettings(data.affordabilitySettings));
       setSavingsGoals(normalizeSavingsGoals(data.savingsGoals));

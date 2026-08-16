@@ -115,7 +115,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
 
   if (!isOpen || !account) return null;
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!calculation) return;
     const newRateNum = parseFloat(newRateStr);
@@ -141,7 +141,8 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
       paymentFrequency: newFrequency,
     };
 
-    addLoanRevision(newRevision);
+    const result = await addLoanRevision(newRevision);
+    if (!result.success) return;
     setSuccessMessage(`Interest rate revised to ${newRateNum}% effective ${effectiveDate}.`);
     window.setTimeout(() => {
       setSuccessMessage(null);
