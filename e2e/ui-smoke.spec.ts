@@ -41,14 +41,14 @@ test('primary navigation buttons work without runtime errors', async ({ page }) 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
-test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
+test('Pay down opens a usable Pay From dropdown', async ({ page }) => {
   const errors = await prepareApp(page);
   await openAppDestination(page, 'Accounts');
 
   const liabilityToggle = page.locator('[data-testid="account-group-loan"] button[aria-expanded], [data-testid="account-group-card"] button[aria-expanded]').first();
   await expect(liabilityToggle).toBeVisible();
   await liabilityToggle.click();
-  const payDown = page.getByRole('button', { name: 'Pay Down' }).first();
+  const payDown = page.getByRole('button', { name: 'Pay down', exact: true }).first();
   await expect(payDown).toBeVisible();
   await payDown.click();
 
