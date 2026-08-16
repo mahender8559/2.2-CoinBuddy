@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepare(page: Page, tab = 'dashboard') {
   const errors: string[] = [];
@@ -25,12 +26,7 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
   const loanCard = page.getByText('Car Loan', { exact: true }).locator('..').locator('..').locator('..');
   await expect(loanCard.getByRole('button', { name: 'Market', exact: true })).toHaveCount(0);
 
-  if (await mobileNav.isVisible()) {
-    await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
-    await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Categories', exact: true }).click();
-  } else {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Categories', exact: true }).click();
-  }
+  await openAppDestination(page, 'Categories');
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add category', exact: true }).click();
   await expect(page.getByText('Enable Rollover / Sinking Fund', { exact: true })).toHaveCount(0);
