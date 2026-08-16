@@ -97,9 +97,9 @@ test('Redo deletion survives a reload', async ({ page }) => {
   await expect((await pendingRow(page, marker))).toBeVisible();
 
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(page.getByText(new RegExp(marker))).not.toBeVisible();
+  await expect(page.getByText(new RegExp(marker))).toHaveCount(0);
 
   await page.reload();
   await openAppDestination(page, 'Activity');
-  await expect(page.getByText(new RegExp(marker))).not.toBeVisible();
+  await expect(page.getByText(new RegExp(marker))).toHaveCount(0);
 });
