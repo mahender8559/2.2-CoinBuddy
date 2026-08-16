@@ -64,8 +64,15 @@ test('locked finance form system uses the new responsive amount-first design', a
   const descriptionPadding = await description.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft));
   expect(descriptionPadding).toBeGreaterThanOrEqual(40);
 
-  await expect(transaction.getByLabel('Notes')).toBeAttached();
-  await expect(transaction.getByText('More options', { exact: true })).toBeVisible();
+  const moreOptions = transaction.getByText('More options', { exact: true });
+  await expect(moreOptions).toBeVisible();
+  await moreOptions.click();
+  const notes = transaction.getByLabel('Notes');
+  const event = transaction.getByLabel('Event / outing (optional)');
+  await expect(notes).toBeVisible();
+  await expect(event).toBeVisible();
+  expect(await notes.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
+  expect(await event.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
   await transaction.getByRole('button', { name: /Close edit transaction/i }).click();
 
   await openDestination(page, 'Accounts');
