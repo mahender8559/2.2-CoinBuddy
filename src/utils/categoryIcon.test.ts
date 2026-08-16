@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IconName } from '../icons';
 import { selectCategoryIcon } from './categoryIcon';
 
 describe('selectCategoryIcon', () => {
@@ -19,7 +20,7 @@ describe('selectCategoryIcon', () => {
   });
 
   it('does not duplicate a used icon when another library icon is available', () => {
-    const used = [
+    const used: IconName[] = [
       'Utensils', 'Coffee', 'Tag', 'ShoppingBag', 'CreditCard', 'Home', 'Car', 'Activity', 'Bell', 'Banknote',
     ];
     const categories = used.map((icon, index) => ({ id: String(index), icon }));
