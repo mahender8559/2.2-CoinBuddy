@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepare(page: Page) {
   await page.addInitScript(() => {
@@ -14,27 +15,12 @@ async function prepare(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
 }
 
-async function openDestination(page: Page, destination: 'Activity' | 'Categories') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-  const mobileNav = page.getByTestId('mobile-bottom-nav');
-  if (destination === 'Activity') {
-    await mobileNav.getByRole('button', { name: 'Activity', exact: true }).click();
-    return;
-  }
-  await mobileNav.getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
-
 test('v3.5 Categories is a compact budget and behavior list', async ({ page }, testInfo: TestInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
-  await openDestination(page, 'Categories');
+  await openAppDestination(page, 'Categories');
 
   await expect(page.getByTestId('page-categories')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Categories', exact: true })).toBeVisible();
@@ -44,9 +30,10 @@ test('v3.5 Categories is a compact budget and behavior list', async ({ page }, t
   await expect(page.getByText('Normal', { exact: true }).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Edit Groceries', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Edit category' })).toBeVisible();
-  await expect(page.getByLabel('Financial behavior')).toHaveValue('NORMAL');
-  await page.getByRole('button', { name: 'Close category form' }).click();
+  const categoryDialog = page.getByRole('dialog', { name: 'Edit Category', exact: true });
+  await expect(categoryDialog).toBeVisible();
+  await expect(categoryDialog.getByLabel('Financial behavior')).toHaveValue('NORMAL');
+  await categoryDialog.getByRole('button', { name: 'Close category form', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('v35-categories.png'), fullPage: false });
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -59,7 +46,7 @@ test('v3.5 transaction details hands an expense to Sharing without duplicating i
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
-  await openDestination(page, 'Activity');
+  await openAppDestination(page, 'Activity');
 
   const search = page.getByPlaceholder('Search transactions...');
   await search.fill('Dinner Out');
@@ -79,9 +66,7 @@ test('v3.5 transaction details hands an expense to Sharing without duplicating i
   await expect(page.getByLabel('Household total')).toHaveValue(/1,650|1650/);
   await expect(page.getByLabel('Link tracked expense')).toHaveValue('tx_dining');
 
-  // Opening Sharing only carries transient navigation intent. It must not
-  // create a second transaction before the user submits a shared obligation.
-  await openDestination(page, 'Activity');
+  await openAppDestination(page, 'Activity');
   await search.fill('Dinner Out');
   await expect(page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true })).toHaveCount(1);
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
