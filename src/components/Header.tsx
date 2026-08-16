@@ -12,7 +12,6 @@ type DashboardTargets = {
   netWorthAmount: HTMLElement | null;
   greetingRow: HTMLElement | null;
   cycleChip: HTMLElement | null;
-  incomeCard: HTMLElement | null;
   incomeCaption: HTMLElement | null;
 };
 
@@ -22,7 +21,6 @@ function DashboardQuickActions() {
     netWorthAmount: null,
     greetingRow: null,
     cycleChip: null,
-    incomeCard: null,
     incomeCaption: null,
   });
 
@@ -31,9 +29,12 @@ function DashboardQuickActions() {
       const netWorth = document.querySelector<HTMLElement>('[aria-label="Net Worth overview"]');
       const greetingSection = document.querySelector<HTMLElement>('[aria-labelledby="v35-dashboard-title"]');
       const greetingRow = greetingSection?.querySelector<HTMLElement>(':scope > div:first-child') ?? null;
-      const cycleChip = greetingRow?.querySelector<HTMLElement>(':scope > div:last-child') ?? null;
+      // The original cycle chip is always the second direct child of the greeting row.
+      // Do not use :last-child here because the portal itself becomes the last child.
+      const cycleChip = (greetingRow?.children.item(1) as HTMLElement | null) ?? null;
       const incomeCard = document.querySelector<HTMLElement>('[data-tour-id="tour-summary-widgets"]');
-      const incomeCaption = incomeCard?.querySelector<HTMLElement>(':scope > p:last-child') ?? null;
+      // Income card paragraphs are: amount, then the "This cycle" caption.
+      const incomeCaption = (incomeCard?.querySelectorAll<HTMLElement>('p').item(1)) ?? null;
       const netWorthAmount = netWorth?.querySelector<HTMLElement>(':scope > div:first-child > div:first-child > p:nth-of-type(2)') ?? null;
 
       setTargets(previous => {
@@ -41,10 +42,9 @@ function DashboardQuickActions() {
           previous.netWorthAmount === netWorthAmount
           && previous.greetingRow === greetingRow
           && previous.cycleChip === cycleChip
-          && previous.incomeCard === incomeCard
           && previous.incomeCaption === incomeCaption
         ) return previous;
-        return { netWorthAmount, greetingRow, cycleChip, incomeCard, incomeCaption };
+        return { netWorthAmount, greetingRow, cycleChip, incomeCaption };
       });
     };
 
@@ -58,11 +58,11 @@ function DashboardQuickActions() {
     const cycleChip = targets.cycleChip;
     const incomeCaption = targets.incomeCaption;
     if (cycleChip) cycleChip.style.display = 'none';
-    if (incomeCaption) incomeCaption.style.display = 'none';
+    if (incomeCaption) incomeCaption.style.whiteSpace = 'nowrap';
 
     return () => {
       if (cycleChip) cycleChip.style.display = '';
-      if (incomeCaption) incomeCaption.style.display = '';
+      if (incomeCaption) incomeCaption.style.whiteSpace = '';
     };
   }, [targets.cycleChip, targets.incomeCaption]);
 
@@ -72,7 +72,7 @@ function DashboardQuickActions() {
     window.dispatchEvent(new PopStateEvent('popstate', { state }));
   };
 
-  const cycleLabel = monthCycleDay > 1 ? `Cycle · starts day ${monthCycleDay}` : 'Current month';
+  const cycleLabel = monthCycleDay > 1 ? `Cycle starts day ${monthCycleDay}` : 'Calendar month';
 
   return (
     <>
@@ -120,15 +120,16 @@ function DashboardQuickActions() {
         targets.greetingRow,
       ) : null}
 
-      {targets.incomeCard ? createPortal(
-        <div
+      {targets.incomeCaption ? createPortal(
+        <span
           data-testid="dashboard-cycle-indicator"
-          className="mt-1 inline-flex min-h-6 items-center rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 text-[9.5px] font-semibold text-on-surface-variant sm:text-[10px]"
+          className="ml-1.5 inline-flex items-center text-[9.5px] font-semibold text-on-surface-variant sm:text-[10px]"
           aria-label={cycleLabel}
         >
+          <span aria-hidden="true" className="mr-1 text-outline">•</span>
           {cycleLabel}
-        </div>,
-        targets.incomeCard,
+        </span>,
+        targets.incomeCaption,
       ) : null}
     </>
   );
