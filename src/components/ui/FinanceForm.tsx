@@ -10,11 +10,13 @@ export function FinanceFormHeader({
   subtitle,
   onClose,
   closeLabel,
+  titleId,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   closeLabel: string;
+  titleId?: string;
 }) {
   return (
     <header className="cb-finance-header">
@@ -22,7 +24,7 @@ export function FinanceFormHeader({
         <ArrowLeft className="h-5 w-5" />
       </button>
       <div className="min-w-0 text-center">
-        <h2 className="cb-finance-title">{title}</h2>
+        <h2 id={titleId} className="cb-finance-title">{title}</h2>
         {subtitle ? <p className="cb-finance-subtitle">{subtitle}</p> : null}
       </div>
       <button type="button" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose} className="cb-finance-icon-button">
@@ -141,7 +143,7 @@ export function FinanceSection({
     <details className="cb-finance-section" open={defaultOpen}>
       <summary>
         <span>{title}</span>
-        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+        <ChevronDown className="h-4 w-4 transition-transform" />
       </summary>
       <div className="cb-finance-section-body">{children}</div>
     </details>
