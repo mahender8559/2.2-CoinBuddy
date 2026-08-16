@@ -65,14 +65,16 @@ const hasEventRestrictedSelection = selectedTransactions.some(transaction => !is
 const hasAssignedEventSelection = selectedTransactions.some(transaction => Boolean(transaction.eventId));
 
 
-  const deleteSelected = () => {
-    selectedIds.forEach(id => {
+  const deleteSelected = async () => {
+    for (const id of selectedIds) {
       try {
-        deleteTransaction(id);
-      } catch (e) {
-        console.error(e);
+        const result = await deleteTransaction(id);
+        if (!result.success) return;
+      } catch (error) {
+        console.error(error);
+        return;
       }
-    });
+    }
     setSelectedIds(new Set());
     setIsSelectionMode(false);
   };
@@ -90,19 +92,22 @@ const openEventPicker = () => {
   setEventPickerOpen(true);
 };
 
-const groupSelectedToEvent = () => {
+const groupSelectedToEvent = async () => {
   const name = eventName.trim();
   if (!selectedIds.size || !name || hasEventRestrictedSelection) return;
-  const event = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(name);
-  groupTransactionsToEvent([...selectedIds], event.id);
-  resetEventSelection();
+  const existingEvent = events.find(item => item.name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0);
+  const event = existingEvent ?? await createEvent(name);
+  if (!event) return;
+  const result = await groupTransactionsToEvent([...selectedIds], event.id);
+  if (result.success) resetEventSelection();
 };
 
-const unassignSelectedEvents = () => {
+const unassignSelectedEvents = async () => {
   if (!selectedIds.size) return;
-  groupTransactionsToEvent([...selectedIds], null);
-  resetEventSelection();
+  const result = await groupTransactionsToEvent([...selectedIds], null);
+  if (result.success) resetEventSelection();
 };
+
 
 
   const availableCycles
@@ -355,11 +360,15 @@ const unassignSelectedEvents = () => {
                 <div key={tx.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
                   <span className="min-w-0 text-sm font-medium text-on-surface">{tx.title} · <span className="font-numeric">{formatCurrency(tx.amount)}</span></span>
                   <input aria-label={`Confirmation date for ${tx.title}`} type="date" value={approvalDates[tx.id] ?? tx.date.slice(0, 10)} onChange={event => setApprovalDates(previous => ({ ...previous, [tx.id]: event.target.value }))} className="rounded-xl border border-outline-variant/35 bg-surface-container px-3 text-sm" />
-                  <button className="rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary" onClick={() => {
-                    const outcome = approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10));
+                  <button className="rounded-xl bg-primary px-3 text-xs font-semibold text-on-primary" onClick={() => { void (async () => {
+                    const outcome = await approveTransaction(tx.id, approvalDates[tx.id] ?? tx.date.slice(0, 10));
                     setApprovalErrors(previous => ({ ...previous, [tx.id]: outcome.success ? '' : (outcome.error || 'This scheduled transaction cannot be confirmed yet.') }));
-                  }}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
-                  <button className="rounded-xl border border-outline-variant/40 px-3 text-xs font-semibold text-on-surface-variant" onClick={() => { rejectTransaction(tx.id); setApprovalErrors(previous => ({ ...previous, [tx.id]: '' })); }}>Skip</button>
+                  })(); }}>{tx.type === 'income' ? 'Received ✓' : tx.type === 'expense' ? 'Paid ✓' : 'Transferred ✓'}</button>
+                  <button className="rounded-xl border border-outline-variant/40 px-3 text-xs font-semibold text-on-surface-variant" onClick={() => { void (async () => {
+                    const outcome = await rejectTransaction(tx.id);
+                    if (outcome.success) setApprovalErrors(previous => ({ ...previous, [tx.id]: '' }));
+                    else setApprovalErrors(previous => ({ ...previous, [tx.id]: outcome.error || 'This scheduled transaction could not be skipped.' }));
+                  })(); }}>Skip</button>
                   {approvalErrors[tx.id] ? <span role="alert" className="text-xs font-medium text-error sm:col-span-4">{approvalErrors[tx.id]} The item remains pending until it can be confirmed.</span> : null}
                 </div>
               ))}
@@ -423,7 +432,7 @@ const unassignSelectedEvents = () => {
                     isPending={tx.is_verified === 0}
                     type={tx.type}
                     onOpen={() => setDetailTransactionId(tx.id)}
-                    onDelete={tx.isOpeningBalance ? undefined : () => deleteTransaction(tx.id)}
+                    onDelete={tx.isOpeningBalance ? undefined : () => { void deleteTransaction(tx.id); }}
                     onEdit={tx.isOpeningBalance || isBalanceAdjustment ? undefined : () => {
                       setEditingTransaction(tx);
                       setAddModalOpen(true);
@@ -502,12 +511,12 @@ const unassignSelectedEvents = () => {
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           {hasAssignedEventSelection && (
-            <button type="button" onClick={unassignSelectedEvents} className="rounded-xl border border-error/30 px-4 py-2 text-sm font-semibold text-error hover:bg-error/10">Remove event</button>
+            <button type="button" onClick={() => { void unassignSelectedEvents(); }} className="rounded-xl border border-error/30 px-4 py-2 text-sm font-semibold text-error hover:bg-error/10">Remove event</button>
           )}
         </div>
         <div className="flex gap-3">
           <button type="button" onClick={() => setEventPickerOpen(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-variant">Cancel</button>
-          <button type="button" disabled={!eventName.trim()} onClick={groupSelectedToEvent} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">Assign event</button>
+          <button type="button" disabled={!eventName.trim()} onClick={() => { void groupSelectedToEvent(); }} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">Assign event</button>
         </div>
       </div>
     </div>
@@ -547,7 +556,7 @@ const unassignSelectedEvents = () => {
               Event
             </button>
             <button 
-              onClick={deleteSelected}
+              onClick={() => { void deleteSelected(); }}
               disabled={selectedIds.size === 0}
               className="w-12 h-12 bg-error/10 text-error rounded-xl flex items-center justify-center hover:bg-error hover:text-on-error transition-colors disabled:opacity-50"
               aria-label="Delete selected transactions"

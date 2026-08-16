@@ -94,6 +94,7 @@ export function syncCreditCardsWithAccounts(
     if (matchingAcc) {
       return {
         ...card,
+        name: matchingAcc.name,
         balance: matchingAcc.balance,
         limit: matchingAcc.limit ?? card.limit,
       };

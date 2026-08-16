@@ -27,6 +27,7 @@ export function PayCardModal() {
   const [isRateUpdateOpen, setIsRateUpdateOpen] = useState(false);
   const [fromAccountId, setFromAccountId] = useState('');
   const celebrationTimeout = useRef<number | null>(null);
+  const initializedPaymentTarget = useRef<string | null>(null);
 
   const activeAssetAccounts = accounts.filter(account => account.type === 'asset' && !account.is_archived);
   const selectedCard = creditCards.find(card => card.id === payCardModalState.cardId);
@@ -69,6 +70,15 @@ export function PayCardModal() {
   }, [celebration, setPayCardModalState]);
 
   useEffect(() => {
+    const targetId = payCardModalState.cardId;
+    if (!payCardModalState.isOpen || !targetId) {
+      initializedPaymentTarget.current = null;
+      return;
+    }
+    if (!selectedCard && !selectedLiability) return;
+    if (initializedPaymentTarget.current === targetId) return;
+
+    initializedPaymentTarget.current = targetId;
     setError(null);
     setPaymentMode('SCHEDULED');
     if (selectedCard) setAmount(selectedCard.dueAmount.toString());
@@ -77,7 +87,7 @@ export function PayCardModal() {
       setAmount(emiValue > 0 ? emiValue.toString() : '');
     }
     setCelebration(null);
-  }, [selectedCard, selectedLiability, payCardModalState.isOpen]);
+  }, [selectedCard, selectedLiability, payCardModalState.isOpen, payCardModalState.cardId]);
 
   const updateSplitForAmount = (newAmount: string, mode: 'SCHEDULED' | 'PREPAYMENT') => {
     setAmount(newAmount);
@@ -93,10 +103,32 @@ export function PayCardModal() {
   };
 
   useEffect(() => {
-    updateSplitForAmount(amount, paymentMode);
-    // Existing calculation intentionally refreshes when the selected liability or payment mode changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLiability, isLoan, annualRate, interestType, paymentMode]);
+    // The modal-opening effect sets the default EMI amount asynchronously. Do not
+    // write `amount` back from this effect: on the opening render it is still the
+    // previous empty value and would erase the EMI before the user can submit.
+    if (!isLoan || !selectedLiability) {
+      setPrincipalAmount('');
+      setInterestAmount('');
+      return;
+    }
+
+    const currentEmi = parseFloat(amount) || 0;
+    if (currentEmi <= 0) {
+      setPrincipalAmount('');
+      setInterestAmount('');
+      return;
+    }
+
+    const split = calculateEmiSplit(
+      selectedLiability.balance,
+      annualRate,
+      currentEmi,
+      interestType,
+      paymentMode === 'PREPAYMENT',
+    );
+    setPrincipalAmount(split.principalAmount.toString());
+    setInterestAmount(split.interestAmount.toString());
+  }, [amount, paymentMode, selectedLiability, isLoan, annualRate, interestType]);
 
   if (!payCardModalState.isOpen || (!selectedCard && !selectedLiability)) return null;
 
@@ -109,13 +141,17 @@ export function PayCardModal() {
   const iAmount = parseFloat(interestAmount) || 0;
   const principalReduction = isLoan && selectedLiability ? pAmount : numAmount;
   const newBalance = Math.max(0, balance - principalReduction);
+  const isPaymentReady = Boolean(fromAccountId) && numAmount > 0 && (!isLoan || pAmount + iAmount > 0);
 
   const close = () => setPayCardModalState({ isOpen: false, cardId: null });
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const paymentAmount = Number(amount);
-    if (!amount || isNaN(paymentAmount) || paymentAmount <= 0) return;
+    if (!amount || isNaN(paymentAmount) || paymentAmount <= 0 || (isLoan && pAmount + iAmount <= 0)) {
+      showError('Enter a valid payment amount before paying.');
+      return;
+    }
 
     if (paymentAmount > balance && (!isLoan || (isLoan && pAmount > balance))) {
       showError(`Credit amount is ${formatCurrency(balance)}. Do you want to pay the full amount?`);
@@ -129,8 +165,12 @@ export function PayCardModal() {
     }
 
     const isFull = principalReduction >= balance;
-    if (selectedCard) payCreditCard(selectedCard.id, paymentAmount, fromAccountId);
-    else if (selectedLiability) payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId);
+    const result = selectedCard
+      ? await payCreditCard(selectedCard.id, paymentAmount, fromAccountId)
+      : selectedLiability
+        ? await payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId)
+        : { success: false, error: 'Payment target could not be found.' };
+    if (!result.success) return showError(result.error || 'Unable to save this payment.');
 
     setCelebration({
       active: true,
@@ -249,7 +289,7 @@ export function PayCardModal() {
               </details>
             ) : null}
 
-            <button type="submit" disabled={activeAssetAccounts.length === 0 || !fromAccountId} data-testid="confirm-payment" className="v35-focus-ring mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-purple-400/20 bg-gradient-to-b from-[#812bd8] to-[#6821c4] text-[12px] font-semibold text-white shadow-[0_8px_18px_rgba(116,37,201,.24)] hover:from-[#9235e9] hover:to-[#7425d0] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={activeAssetAccounts.length === 0 || !isPaymentReady} data-testid="confirm-payment" className="v35-focus-ring mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-purple-400/20 bg-gradient-to-b from-[#812bd8] to-[#6821c4] text-[12px] font-semibold text-white shadow-[0_8px_18px_rgba(116,37,201,.24)] hover:from-[#9235e9] hover:to-[#7425d0] disabled:cursor-not-allowed disabled:opacity-50">
               <Sparkles className="h-4 w-4" /> Pay Now
             </button>
           </form>

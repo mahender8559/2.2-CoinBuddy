@@ -14,13 +14,13 @@ export function OnboardingModal() {
     {
       id: 'welcome',
       title: 'Welcome to CoinBuddy',
-      description: 'Your offline-first, highly secure financial ledger. Take complete control over your wealth with advanced tracking and zero-drift relational balances.',
+      description: 'Your local-first financial ledger with encrypted backups and consistency checks. Track accounts, transactions, planning, and shared finances from one ledger.',
       icon: Wallet,
     },
     {
       id: 'accounts',
       title: 'Accounts & Relational Ledger',
-      description: 'Create assets, liabilities, and track everything in a unified view. Real-time computed views ensure absolutely zero balance drift.',
+      description: 'Create assets and liabilities in a unified view. Computed balances come from ledger activity, with integrity checks available to detect inconsistencies.',
       icon: Database,
     },
     {
@@ -32,7 +32,7 @@ export function OnboardingModal() {
     {
       id: 'loans',
       title: 'Loans & Liability Tracking',
-      description: 'Specialized math support for bullet payments, EMI schedules, and variable interest loans. Know exactly how much you owe.',
+      description: 'Specialized math support for bullet payments, EMI schedules, and variable interest loans. Track what you owe and how repayment terms change.',
       icon: Shield,
     },
     {

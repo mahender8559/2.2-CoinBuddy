@@ -115,7 +115,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
 
   if (!isOpen || !account) return null;
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!calculation) return;
     const newRateNum = parseFloat(newRateStr);
@@ -141,7 +141,8 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
       paymentFrequency: newFrequency,
     };
 
-    addLoanRevision(newRevision);
+    const result = await addLoanRevision(newRevision);
+    if (!result.success) return;
     setSuccessMessage(`Interest rate revised to ${newRateNum}% effective ${effectiveDate}.`);
     window.setTimeout(() => {
       setSuccessMessage(null);
@@ -170,7 +171,7 @@ export function UpdateLoanRateModal({ isOpen, onClose, account }: UpdateLoanRate
 
         <div>
           <label htmlFor="new-interest-rate" className={labelClass}>New Interest Rate (%)</label>
-          <input id="new-interest-rate" type="number" step="0.05" min="0.01" required value={newRateStr} onChange={event => setNewRateStr(event.target.value)} placeholder={currentRate ? String(currentRate) : '9.25'} className={`${fieldClass} font-numeric`} />
+          <input id="new-interest-rate" type="number" step="0.01" min="0.01" required value={newRateStr} onChange={event => setNewRateStr(event.target.value)} placeholder={currentRate ? String(currentRate) : '9.25'} className={`${fieldClass} font-numeric`} />
         </div>
 
         <div>

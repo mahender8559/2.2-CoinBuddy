@@ -214,7 +214,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
         }
       }));
 
-      const providerName = config.storageProvider === 'GOOGLE_DRIVE' ? 'Google Drive' : config.storageProvider === 'CUSTOM' ? 'Custom Directory' : 'Local Storage';
+      const providerName = config.storageProvider === 'GOOGLE_DRIVE' ? 'Google Drive' : config.storageProvider === 'CUSTOM' ? 'Custom Directory' : 'Local backup storage';
       setBackupSuccessMessage(`Successfully reconnected to ${providerName}! Backup synchronized.`);
       setTimeout(() => setBackupSuccessMessage(null), 5000);
     } catch (err: any) {
@@ -247,7 +247,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
   const handleBackupNow = async () => {
     if (!config.hasPassword || !config.backupPassword) {
       setIsPasswordModalOpen(true);
-      setBackupErrorMessage('Set a backup password before downloading an encrypted backup.');
+      setBackupErrorMessage('Set a backup password before creating an encrypted backup.');
       return;
     }
     setIsBackingUp(true);
@@ -460,7 +460,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
         </button>
         <div>
           <h2 className="text-2xl font-bold text-on-surface">Backup & Security</h2>
-          <p className="text-xs text-on-surface-variant">Manage automated cloud backups, local encrypted files, and data restoration</p>
+          <p className="text-xs text-on-surface-variant">Manage scheduled backups, encrypted local copies, Google Drive, and data restoration</p>
         </div>
       </div>
 
@@ -545,10 +545,10 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                 )}
               </p>
               <div className="mt-3 grid gap-1.5 text-xs text-on-surface-variant sm:grid-cols-2">
-                <p><strong className="text-on-surface">Destination:</strong> {config.storageProvider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Local encrypted storage'}</p>
-                <p><strong className="text-on-surface">Next scheduled:</strong> {config.isAutoBackupEnabled && config.hasPassword ? new Date(getNextAutoBackupAt(config)).toLocaleString() : 'Not scheduled'}</p>
+                <p><strong className="text-on-surface">Destination:</strong> {config.storageProvider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Local encrypted backup history'}</p>
+                <p><strong className="text-on-surface">Next due:</strong> {config.isAutoBackupEnabled && config.hasPassword ? new Date(getNextAutoBackupAt(config)).toLocaleString() : 'Not scheduled'}</p>
                 <p><strong className="text-on-surface">Verified:</strong> {meta?.verifiedAt ? new Date(meta.verifiedAt).toLocaleString() : 'No verified backup yet'}</p>
-                <p><strong className="text-on-surface">Automation:</strong> {config.isAutoBackupEnabled ? 'App-wide scheduler active' : 'Off'}</p>
+                <p><strong className="text-on-surface">Automation:</strong> {config.isAutoBackupEnabled ? 'Runs while CoinBuddy is open' : 'Off'}</p>
               </div>
             </div>
           </div>
@@ -630,7 +630,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
               </div>
               <div>
                 <p className="font-semibold text-on-surface text-sm">Enable Automatic Backup</p>
-                <p className="text-xs text-on-surface-variant">Perform scheduled background synchronization</p>
+                <p className="text-xs text-on-surface-variant">Run scheduled backups while CoinBuddy is open</p>
               </div>
             </div>
             <button
@@ -680,7 +680,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
               </div>
               <div>
                 <p className="font-semibold text-on-surface text-sm">Storage Destination</p>
-                <p className="text-xs text-on-surface-variant">Location where backup files are saved</p>
+                <p className="text-xs text-on-surface-variant">Where encrypted backup copies are stored</p>
               </div>
             </div>
             <select
@@ -689,7 +689,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
               onChange={(e) => { void handleStorageProviderChange(e.target.value as BackupSettings['storageProvider']); }}
               className="bg-surface-container-highest border border-outline-variant/30 text-on-surface rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
             >
-              <option value="LOCAL">Local Device Storage</option>
+              <option value="LOCAL">CoinBuddy Local Backup</option>
               <option value="GOOGLE_DRIVE">Google Drive</option>
             </select>
           </div>
@@ -713,7 +713,7 @@ export function BackupSecurity({ onBack, initialAction }: BackupSecurityProps) {
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant mt-0.5">
-                {config.hasPassword ? 'Custom master passphrase set for encryption & restore' : 'Set a password before encrypted backups can be downloaded'}
+                {config.hasPassword ? 'Custom master passphrase set for encryption & restore' : 'Set a password before encrypted backups can be created'}
               </p>
             </div>
           </div>

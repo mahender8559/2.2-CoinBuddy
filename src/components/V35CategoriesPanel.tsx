@@ -104,7 +104,7 @@ export function V35CategoriesPanel() {
     return () => document.removeEventListener('openAddCategoryModal', handler);
   }, []);
 
-  const save = () => {
+  const save = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const payload = {
@@ -117,8 +117,8 @@ export function V35CategoriesPanel() {
       affordabilityClass: type === 'income' ? 'NORMAL' as AffordabilityClass : behavior,
       tags: editing?.tags,
     };
-    if (editing) updateCategory(editing.id, payload);
-    else addCategory(payload);
+    const result = editing ? await updateCategory(editing.id, payload) : await addCategory(payload);
+    if (!result.success) return;
     setModalOpen(false);
     resetDraft();
   };
@@ -166,7 +166,7 @@ export function V35CategoriesPanel() {
                     </div>
                   )}
                 </div>
-                <div className="flex shrink-0 gap-1"><button type="button" aria-label={`Edit ${category.name}`} onClick={() => openEdit(category)} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button><button type="button" aria-label={`Delete ${category.name}`} onClick={() => deleteCategory(category.id)} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button></div>
+                <div className="flex shrink-0 gap-1"><button type="button" aria-label={`Edit ${category.name}`} onClick={() => openEdit(category)} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Edit2 className="h-4 w-4" /></button><button type="button" aria-label={`Delete ${category.name}`} onClick={() => { void deleteCategory(category.id); }} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-4 w-4" /></button></div>
               </div>
             </article>
           );
@@ -230,7 +230,7 @@ export function V35CategoriesPanel() {
                 </details>
               ) : null}
 
-              <button type="button" onClick={save} disabled={!name.trim()} className="v35-focus-ring flex h-9 w-full items-center justify-center rounded-lg bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[11px] font-semibold text-white disabled:opacity-50">{editing ? 'Save Changes' : 'Save Category'}</button>
+              <button type="button" onClick={() => { void save(); }} disabled={!name.trim()} className="v35-focus-ring flex h-9 w-full items-center justify-center rounded-lg bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[11px] font-semibold text-white disabled:opacity-50">{editing ? 'Save Changes' : 'Save Category'}</button>
             </div>
           </div>
         </div>

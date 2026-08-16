@@ -275,9 +275,13 @@ export function AddTransactionModal() {
     }
 
     const eventName = groupId.trim();
-    const eventId = eventName
-      ? (events.find(item => item.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
-      : undefined;
+    let eventId: string | undefined;
+    if (eventName) {
+      const existingEvent = events.find(item => item.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0);
+      const event = existingEvent ?? await createEvent(eventName);
+      if (!event) return showError('Unable to save this event.');
+      eventId = event.id;
+    }
     const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
 
     const newTx = {
@@ -301,7 +305,7 @@ export function AddTransactionModal() {
       is_verified: shouldRemainPending ? 0 : 1,
     };
 
-    const result = editingTransaction ? updateTransaction(editingTransaction.id, newTx) : await addTransaction(newTx);
+    const result = editingTransaction ? await updateTransaction(editingTransaction.id, newTx) : await addTransaction(newTx);
     if (!result.success) return showError(result.error || 'Unable to save this transaction.');
     close();
   };

@@ -142,14 +142,18 @@ export function V35AccountsPanel() {
     setAddAccountModalType(account.type === 'liability' ? 'liability' : 'asset');
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!accountToDelete) return;
     try {
-      deleteAccount(accountToDelete.id);
+      const result = await deleteAccount(accountToDelete.id);
+      if (!result.success) {
+        setDeleteError(result.error || 'Failed to delete account');
+        return;
+      }
+      setAccountToDelete(null);
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Failed to delete account');
     }
-    setAccountToDelete(null);
   };
 
   const iconFor = (group: AccountGroupKey) => {
@@ -321,7 +325,7 @@ export function V35AccountsPanel() {
             <p className="mt-2 text-sm leading-6 text-on-surface-variant">Delete <strong className="text-on-surface">{accountToDelete.name}</strong>? Existing ledger history remains subject to CoinBuddy's current account deletion safeguards.</p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button onClick={() => setAccountToDelete(null)} className="v35-focus-ring min-h-11 rounded-xl border border-outline-variant/30 text-sm font-semibold text-on-surface">Cancel</button>
-              <button onClick={confirmDelete} className="v35-focus-ring min-h-11 rounded-xl bg-error text-sm font-semibold text-white">Delete</button>
+              <button onClick={() => { void confirmDelete(); }} className="v35-focus-ring min-h-11 rounded-xl bg-error text-sm font-semibold text-white">Delete</button>
             </div>
           </div>
         </div>

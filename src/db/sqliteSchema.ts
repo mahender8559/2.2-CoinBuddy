@@ -484,6 +484,7 @@ export const SQLITE_MIGRATIONS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction ON shared_obligations(transaction_id) WHERE transaction_id IS NOT NULL AND kind = 'EXPENSE';`,
   `UPDATE categories SET affordability_class = CASE LOWER(COALESCE(group_name, '')) WHEN 'savings' THEN 'SAVINGS' WHEN 'leisure' THEN 'FLEXIBLE' WHEN 'essential' THEN 'NORMAL' ELSE 'NORMAL' END WHERE affordability_class IS NULL OR affordability_class = '';`,
   `ALTER TABLE shared_obligations ADD COLUMN template_id TEXT;`,
+  `ALTER TABLE loan_revisions ADD COLUMN payment_frequency TEXT;`,
   `CREATE UNIQUE INDEX IF NOT EXISTS one_shared_obligation_per_template_date ON shared_obligations(template_id, due_date) WHERE template_id IS NOT NULL;`,
 ];
 
