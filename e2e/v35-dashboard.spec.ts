@@ -20,34 +20,39 @@ test('v3.5 dashboard presents the locked financial hierarchy', async ({ page }, 
   await expect(page.getByText('Goal Progress', { exact: true })).toBeVisible();
   await expect(page.getByText('Needs Attention', { exact: true })).toBeVisible();
 
-  const quickActions = page.getByTestId('dashboard-quick-actions');
-  await expect(quickActions).toBeVisible();
-  await expect(quickActions.getByRole('button', { name: /Hide balances|Show balances/ })).toBeVisible();
-  await expect(quickActions.getByRole('button', { name: 'Wallet Summary', exact: true })).toBeVisible();
-  await expect(quickActions.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  const privacy = page.getByTestId('dashboard-privacy-toggle');
+  await expect(privacy).toBeVisible();
+
+  const headerActions = page.getByTestId('dashboard-header-actions');
+  await expect(headerActions).toBeVisible();
+  await expect(headerActions.getByRole('button', { name: 'Wallet Summary', exact: true })).toBeVisible();
+  await expect(headerActions.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+
+  const incomeCard = page.locator('[data-tour-id="tour-summary-widgets"]');
+  const cycle = page.getByTestId('dashboard-cycle-indicator');
+  await expect(cycle).toBeVisible();
+  await expect(incomeCard).toContainText(await cycle.textContent() ?? '');
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('v35-dashboard.png'), fullPage: false });
 });
 
-test('net worth quick actions open privacy, wallet and settings controls', async ({ page }) => {
+test('repositioned dashboard shortcuts open privacy, wallet and settings controls', async ({ page }) => {
   await prepare(page);
 
-  const quickActions = page.getByTestId('dashboard-quick-actions');
-  await expect(quickActions).toBeVisible();
-
-  const privacy = quickActions.getByRole('button', { name: /Hide balances|Show balances/ });
+  const privacy = page.getByTestId('dashboard-privacy-toggle');
   const initialPrivacyLabel = await privacy.getAttribute('aria-label');
   await privacy.click();
   await expect(privacy).not.toHaveAttribute('aria-label', initialPrivacyLabel ?? '');
 
-  await quickActions.getByRole('button', { name: 'Wallet Summary', exact: true }).click();
+  const headerActions = page.getByTestId('dashboard-header-actions');
+  await headerActions.getByRole('button', { name: 'Wallet Summary', exact: true }).click();
   const wallet = page.getByTestId('wallet-summary-sheet');
   await expect(wallet).toBeVisible();
   await wallet.getByRole('button', { name: 'Close wallet summary', exact: true }).click();
 
-  await quickActions.getByRole('button', { name: 'Settings', exact: true }).click();
+  await headerActions.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\?tab=settings$/);
   await expect(page.getByTestId('page-settings')).toBeVisible();
 });
