@@ -60,6 +60,13 @@ import { AFFORDABILITY_SETTINGS_KEY, DEFAULT_AFFORDABILITY_SETTINGS, normalizeAf
 import { SAVINGS_GOALS_KEY, normalizeSavingsGoal, normalizeSavingsGoals } from '../domain/savingsGoals';
 import { buildPersonalExpenseRecords, type PersonalExpenseRecord } from '../domain/personalSpending';
 import {
+  applyUndoRedoCommand,
+  insertLiabilityPaymentRows,
+  persistUndoRedoCommand,
+  type AccountUndoState,
+  type UndoRedoCommand,
+} from '../domain/ledgerSafety';
+import {
   ensureSelfPerson,
   loadSharedFinanceState,
   createPerson as createSharedPersonRow,
@@ -77,13 +84,9 @@ import {
   type SharedFinanceState,
 } from '../db/sharedFinanceRepository';
 
-export type UndoRedoCommand = {
-  entityType: 'account' | 'transaction';
-  actionType: 'add' | 'update' | 'delete';
-  previousState: AccountUndoState | Transaction | null;
-  newState: AccountUndoState | Transaction | null;
-};
-export type AccountUndoState = { account: Account; openingTx: Transaction | null };
+export { applyUndoRedoCommand };
+export type { AccountUndoState, UndoRedoCommand };
+
 type LoanSharingSaveConfig = { isShared: boolean; personalResponsibilityPercent: number; contributions: Array<Omit<LoanContributionRule, 'id' | 'accountId'>> };
 type LedgerImportData = {
   accounts?: Account[];
@@ -242,36 +245,6 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-/** Applies a command without React state so every restore path is testable. */
-export function applyUndoRedoCommand(cmd: UndoRedoCommand, isUndo: boolean, accounts: Account[], transactions: Transaction[]) {
-  const targetState = isUndo ? cmd.previousState : cmd.newState;
-  const targetAction = isUndo ? (cmd.actionType === 'add' ? 'delete' : cmd.actionType === 'delete' ? 'add' : 'update') : cmd.actionType;
-  let nextTransactions = [...transactions];
-  let nextAccounts = [...accounts];
-  if (cmd.entityType === 'transaction') {
-    const transaction = targetState as Transaction;
-    if (targetAction === 'add') nextTransactions = [transaction, ...nextTransactions.filter(item => item.id !== transaction.id)];
-    else if (targetAction === 'delete') {
-      const removed = (isUndo ? cmd.newState : cmd.previousState) as Transaction;
-      nextTransactions = nextTransactions.filter(item => item.id !== removed.id);
-    } else nextTransactions = nextTransactions.map(item => item.id === transaction.id ? transaction : item);
-  } else {
-    const state = targetState as AccountUndoState;
-    if (targetAction === 'add') {
-      nextAccounts = [state.account, ...nextAccounts.filter(item => item.id !== state.account.id)];
-      if (state.openingTx) nextTransactions = [state.openingTx, ...nextTransactions.filter(item => item.id !== state.openingTx!.id)];
-    } else if (targetAction === 'delete') {
-      const stateToRemove = (isUndo ? cmd.newState : cmd.previousState) as AccountUndoState;
-      nextAccounts = nextAccounts.filter(item => item.id !== stateToRemove.account.id);
-      if (stateToRemove.openingTx) nextTransactions = nextTransactions.filter(item => item.id !== stateToRemove.openingTx!.id);
-    } else {
-      nextAccounts = nextAccounts.map(item => item.id === state.account.id ? state.account : item);
-      if (state.openingTx) nextTransactions = nextTransactions.map(item => item.id === state.openingTx!.id ? state.openingTx! : item);
-    }
-  }
-  return { accounts: recomputeAllAccountBalances(nextAccounts, nextTransactions), transactions: nextTransactions };
-}
-
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [colorPalette, setColorPalette] = useState('blue');
@@ -300,7 +273,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [editingCreditCard, setEditingCreditCard] = useState<CreditCardInfo | null>(null);
   const [isWalletModalOpen, setWalletModalOpen] = useState(false);
   const [payCardModalState, setPayCardModalState] = useState<{isOpen: boolean, cardId: string | null}>({isOpen: false, cardId: null});
-  
   const [lastUpdated, setLastUpdated] = useState<string>(() => new Date().toISOString());
 
   const [dbDriver, setDbDriver] = useState<SqlJsDatabaseDriver | null>(null);
@@ -309,6 +281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [recoverySnapshotCount, setRecoverySnapshotCount] = useState(0);
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const pendingLiabilityPayments = useRef(new Set<string>());
+  const undoRedoInFlight = useRef(false);
   const toastTimer = useRef<number | null>(null);
   const showToast = useCallback((message: string, actionLabel?: string, onAction?: () => void) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -328,91 +301,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [undoStack, setUndoStack] = useState<UndoRedoCommand[]>([]);
   const [redoStack, setRedoStack] = useState<UndoRedoCommand[]>([]);
+  const undoStackRef = useRef<UndoRedoCommand[]>([]);
+  const redoStackRef = useRef<UndoRedoCommand[]>([]);
+
+  const replaceUndoStack = (next: UndoRedoCommand[]) => {
+    undoStackRef.current = next;
+    setUndoStack(next);
+  };
+  const replaceRedoStack = (next: UndoRedoCommand[]) => {
+    redoStackRef.current = next;
+    setRedoStack(next);
+  };
 
   const pushCommand = (cmd: UndoRedoCommand) => {
-    setUndoStack(prev => {
-      const next = [...prev, cmd];
-      if (next.length > MAX_UNDO_HISTORY) return next.slice(next.length - MAX_UNDO_HISTORY);
-      return next;
-    });
-    setRedoStack([]);
+    const appended = [...undoStackRef.current, cmd];
+    const next = appended.length > MAX_UNDO_HISTORY ? appended.slice(appended.length - MAX_UNDO_HISTORY) : appended;
+    replaceUndoStack(next);
+    replaceRedoStack([]);
   };
 
   const clearStacks = () => {
-    setUndoStack([]);
-    setRedoStack([]);
+    replaceUndoStack([]);
+    replaceRedoStack([]);
   };
 
-function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, accounts: Account[], transactions: Transaction[]) {
-    const { entityType, actionType, previousState, newState } = cmd;
-    const targetState = isUndo ? previousState : newState;
-    const targetAction = isUndo ? (actionType === 'add' ? 'delete' : actionType === 'delete' ? 'add' : 'update') : actionType;
+  const executeCommand = async (cmd: UndoRedoCommand, isUndo: boolean): Promise<boolean> => {
+    if (!dbDriver) return false;
+    return persistDbAction(() => persistUndoRedoCommand(dbDriver, cmd, isUndo));
+  };
 
-    let nextTxs = [...transactions];
-    let nextAccs = [...accounts];
-
-    if (entityType === 'transaction') {
-      const txToApply = targetState as Transaction;
-      if (targetAction === 'add') {
-        nextTxs = [txToApply, ...nextTxs.filter(t => t.id !== txToApply.id)];
-      } else if (targetAction === 'delete') {
-        const tx = (isUndo ? newState : previousState) as Transaction;
-        nextTxs = nextTxs.filter(t => t.id !== tx.id);
-      } else if (targetAction === 'update') {
-        nextTxs = nextTxs.map(t => t.id === txToApply.id ? txToApply : t);
-      }
-    } else if (entityType === 'account') {
-      const accountState = targetState as AccountUndoState;
-      if (targetAction === 'add') {
-         const { account, openingTx } = accountState;
-         nextAccs = [account, ...nextAccs.filter(a => a.id !== account.id)];
-         if (openingTx) nextTxs = [openingTx, ...nextTxs.filter(t => t.id !== openingTx.id)];
-      } else if (targetAction === 'delete') {
-         const { account, openingTx } = (isUndo ? newState : previousState) as AccountUndoState;
-         nextAccs = nextAccs.filter(a => a.id !== account.id);
-         if (openingTx) nextTxs = nextTxs.filter(t => t.id !== openingTx.id);
-      } else if (targetAction === 'update') {
-         const { account, openingTx } = accountState;
-         nextAccs = nextAccs.map(a => a.id === account.id ? account : a);
-         if (openingTx) {
-            nextTxs = nextTxs.map(t => t.id === openingTx.id ? openingTx : t);
-         }
-      }
-    }
-
-    // Recompute all account balances dynamically from scratch using the filtered transaction array
-    nextAccs = recomputeAllAccountBalances(nextAccs, nextTxs);
-    return { accounts: nextAccs, transactions: nextTxs };
-}
-
-  const executeCommand = (cmd: UndoRedoCommand, isUndo: boolean) => {
-    const nextState = applyUndoRedoCommand(cmd, isUndo, accounts, transactions);
-    const nextCards = projectCreditCards(nextState.accounts, creditCards);
-
-    setTransactions(nextState.transactions);
-    setAccountRecords(stripAccountBalances(nextState.accounts));
-    setCreditCardRecords(stripCardBalances(nextCards));
+  const clearActionToast = () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = null;
+    setToast(null);
   };
 
   const handleUndo = () => {
-    if (undoStack.length === 0) return;
-    const cmd = undoStack[undoStack.length - 1];
-    setUndoStack(prev => prev.slice(0, -1));
-    setRedoStack(prev => [cmd, ...prev]);
-    executeCommand(cmd, true);
+    if (undoRedoInFlight.current) return;
+    const currentUndo = undoStackRef.current;
+    if (currentUndo.length === 0) return;
+    const cmd = currentUndo[currentUndo.length - 1];
+    undoRedoInFlight.current = true;
+    void (async () => {
+      try {
+        const saved = await executeCommand(cmd, true);
+        if (!saved) return;
+        const latestUndo = undoStackRef.current;
+        const commandIndex = latestUndo.lastIndexOf(cmd);
+        if (commandIndex >= 0) replaceUndoStack([...latestUndo.slice(0, commandIndex), ...latestUndo.slice(commandIndex + 1)]);
+        replaceRedoStack([cmd, ...redoStackRef.current]);
+        clearActionToast();
+      } finally {
+        undoRedoInFlight.current = false;
+      }
+    })();
   };
 
   const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const cmd = redoStack[0];
-    setRedoStack(prev => prev.slice(1));
-    setUndoStack(prev => {
-      const next = [...prev, cmd];
-      return next.length > MAX_UNDO_HISTORY ? next.slice(next.length - MAX_UNDO_HISTORY) : next;
-    });
-    executeCommand(cmd, false);
+    if (undoRedoInFlight.current) return;
+    const currentRedo = redoStackRef.current;
+    if (currentRedo.length === 0) return;
+    const cmd = currentRedo[0];
+    undoRedoInFlight.current = true;
+    void (async () => {
+      try {
+        const saved = await executeCommand(cmd, false);
+        if (!saved) return;
+        const latestRedo = redoStackRef.current;
+        const commandIndex = latestRedo.indexOf(cmd);
+        if (commandIndex >= 0) replaceRedoStack([...latestRedo.slice(0, commandIndex), ...latestRedo.slice(commandIndex + 1)]);
+        const appended = [...undoStackRef.current, cmd];
+        replaceUndoStack(appended.length > MAX_UNDO_HISTORY ? appended.slice(appended.length - MAX_UNDO_HISTORY) : appended);
+        clearActionToast();
+      } finally {
+        undoRedoInFlight.current = false;
+      }
+    })();
   };
-
 
   const [profile, setProfile] = useState<{ name: string; email: string; avatar: string; offlineReady: boolean }>({
     name: 'Financial Sovereign',
@@ -448,14 +413,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     [transactions, people, sharedObligations, sharedResponsibilities],
   );
 
-  // `balance` remains on the UI types for backwards compatibility, but records
-  // deliberately retain no balance value. Only the ledger projection below may
-  // supply one to consumers.
   const stripAccountBalances = (records: Account[]) => records.map(record => ({ ...record, balance: 0 }));
   const stripCardBalances = (records: CreditCardInfo[]) => records.map(record => ({ ...record, balance: 0 }));
 
-  // Accounts and cards hold only persisted metadata in state. Their balances are
-  // projections of the transaction table, never independently writable values.
   const accounts = useMemo(
     () => recomputeAllAccountBalances(accountRecords, transactions),
     [accountRecords, transactions]
@@ -629,13 +589,11 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       return true;
     } catch (error) {
       console.error('SQLite persistence failed:', error);
-      // Restore the projection from the durable ledger and make failure visible.
       await refreshStateFromDatabase(dbDriver).catch(() => undefined);
       window.alert(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
-
 
   const persistSharedAction = async (action: () => Promise<unknown>): Promise<boolean> => {
     if (!dbDriver) return false;
@@ -693,7 +651,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       await replaceLoanContributionRules(dbDriver!, accountId, contributions);
     });
 
-
   const settleSharedBalance = async (input: { obligationId?: string; fromPersonId: string; toPersonId: string; amount: number; settledAt: string; accountId?: string }): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
@@ -724,7 +681,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     }
   };
 
-
   const setSharedTemplateActive = async (templateId: string, isActive: boolean): Promise<boolean> =>
     persistSharedAction(async () => {
       await setSharedObligationTemplateActive(dbDriver!, templateId, isActive);
@@ -737,8 +693,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       .then(async (driver) => {
         if (!mounted) return;
         setDbDriver(driver);
-        // Seed only a genuinely new database. An intentionally empty persisted
-        // ledger must remain empty after refresh.
         if (driver.isNewDatabase && !driver.skipDemoSeed) {
           await seedDemoData(driver);
           await persistDatabase(driver);
@@ -776,7 +730,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     };
   }, []);
 
-  // SQLite is the single persisted source for preferences.
   useEffect(() => {
     const updatedTime = new Date().toISOString();
     setLastUpdated(updatedTime);
@@ -797,16 +750,9 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   }, [balancesVisible]);
 
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
-    // Remove old theme classes
+    if (theme === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
     document.documentElement.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-orange', 'theme-pink');
-    
-    // Add new theme class
     document.documentElement.classList.add(`theme-${colorPalette}`);
   }, [theme, colorPalette]);
 
@@ -818,53 +764,36 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
         await repairLegacyRecurringConfirmationState(dbDriver);
         localStorage.setItem(migrationKey, 'true');
       }
-      // Due schedules always become pending ledger entries. They never change
-      // balances until the user confirms them, so a separate auto-create toggle
-      // only made schedules silently disappear when disabled.
       await generateDueRecurringTransactions(dbDriver, false);
     });
   }, [dbDriver, dbReady]);
 
   const validateTransaction = (
-    tx: Omit<Transaction, 'id'>, 
-    currentAccounts: Account[], 
+    tx: Omit<Transaction, 'id'>,
+    currentAccounts: Account[],
     existingTx?: Transaction
   ): { valid: boolean; error?: string } => {
     const numAmount = Math.abs(Number(tx.amount));
     const ledgerType = (tx.transaction_type ?? tx.type).toUpperCase();
-    const allowedTypes = new Set([
-      'INCOME', 'EXPENSE', 'TRANSFER', 'OPENING_BALANCE',
-      'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT',
-    ]);
+    const allowedTypes = new Set(['INCOME', 'EXPENSE', 'TRANSFER', 'OPENING_BALANCE', 'MARKET_ADJUSTMENT', 'BALANCE_ADJUSTMENT']);
 
-    if (isNaN(numAmount) || numAmount <= 0) {
-      return { valid: false, error: 'Transaction amount must strictly be a positive number (> 0).' };
-    }
-
-    if (!allowedTypes.has(ledgerType)) {
-      return { valid: false, error: `Unsupported transaction type: ${ledgerType}.` };
-    }
+    if (isNaN(numAmount) || numAmount <= 0) return { valid: false, error: 'Transaction amount must strictly be a positive number (> 0).' };
+    if (!allowedTypes.has(ledgerType)) return { valid: false, error: `Unsupported transaction type: ${ledgerType}.` };
 
     if (ledgerType === 'MARKET_ADJUSTMENT' || ledgerType === 'BALANCE_ADJUSTMENT') {
       const hasFrom = Boolean(tx.fromAccountId);
       const hasTo = Boolean(tx.toAccountId);
-      if (hasFrom === hasTo) {
-        return { valid: false, error: 'An adjustment must have exactly one account direction: to for an increase or from for a decrease.' };
-      }
+      if (hasFrom === hasTo) return { valid: false, error: 'An adjustment must have exactly one account direction: to for an increase or from for a decrease.' };
     }
 
     if (tx.type === 'income') {
       const targetId = tx.toAccountId || tx.account || 'cash';
       const targetAcc = currentAccounts.find(a => a.id === targetId);
-      if (targetAcc && targetAcc.type === 'liability') {
-        return { valid: false, error: 'Credit Cards and Loans (Liabilities) cannot be selected as the destination account for Income. Income can only flow into Asset accounts.' };
-      }
+      if (targetAcc && targetAcc.type === 'liability') return { valid: false, error: 'Credit Cards and Loans (Liabilities) cannot be selected as the destination account for Income. Income can only flow into Asset accounts.' };
     }
 
     let nextTxs = transactions;
-    if (existingTx) {
-      nextTxs = transactions.filter(t => t.id !== existingTx.id);
-    }
+    if (existingTx) nextTxs = transactions.filter(t => t.id !== existingTx.id);
     const effectiveAccounts = recomputeAllAccountBalances(currentAccounts, nextTxs);
 
     if (tx.is_verified !== 0 && tx.type === 'expense') {
@@ -873,28 +802,20 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       if (sourceAcc) {
         if (sourceAcc.type === 'asset') {
           const subtype = sourceAcc.group?.trim().toUpperCase();
-          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT'
-            ? -Math.max(0, sourceAcc.overdraftLimit ?? 0)
-            : 0;
-          if (sourceAcc.balance - numAmount < minimumBalance) {
-            return { 
-              valid: false, 
-              error: minimumBalance === 0
-                ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
-                : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
-            };
-          }
+          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT' ? -Math.max(0, sourceAcc.overdraftLimit ?? 0) : 0;
+          if (sourceAcc.balance - numAmount < minimumBalance) return {
+            valid: false,
+            error: minimumBalance === 0
+              ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
+              : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
+          };
         } else if (sourceAcc.type === 'liability') {
           const limit = sourceAcc.limit;
           const isRevolvingCredit = sourceAcc.group?.toUpperCase() === 'CREDIT CARD';
-          if (isRevolvingCredit && limit !== undefined && limit > 0) {
-            if ((sourceAcc.balance + numAmount) > limit) {
-              return {
-                valid: false,
-                error: `Credit limit exceeded for ${sourceAcc.name}. New balance would exceed credit limit of ${limit}.`
-              };
-            }
-          }
+          if (isRevolvingCredit && limit !== undefined && limit > 0 && (sourceAcc.balance + numAmount) > limit) return {
+            valid: false,
+            error: `Credit limit exceeded for ${sourceAcc.name}. New balance would exceed credit limit of ${limit}.`
+          };
         }
       }
     } else if (tx.is_verified !== 0 && tx.type === 'transfer') {
@@ -903,28 +824,20 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       if (sourceAcc) {
         if (sourceAcc.type === 'asset') {
           const subtype = sourceAcc.group?.trim().toUpperCase();
-          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT'
-            ? -Math.max(0, sourceAcc.overdraftLimit ?? 0)
-            : 0;
-          if (sourceAcc.balance - numAmount < minimumBalance) {
-            return { 
-              valid: false, 
-              error: minimumBalance === 0
-                ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
-                : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
-            };
-          }
+          const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT' ? -Math.max(0, sourceAcc.overdraftLimit ?? 0) : 0;
+          if (sourceAcc.balance - numAmount < minimumBalance) return {
+            valid: false,
+            error: minimumBalance === 0
+              ? `Insufficient funds in ${sourceAcc.name}. Asset balance cannot drop below 0.`
+              : `Insufficient funds in ${sourceAcc.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`
+          };
         } else if (sourceAcc.type === 'liability') {
           const limit = sourceAcc.limit;
           const isRevolvingCredit = sourceAcc.group?.toUpperCase() === 'CREDIT CARD';
-          if (isRevolvingCredit && limit !== undefined && limit > 0) {
-            if ((sourceAcc.balance + numAmount) > limit) {
-              return {
-                valid: false,
-                error: `Credit limit exceeded for ${sourceAcc.name}. New balance would exceed credit limit of ${limit}.`
-              };
-            }
-          }
+          if (isRevolvingCredit && limit !== undefined && limit > 0 && (sourceAcc.balance + numAmount) > limit) return {
+            valid: false,
+            error: `Credit limit exceeded for ${sourceAcc.name}. New balance would exceed credit limit of ${limit}.`
+          };
         }
       }
     }
@@ -934,12 +847,8 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const addTransaction = async (tx: Omit<Transaction, 'id'>): Promise<{ success: boolean; error?: string }> => {
     const validation = validateTransaction(tx, accounts);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
-    if (!dbDriver) {
-      return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
-    }
+    if (!validation.valid) return { success: false, error: validation.error };
+    if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
 
     const finalTx: Transaction = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
 
@@ -949,31 +858,21 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       const anchorDay = Number(startDateKey.slice(8, 10));
       const ruleId = crypto.randomUUID();
       const createInitial = shouldCreateInitialOccurrence(startDateKey);
-      const nextDueDate = createInitial
-        ? advanceRecurringDate(startDateKey, frequency, anchorDay)
-        : startDateKey;
-      const initialTx: Transaction | null = createInitial
-        ? {
-            ...finalTx,
-            recurringRuleId: ruleId,
-            dueDate: startDateKey,
-            recurrenceFrequency: frequency,
-            isRecurring: true,
-            is_verified: 0,
-          }
-        : null;
+      const nextDueDate = createInitial ? advanceRecurringDate(startDateKey, frequency, anchorDay) : startDateKey;
+      const initialTx: Transaction | null = createInitial ? {
+        ...finalTx,
+        recurringRuleId: ruleId,
+        dueDate: startDateKey,
+        recurrenceFrequency: frequency,
+        isRecurring: true,
+        is_verified: 0,
+      } : null;
 
       const saved = await persistDbAction(async () => {
         await dbDriver.execute('BEGIN TRANSACTION');
         try {
-          await createRecurringRule(
-            dbDriver,
-            { ...finalTx, recurringRuleId: ruleId, recurrenceFrequency: frequency },
-            { id: ruleId, nextDueDate },
-          );
+          await createRecurringRule(dbDriver, { ...finalTx, recurringRuleId: ruleId, recurrenceFrequency: frequency }, { id: ruleId, nextDueDate });
           if (initialTx) await insertTransactionRow(dbDriver, initialTx);
-          // A past start date may have more than one missed occurrence. Generate
-          // them now and rely on (rule id, due date) de-duplication.
           await generateDueRecurringTransactions(dbDriver, false);
           await dbDriver.execute('COMMIT');
         } catch (error) {
@@ -983,26 +882,14 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       });
 
       if (!saved) return { success: false, error: 'The recurring payment could not be saved.' };
-      if (initialTx) {
-        pushCommand({
-          entityType: 'transaction',
-          actionType: 'add',
-          previousState: null,
-          newState: initialTx,
-        });
-      }
+      if (initialTx) pushCommand({ entityType: 'transaction', actionType: 'add', previousState: null, newState: initialTx });
       return { success: true };
     }
 
     const saved = await persistDbAction(() => insertTransactionRow(dbDriver, finalTx));
     if (!saved) return { success: false, error: 'The transaction could not be saved.' };
 
-    pushCommand({
-      entityType: 'transaction',
-      actionType: 'add',
-      previousState: null,
-      newState: finalTx,
-    });
+    pushCommand({ entityType: 'transaction', actionType: 'add', previousState: null, newState: finalTx });
     return { success: true };
   };
 
@@ -1010,12 +897,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if (!dbDriver) return false;
     return persistDbAction(() => updateRecurringRuleRow(dbDriver, rule));
   };
-
   const deleteRecurringRule = async (id: string): Promise<boolean> => {
     if (!dbDriver) return false;
     return persistDbAction(() => deleteRecurringRuleRow(dbDriver, id));
   };
-
   const skipRecurringRule = async (id: string): Promise<boolean> => {
     if (!dbDriver) return false;
     return persistDbAction(() => skipRecurringRuleOccurrence(dbDriver, id));
@@ -1023,58 +908,29 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
 
   const updateTransaction = (id: string, newTx: Omit<Transaction, 'id'>): { success: boolean; error?: string } => {
     const existingTx = transactions.find(t => t.id === id);
-    if (existingTx?.isOpeningBalance) {
-      throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
-    }
-    if (existingTx?.transaction_type === 'BALANCE_ADJUSTMENT') {
-      throw new Error('Balance adjustments are immutable. Delete the adjustment and reconcile again if a correction is needed.');
-    }
-    if (existingTx && existingTx.type !== newTx.type) {
-      throw new Error('Transaction type cannot be changed after creation. Please delete and recreate the transaction if needed.');
-    }
+    if (existingTx?.isOpeningBalance) throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
+    if (existingTx?.transaction_type === 'BALANCE_ADJUSTMENT') throw new Error('Balance adjustments are immutable. Delete the adjustment and reconcile again if a correction is needed.');
+    if (existingTx && existingTx.type !== newTx.type) throw new Error('Transaction type cannot be changed after creation. Please delete and recreate the transaction if needed.');
     const validation = validateTransaction(newTx, accounts, existingTx);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
+    if (!validation.valid) return { success: false, error: validation.error };
 
     const updatedTx = { ...newTx, id };
     const nextTxs = transactions.map(t => t.id === id ? updatedTx : t);
-
-    pushCommand({
-      entityType: 'transaction',
-      actionType: 'update',
-      previousState: existingTx,
-      newState: updatedTx
-    });
-
+    pushCommand({ entityType: 'transaction', actionType: 'update', previousState: existingTx, newState: updatedTx });
     setTransactions(nextTxs);
-
-    if (dbDriver) {
-      persistDbAction(() => updateTransactionRow(dbDriver, id, newTx));
-    }
-
+    if (dbDriver) persistDbAction(() => updateTransactionRow(dbDriver, id, newTx));
     return { success: true };
   };
 
   const deleteTransaction = (id: string) => {
     const tx = transactions.find(t => t.id === id);
-    if (tx?.isOpeningBalance) {
-      throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
-    }
+    if (tx?.isOpeningBalance) throw new Error('Opening balances cannot be edited or deleted directly. Please update the starting balance in Account Settings.');
     if (tx) {
       const nextTxs = transactions.filter(t => t.id !== id);
-      pushCommand({
-        entityType: 'transaction',
-        actionType: 'delete',
-        previousState: tx,
-        newState: null
-      });
+      pushCommand({ entityType: 'transaction', actionType: 'delete', previousState: tx, newState: null });
       setTransactions(nextTxs);
       showToast('Transaction deleted', 'Undo', handleUndo);
-
-      if (dbDriver) {
-        persistDbAction(() => deleteTransactionRow(dbDriver, id));
-      }
+      if (dbDriver) persistDbAction(() => deleteTransactionRow(dbDriver, id));
     } else {
       setTransactions(txs => txs.filter(t => t.id !== id));
       showToast('Transaction deleted', 'Undo', handleUndo);
@@ -1085,53 +941,18 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const tx = transactions.find(t => t.id === id);
     if (!tx) return { success: false, error: 'Scheduled transaction could not be found.' };
     if (tx.is_verified !== 0) return { success: true };
-
-    // Confirmation is the point where a scheduled transaction becomes real,
-    // so normal balance/credit-limit validation is intentionally enforced here.
-    return updateTransaction(id, {
-      ...tx,
-      date: userSelectedDate || tx.date,
-      is_verified: 1
-    });
+    return updateTransaction(id, { ...tx, date: userSelectedDate || tx.date, is_verified: 1 });
   };
 
-  const rejectTransaction = (id: string) => {
-    deleteTransaction(id);
-  };
+  const rejectTransaction = (id: string) => { deleteTransaction(id); };
 
   const addLoanRevision = (revision: Omit<LoanRevision, 'id'>) => {
     const newId = crypto.randomUUID();
     const accId = revision.accountId;
-    const newRev: LoanRevision = {
-      ...revision,
-      id: newId,
-      accountId: accId,
-      effectiveDate: revision.effectiveDate,
-      newInterestRate: revision.newInterestRate,
-      newEmi: revision.newEmi,
-      newTenureMonths: revision.newTenureMonths,
-      paymentFrequency: revision.paymentFrequency,
-    };
-
+    const newRev: LoanRevision = { ...revision, id: newId, accountId: accId, effectiveDate: revision.effectiveDate, newInterestRate: revision.newInterestRate, newEmi: revision.newEmi, newTenureMonths: revision.newTenureMonths, paymentFrequency: revision.paymentFrequency };
     setLoanRevisions(prev => [...prev, newRev]);
-    setAccountRecords(prevAccs => prevAccs.map(acc => {
-      if (acc.id === accId) {
-        const existing = acc.revisions || [];
-        return {
-          ...acc,
-          interestRate: newRev.newInterestRate,
-          monthlyEMI: newRev.newEmi,
-          tenureMonths: newRev.newTenureMonths,
-          paymentFrequency: newRev.paymentFrequency || acc.paymentFrequency,
-          revisions: [...existing, newRev]
-        };
-      }
-      return acc;
-    }));
-
-    if (dbDriver) {
-      persistDbAction(() => insertLoanRevisionRow(dbDriver, newRev));
-    }
+    setAccountRecords(prevAccs => prevAccs.map(acc => acc.id === accId ? { ...acc, interestRate: newRev.newInterestRate, monthlyEMI: newRev.newEmi, tenureMonths: newRev.newTenureMonths, paymentFrequency: newRev.paymentFrequency || acc.paymentFrequency, revisions: [...(acc.revisions || []), newRev] } : acc));
+    if (dbDriver) persistDbAction(() => insertLoanRevisionRow(dbDriver, newRev));
   };
 
   const deleteLoanRevision = (id: string) => {
@@ -1139,19 +960,8 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if (!revision) return;
     const accountsBeforeDelete = accountRecords;
     setLoanRevisions(prev => prev.filter(r => r.id !== id));
-    setAccountRecords(prevAccs => prevAccs.map(acc => {
-      if (acc.revisions) {
-        return {
-          ...acc,
-          revisions: acc.revisions.filter(r => r.id !== id)
-        };
-      }
-      return acc;
-    }));
-
-    if (dbDriver) {
-      persistDbAction(() => deleteLoanRevisionRow(dbDriver, id));
-    }
+    setAccountRecords(prevAccs => prevAccs.map(acc => acc.revisions ? { ...acc, revisions: acc.revisions.filter(r => r.id !== id) } : acc));
+    if (dbDriver) persistDbAction(() => deleteLoanRevisionRow(dbDriver, id));
     showToast('Loan revision deleted', 'Undo', () => {
       setLoanRevisions(prev => prev.some(item => item.id === revision.id) ? prev : [...prev, revision]);
       setAccountRecords(accountsBeforeDelete);
@@ -1164,53 +974,24 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const initialBalance = card.balance || 0;
     const newCard: CreditCardInfo = { ...card, id: newId, balance: 0 };
     const newAccount: Account = { id: newId, name: card.name, type: 'liability', group: 'Credit Card', balance: 0, limit: card.limit };
-
     setCreditCardRecords(cards => [{ ...newCard }, ...cards]);
     setAccountRecords(prev => [newAccount, ...prev]);
-
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
       const now = new Date();
       const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      const newOpeningTx: Transaction = {
-        id: crypto.randomUUID(),
-        title: 'Opening Balance',
-        subtitle: `${formattedDate} • Initial Debt`,
-        amount: initialBalance,
-        date: now.toISOString(),
-        category: '#opening',
-        icon: 'CreditCard',
-        type: 'expense',
-        account: newId,
-        fromAccountId: newId,
-        isOpeningBalance: true,
-        transaction_type: 'OPENING_BALANCE'
-      };
-      openingTx = newOpeningTx;
-      setTransactions(prev => [newOpeningTx, ...prev]);
+      openingTx = { id: crypto.randomUUID(), title: 'Opening Balance', subtitle: `${formattedDate} • Initial Debt`, amount: initialBalance, date: now.toISOString(), category: '#opening', icon: 'CreditCard', type: 'expense', account: newId, fromAccountId: newId, isOpeningBalance: true, transaction_type: 'OPENING_BALANCE' };
+      setTransactions(prev => [openingTx!, ...prev]);
     }
+    if (dbDriver) persistDbAction(async () => { await insertCreditCardAccount(dbDriver, newAccount, newCard, initialBalance, openingTx?.id); });
+  };
 
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await insertCreditCardAccount(dbDriver, newAccount, newCard, initialBalance, openingTx?.id);
-      });
-    }
-  };  
   const updateCreditCard = (id: string, card: Omit<CreditCardInfo, 'id'>) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
-
-    if (card.limit < targetAccount.balance) {
-      throw new Error('Credit limit cannot be lower than the current outstanding balance.');
-    }
-
-    const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening') &&
-      (t.account === id || t.toAccountId === id || t.fromAccountId === id)
-    );
-
+    if (card.limit < targetAccount.balance) throw new Error('Credit limit cannot be lower than the current outstanding balance.');
+    const existingTxIndex = transactions.findIndex(t => (t.isOpeningBalance || t.category === '#opening') && (t.account === id || t.toAccountId === id || t.fromAccountId === id));
     const updatedCard: CreditCardInfo = { ...card, id, balance: 0 };
-
     if (existingTxIndex >= 0) {
       const newAmount = card.balance;
       setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? { ...t, amount: newAmount } : t));
@@ -1220,250 +1001,121 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
       if (card.balance > 0) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const openingTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: card.balance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'CreditCard',
-          type: 'expense',
-          account: id,
-          fromAccountId: id,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
+        const openingTx: Transaction = { id: crypto.randomUUID(), title: 'Opening Balance', subtitle: `${formattedDate} • Initial Balance`, amount: card.balance, date: now.toISOString(), category: '#opening', icon: 'CreditCard', type: 'expense', account: id, fromAccountId: id, isOpeningBalance: true, transaction_type: 'OPENING_BALANCE' };
         setTransactions(prev => [...prev, openingTx]);
-        if (dbDriver) {
-          persistDbAction(() => insertTransactionRow(dbDriver, openingTx));
-        }
+        if (dbDriver) persistDbAction(() => insertTransactionRow(dbDriver, openingTx));
       }
       setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...updatedCard } : c));
       setAccountRecords(accs => accs.map(a => a.id === id ? { ...a, name: card.name, balance: 0, limit: card.limit } : a));
     }
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: 0 });
-        // The entered card balance is an opening-ledger transaction, not card
-        // metadata. Persist its edit through the same authoritative path used
-        // for normal account opening balances.
-        if (existingTxIndex >= 0) {
-          await updateOpeningBalance(dbDriver, id, card.balance);
-        }
-        await updateCreditCardRow(dbDriver, updatedCard);
-      });
-    }
+    if (dbDriver) persistDbAction(async () => {
+      await updateAccountRow(dbDriver, { ...targetAccount, name: card.name, limit: card.limit, balance: 0 });
+      if (existingTxIndex >= 0) await updateOpeningBalance(dbDriver, id, card.balance);
+      await updateCreditCardRow(dbDriver, updatedCard);
+    });
   };
 
   const addAccount = (account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const newId = crypto.randomUUID();
     const initialBalance = account.balance || 0;
     const newAccount: Account = { ...account, id: newId, balance: 0 };
-    
     let openingTx: Transaction | null = null;
     if (initialBalance > 0) {
       const now = new Date();
       const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      
-      if (account.type === 'asset') {
-        openingTx = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: initialBalance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'Landmark',
-          type: 'income',
-          account: newId,
-          toAccountId: newId,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-      } else if (account.type === 'liability') {
-        openingTx = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Debt`,
-          amount: initialBalance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: 'Landmark',
-          type: 'expense',
-          account: newId,
-          fromAccountId: newId,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-      }
+      if (account.type === 'asset') openingTx = { id: crypto.randomUUID(), title: 'Opening Balance', subtitle: `${formattedDate} • Initial Balance`, amount: initialBalance, date: now.toISOString(), category: '#opening', icon: 'Landmark', type: 'income', account: newId, toAccountId: newId, isOpeningBalance: true, transaction_type: 'OPENING_BALANCE' };
+      else if (account.type === 'liability') openingTx = { id: crypto.randomUUID(), title: 'Opening Balance', subtitle: `${formattedDate} • Initial Debt`, amount: initialBalance, date: now.toISOString(), category: '#opening', icon: 'Landmark', type: 'expense', account: newId, fromAccountId: newId, isOpeningBalance: true, transaction_type: 'OPENING_BALANCE' };
     }
-
-    pushCommand({
-      entityType: 'account',
-      actionType: 'add',
-      previousState: null,
-      newState: { account: newAccount, openingTx }
-    });
-
+    pushCommand({ entityType: 'account', actionType: 'add', previousState: null, newState: { account: newAccount, openingTx } });
     setAccountRecords(prev => [newAccount, ...prev]);
-    if (openingTx) {
-      setTransactions(prev => [openingTx, ...prev]);
-    }
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await dbDriver.execute('BEGIN TRANSACTION');
-        try {
-          await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
-          await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
-          }
-          await dbDriver.execute('COMMIT');
-          if (options.loanSharing) await refreshSharedFinance(dbDriver);
-        } catch (error) {
-          await dbDriver.execute('ROLLBACK');
-          throw error;
+    if (openingTx) setTransactions(prev => [openingTx!, ...prev]);
+    if (dbDriver) persistDbAction(async () => {
+      await dbDriver.execute('BEGIN TRANSACTION');
+      try {
+        await insertAccountRow(dbDriver, newAccount, initialBalance, openingTx?.id, false);
+        await syncInvestmentSipRecurringRule(dbDriver, newId, { ...newAccount, balance: initialBalance }, options.sipSourceAccountId);
+        if (account.type === 'liability' && options.loanSharing) {
+          await setLoanSharingRuleRow(dbDriver, { accountId: newId, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+          await replaceLoanContributionRules(dbDriver, newId, options.loanSharing.isShared ? options.loanSharing.contributions : [], false);
         }
-      });
-    }
+        await dbDriver.execute('COMMIT');
+        if (options.loanSharing) await refreshSharedFinance(dbDriver);
+      } catch (error) {
+        await dbDriver.execute('ROLLBACK');
+        throw error;
+      }
+    });
   };
 
   const updateAccount = (id: string, account: Omit<Account, 'id'>, options: { sipSourceAccountId?: string; loanSharing?: LoanSharingSaveConfig } = {}) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
-
     if (targetAccount.type === 'liability' && account.type === 'liability' && account.limit !== targetAccount.limit) {
       const newLimit = Math.max(0, Number(account.limit ?? 0));
-      if (newLimit < targetAccount.balance) {
-        throw new Error(`Credit limit cannot be lower than the current outstanding balance of ${targetAccount.balance}.`);
-      }
+      if (newLimit < targetAccount.balance) throw new Error(`Credit limit cannot be lower than the current outstanding balance of ${targetAccount.balance}.`);
     }
-
-    const existingTxIndex = transactions.findIndex(t => 
-      (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
-      (t.account === id || t.toAccountId === id || t.fromAccountId === id)
-    );
-    
-
+    const existingTxIndex = transactions.findIndex(t => (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') && (t.account === id || t.toAccountId === id || t.fromAccountId === id));
     if (existingTxIndex >= 0) {
       const newAmount = account.balance;
       const updatedTx = { ...transactions[existingTxIndex], amount: newAmount };
-      const mergedAccount = {
-        ...account,
-        id,
-        balance: 0,
-        originalPrincipal: account.originalPrincipal || targetAccount.originalPrincipal || account.balance
-      };
-      pushCommand({
-        entityType: 'account',
-        actionType: 'update',
-        previousState: { account: targetAccount, openingTx: transactions[existingTxIndex] },
-        newState: { account: mergedAccount, openingTx: updatedTx }
-      });
-
+      const mergedAccount = { ...account, id, balance: 0, originalPrincipal: account.originalPrincipal || targetAccount.originalPrincipal || account.balance };
+      pushCommand({ entityType: 'account', actionType: 'update', previousState: { account: targetAccount, openingTx: transactions[existingTxIndex] }, newState: { account: mergedAccount, openingTx: updatedTx } });
       setTransactions(prevTxs => prevTxs.map((t, idx) => idx === existingTxIndex ? updatedTx : t));
       setAccountRecords(accs => accs.map(a => a.id === id ? mergedAccount : a));
       setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
-
-      if (dbDriver) {
-        persistDbAction(async () => {
-          await updateAccountRow(dbDriver, mergedAccount);
-          await updateOpeningBalance(dbDriver, id, account.balance);
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
-            await refreshSharedFinance(dbDriver);
-          }
-        });
-      }
+      if (dbDriver) persistDbAction(async () => {
+        await updateAccountRow(dbDriver, mergedAccount);
+        await updateOpeningBalance(dbDriver, id, account.balance);
+        await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+        if (account.type === 'liability' && options.loanSharing) {
+          await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+          await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+          await refreshSharedFinance(dbDriver);
+        }
+      });
     } else {
       let newOpeningTx: Transaction | null = null;
       if (account.balance > 0) {
         const now = new Date();
         const formattedDate = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const openingTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: 'Opening Balance',
-          subtitle: `${formattedDate} • Initial Balance`,
-          amount: account.balance,
-          date: now.toISOString(),
-          category: '#opening',
-          icon: account.type === 'asset' ? 'Landmark' : (account.group === 'Credit Card' ? 'CreditCard' : 'Building'),
-          type: account.type === 'asset' ? 'income' : 'expense',
-          account: id,
-          toAccountId: account.type === 'asset' ? id : undefined,
-          fromAccountId: account.type === 'liability' ? id : undefined,
-          isOpeningBalance: true,
-          transaction_type: 'OPENING_BALANCE'
-        };
-        newOpeningTx = openingTx;
-        setTransactions(prev => [...prev, openingTx]);
+        newOpeningTx = { id: crypto.randomUUID(), title: 'Opening Balance', subtitle: `${formattedDate} • Initial Balance`, amount: account.balance, date: now.toISOString(), category: '#opening', icon: account.type === 'asset' ? 'Landmark' : (account.group === 'Credit Card' ? 'CreditCard' : 'Building'), type: account.type === 'asset' ? 'income' : 'expense', account: id, toAccountId: account.type === 'asset' ? id : undefined, fromAccountId: account.type === 'liability' ? id : undefined, isOpeningBalance: true, transaction_type: 'OPENING_BALANCE' };
+        setTransactions(prev => [...prev, newOpeningTx!]);
       }
-      pushCommand({
-        entityType: 'account',
-        actionType: 'update',
-        previousState: { account: targetAccount, openingTx: null },
-        newState: { account: { ...account, id, balance: 0 }, openingTx: newOpeningTx }
-      });
-      setAccountRecords(accs => accs.map(a => a.id === id ? { ...account, id, balance: 0 } : a));
-      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
-
       const mergedAccount = { ...account, id, balance: 0 };
-      if (dbDriver) {
-        persistDbAction(async () => {
-          await updateAccountRow(dbDriver, mergedAccount);
-          if (newOpeningTx) await insertTransactionRow(dbDriver, newOpeningTx);
-          await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
-          if (account.type === 'liability' && options.loanSharing) {
-            await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
-            await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
-            await refreshSharedFinance(dbDriver);
-          }
-        });
-      }
+      pushCommand({ entityType: 'account', actionType: 'update', previousState: { account: targetAccount, openingTx: null }, newState: { account: mergedAccount, openingTx: newOpeningTx } });
+      setAccountRecords(accs => accs.map(a => a.id === id ? mergedAccount : a));
+      setCreditCardRecords(cards => cards.map(c => c.id === id ? { ...c, name: account.name, balance: 0 } : c));
+      if (dbDriver) persistDbAction(async () => {
+        await updateAccountRow(dbDriver, mergedAccount);
+        if (newOpeningTx) await insertTransactionRow(dbDriver, newOpeningTx);
+        await syncInvestmentSipRecurringRule(dbDriver, id, { ...mergedAccount, balance: account.balance }, options.sipSourceAccountId);
+        if (account.type === 'liability' && options.loanSharing) {
+          await setLoanSharingRuleRow(dbDriver, { accountId: id, personalResponsibilityPercent: options.loanSharing.personalResponsibilityPercent, isShared: options.loanSharing.isShared });
+          await replaceLoanContributionRules(dbDriver, id, options.loanSharing.isShared ? options.loanSharing.contributions : []);
+          await refreshSharedFinance(dbDriver);
+        }
+      });
     }
   };
 
   const deleteAccount = (id: string) => {
     const targetAccount = accounts.find(a => a.id === id);
     if (!targetAccount) return;
-    const openingTransactions = transactions.filter(transaction =>
-      (transaction.isOpeningBalance || transaction.category === '#opening' || transaction.transaction_type === 'OPENING_BALANCE') &&
-      (transaction.account === id || transaction.toAccountId === id || transaction.fromAccountId === id)
-    );
+    const openingTransactions = transactions.filter(transaction => (transaction.isOpeningBalance || transaction.category === '#opening' || transaction.transaction_type === 'OPENING_BALANCE') && (transaction.account === id || transaction.toAccountId === id || transaction.fromAccountId === id));
     const relatedCard = creditCards.find(card => card.id === id);
     clearStacks();
-
-    if (dbDriver) {
-      persistDbAction(async () => {
-        await deleteAccountInDB(dbDriver, id);
-      });
-    }
-
+    if (dbDriver) persistDbAction(async () => { await deleteAccountInDB(dbDriver, id); });
     const hasHistory = transactions.some(t => {
       const isOpening = t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE';
       if (isOpening) return false;
-
-      const isInvolved = t.account === id || t.fromAccountId === id || t.toAccountId === id;
-      return isInvolved;
+      return t.account === id || t.fromAccountId === id || t.toAccountId === id;
     });
-
     if (!hasHistory) {
-      setTransactions(prev => prev.filter(t => !(
-        (t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') &&
-        (t.account === id || t.fromAccountId === id || t.toAccountId === id)
-      )));
+      setTransactions(prev => prev.filter(t => !((t.isOpeningBalance || t.category === '#opening' || t.transaction_type === 'OPENING_BALANCE') && (t.account === id || t.fromAccountId === id || t.toAccountId === id))));
       setAccountRecords(prev => prev.filter(a => a.id !== id));
       setCreditCardRecords(prev => prev.filter(c => c.id !== id));
     } else {
-      if (Math.abs(targetAccount.balance) > 0.0001) {
-        throw new Error("Account must have a zero balance before closing. Please transfer funds or log an expense.");
-      }
+      if (Math.abs(targetAccount.balance) > 0.0001) throw new Error('Account must have a zero balance before closing. Please transfer funds or log an expense.');
       setAccountRecords(prev => prev.map(a => a.id === id ? { ...a, is_archived: 1 } : a));
       setCreditCardRecords(prev => prev.filter(c => c.id !== id));
     }
@@ -1488,7 +1140,6 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const transferFunds = (amount: number, fromId: string, toId: string) => {
     const fromAccount = accounts.find(a => a.id === fromId);
     const toAccount = accounts.find(a => a.id === toId);
-
     void addTransaction({
       title: `Transfer: ${fromAccount?.name || 'Unknown'} to ${toAccount?.name || 'Unknown'}`,
       subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
@@ -1507,51 +1158,96 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     transferFunds(amount, defaultAsset, cardId);
   };
 
-  const payLiability = (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => {
+  const payLiability = async (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => {
     if (pendingLiabilityPayments.current.has(id)) {
       window.alert('A payment for this liability is already being saved. Please wait.');
       return;
     }
     pendingLiabilityPayments.current.add(id);
-    // addTransaction persists asynchronously; retain a short UI lock through
-    // the optimistic update and database refresh to prevent double-taps.
-    window.setTimeout(() => pendingLiabilityPayments.current.delete(id), 1500);
-    const defaultAsset = fromAccountId || accounts.find(a => a.type === 'asset')?.id || 'checking';
-    const liabilityAcc = accounts.find(a => a.id === id);
-
-    let pAmount = principalAmount;
-    let iAmount = interestAmount;
-
-    if (pAmount === undefined || iAmount === undefined) {
-      if (liabilityAcc && (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined)) {
-        const rate = liabilityAcc.interestRate ?? 0;
-        const type = liabilityAcc.interestCalculationType || 'REDUCING';
-        const split = calculateEmiSplit(liabilityAcc.balance, rate, amount, type);
-        pAmount = split.principalAmount;
-        iAmount = split.interestAmount;
-      } else {
-        pAmount = amount;
-        iAmount = 0;
+    try {
+      if (!dbDriver) {
+        window.alert('The local ledger is still loading. Please try again in a moment.');
+        return;
       }
-    }
+      const defaultAsset = fromAccountId || accounts.find(a => a.type === 'asset')?.id || 'checking';
+      const liabilityAcc = accounts.find(a => a.id === id);
+      let pAmount = principalAmount;
+      let iAmount = interestAmount;
+      if (pAmount === undefined || iAmount === undefined) {
+        if (liabilityAcc && (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined)) {
+          const split = calculateEmiSplit(liabilityAcc.balance, liabilityAcc.interestRate ?? 0, amount, liabilityAcc.interestCalculationType || 'REDUCING');
+          pAmount = split.principalAmount;
+          iAmount = split.interestAmount;
+        } else {
+          pAmount = amount;
+          iAmount = 0;
+        }
+      }
+      const principal = Math.max(0, Number(pAmount ?? 0));
+      const interest = Math.max(0, Number(iAmount ?? 0));
+      if (!Number.isFinite(principal) || !Number.isFinite(interest) || principal + interest <= 0) {
+        window.alert('Payment amount must be a positive number.');
+        return;
+      }
 
-    if (pAmount > 0) {
-      transferFunds(pAmount, defaultAsset, id);
-    }
-    if (iAmount > 0) {
-      void addTransaction({
-        title: `Interest Payment: ${liabilityAcc?.name || 'Loan'}`,
-        subtitle: `Today • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-        amount: iAmount,
-        date: new Date().toISOString(),
-        category: '#interest',
-        icon: 'Flame',
-        type: 'expense',
-        fromAccountId: defaultAsset,
-        account: id,
-        toAccountId: id,
-        isInterestOnly: true,
-      });
+      const sourceAccount = accounts.find(account => account.id === defaultAsset);
+      if (sourceAccount?.type === 'asset') {
+        const subtype = sourceAccount.group?.trim().toUpperCase();
+        const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT' ? -Math.max(0, sourceAccount.overdraftLimit ?? 0) : 0;
+        if (sourceAccount.balance - (principal + interest) < minimumBalance) {
+          window.alert(minimumBalance === 0
+            ? `Insufficient funds in ${sourceAccount.name}. Asset balance cannot drop below 0.`
+            : `Insufficient funds in ${sourceAccount.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.`);
+          return;
+        }
+      }
+
+      const now = new Date();
+      const subtitle = `Today • ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const paymentTransactions: Transaction[] = [];
+      if (principal > 0) {
+        const principalTx: Transaction = {
+          id: crypto.randomUUID(),
+          title: `Transfer: ${sourceAccount?.name || 'Unknown'} to ${liabilityAcc?.name || 'Unknown'}`,
+          subtitle,
+          amount: principal,
+          date: now.toISOString(),
+          category: '#transfer',
+          icon: 'ArrowRightLeft',
+          type: 'transfer',
+          fromAccountId: defaultAsset,
+          toAccountId: id,
+        };
+        const validation = validateTransaction(principalTx, accounts);
+        if (!validation.valid) { window.alert(validation.error || 'The principal payment is invalid.'); return; }
+        paymentTransactions.push(principalTx);
+      }
+      if (interest > 0) {
+        const interestTx: Transaction = {
+          id: crypto.randomUUID(),
+          title: `Interest Payment: ${liabilityAcc?.name || 'Loan'}`,
+          subtitle,
+          amount: interest,
+          date: now.toISOString(),
+          category: '#interest',
+          icon: 'Flame',
+          type: 'expense',
+          fromAccountId: defaultAsset,
+          account: id,
+          toAccountId: id,
+          isInterestOnly: true,
+        };
+        const validation = validateTransaction(interestTx, accounts);
+        if (!validation.valid) { window.alert(validation.error || 'The interest payment is invalid.'); return; }
+        paymentTransactions.push(interestTx);
+      }
+
+      const saved = await persistDbAction(() => insertLiabilityPaymentRows(dbDriver, paymentTransactions));
+      if (saved) {
+        pushCommand({ entityType: 'transactionBatch', actionType: 'add', previousState: null, newState: paymentTransactions });
+      }
+    } finally {
+      pendingLiabilityPayments.current.delete(id);
     }
   };
 
@@ -1580,12 +1276,10 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     const created = normalizeSavingsGoal({ ...goal, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
     return persistSavingsGoals([created, ...savingsGoalsRef.current]);
   };
-
   const updateSavingsGoal = async (id: string, goal: Omit<SavingsGoal, 'id' | 'createdAt'>): Promise<boolean> => {
     const next = savingsGoalsRef.current.map(item => item.id === id ? normalizeSavingsGoal({ ...item, ...goal, id }) : item);
     return persistSavingsGoals(next);
   };
-
   const deleteSavingsGoal = async (id: string): Promise<boolean> => {
     const removed = savingsGoalsRef.current.find(goal => goal.id === id);
     const ok = await persistSavingsGoals(savingsGoalsRef.current.filter(goal => goal.id !== id));
@@ -1599,19 +1293,13 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
   const addCategory = (category: Omit<Category, 'id'>) => {
     const newCategory: Category = ensureCategoryAffordabilityClass({ ...category, id: crypto.randomUUID() });
     setCategories(prev => [newCategory, ...prev]);
-    if (dbDriver) {
-      persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
-    }
+    if (dbDriver) persistDbAction(() => insertCategoryRow(dbDriver, newCategory));
   };
-
   const updateCategory = (id: string, category: Omit<Category, 'id'>) => {
     const normalizedCategory: Category = ensureCategoryAffordabilityClass({ ...category, id });
     setCategories(cats => cats.map(c => c.id === id ? { ...c, ...normalizedCategory } : c));
-    if (dbDriver) {
-      persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
-    }
+    if (dbDriver) persistDbAction(() => updateCategoryRow(dbDriver, id, normalizedCategory));
   };
-
   const createEvent = (name: string): Event => {
     const normalizedName = name.trim();
     if (!normalizedName) throw new Error('Event name is required.');
@@ -1622,29 +1310,21 @@ function applyUndoRedoCommandInProvider(cmd: UndoRedoCommand, isUndo: boolean, a
     if (dbDriver) persistDbAction(() => insertEventRow(dbDriver, event));
     return event;
   };
-
   const fetchEvents = () => events;
-
-const groupTransactionsToEvent = (transactionIds: string[], eventId: string | null) => {
-  const ids = transactionIds.filter(id => {
-    const transaction = transactions.find(item => item.id === id);
-    return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
-  });
-  if (!ids.length) return;
-  setTransactions(previous => previous.map(transaction =>
-    ids.includes(transaction.id) ? { ...transaction, eventId: eventId ?? undefined } : transaction
-  ));
-  if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
-};
-
-
+  const groupTransactionsToEvent = (transactionIds: string[], eventId: string | null) => {
+    const ids = transactionIds.filter(id => {
+      const transaction = transactions.find(item => item.id === id);
+      return Boolean(transaction && (eventId === null || isEventAssignableTransaction(transaction)));
+    });
+    if (!ids.length) return;
+    setTransactions(previous => previous.map(transaction => ids.includes(transaction.id) ? { ...transaction, eventId: eventId ?? undefined } : transaction));
+    if (dbDriver) persistDbAction(() => updateTransactionEvents(dbDriver, ids, eventId));
+  };
   const deleteCategory = (id: string) => {
     const category = categories.find(item => item.id === id);
     if (!category) return;
     setCategories(cats => cats.filter(c => c.id !== id));
-    if (dbDriver) {
-      persistDbAction(() => deleteCategoryRow(dbDriver, id));
-    }
+    if (dbDriver) persistDbAction(() => deleteCategoryRow(dbDriver, id));
     showToast('Category deleted', 'Undo', () => {
       setCategories(cats => cats.some(item => item.id === category.id) ? cats : [category, ...cats]);
       if (dbDriver) persistDbAction(() => insertCategoryRow(dbDriver, category));
@@ -1653,66 +1333,29 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
 
   const formatCurrency = (amount: number | string) => {
     if (!balancesVisible) return '••••••';
-    if (isSafeMathError(amount)) {
-      return `⚠️ [${amount}]`;
-    }
+    if (isSafeMathError(amount)) return `⚠️ [${amount}]`;
     const num = typeof amount === 'number' ? amount : parseFloat(String(amount));
-    if (isNaN(num) || !isFinite(num)) {
-      return `⚠️ [ERR_CALC_NAN]`;
-    }
-    const locales: Record<string, string> = {
-      'USD': 'en-US',
-      'EUR': 'de-DE',
-      'GBP': 'en-GB',
-      'INR': 'en-IN',
-      'JPY': 'ja-JP'
-    };
-    return new Intl.NumberFormat(locales[currency] || 'en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(num);
+    if (isNaN(num) || !isFinite(num)) return `⚠️ [ERR_CALC_NAN]`;
+    const locales: Record<string, string> = { USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB', INR: 'en-IN', JPY: 'ja-JP' };
+    return new Intl.NumberFormat(locales[currency] || 'en-US', { style: 'currency', currency }).format(num);
   };
-
   const getCurrencySymbol = () => {
-    const locales: Record<string, string> = {
-      'USD': 'en-US',
-      'EUR': 'de-DE',
-      'GBP': 'en-GB',
-      'INR': 'en-IN',
-      'JPY': 'ja-JP'
-    };
-    return (0).toLocaleString(locales[currency] || 'en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).replace(/\d/g, '').trim();
+    const locales: Record<string, string> = { USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB', INR: 'en-IN', JPY: 'ja-JP' };
+    return (0).toLocaleString(locales[currency] || 'en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\d/g, '').trim();
   };
 
   const clearAllData = async () => {
-    const defaultProf = {
-      name: 'Financial Sovereign',
-      email: 'sovereign@vault.vellum',
-      avatar: '',
-      offlineReady: true
-    };
-
+    const defaultProf = { name: 'Financial Sovereign', email: 'sovereign@vault.vellum', avatar: '', offlineReady: true };
     try {
       if (dbDriver) {
-      await createRecoverySnapshot(dbDriver, 'clear');
+        await createRecoverySnapshot(dbDriver, 'clear');
         setRecoverySnapshotCount((await listRecoverySnapshots()).length);
         await persistDbAction(async () => {
           await dbDriver.execute('BEGIN TRANSACTION');
-          try {
-            await clearDatabase(dbDriver);
-            await dbDriver.execute('COMMIT');
-          } catch (error) {
-            await dbDriver.execute('ROLLBACK');
-            throw error;
-          }
+          try { await clearDatabase(dbDriver); await dbDriver.execute('COMMIT'); }
+          catch (error) { await dbDriver.execute('ROLLBACK'); throw error; }
         });
       }
-
       await deletePersistedDatabase();
       clearAppBrowserStorage();
       markClearStoragePending();
@@ -1720,7 +1363,6 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       const message = error instanceof Error ? error.message : 'Could not clear the local database.';
       throw new Error(message);
     }
-
     setTransactions([]);
     setCreditCardRecords([]);
     setAccountRecords([]);
@@ -1746,12 +1388,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
     if (dbDriver) {
       await createRecoverySnapshot(dbDriver, 'restore');
       setRecoverySnapshotCount((await listRecoverySnapshots()).length);
-      const imported = await persistDbAction(async () => {
-        await importLedgerToDatabase(dbDriver, data, { skipValidation: true });
-      });
-      if (!imported) {
-        throw new Error('Import failed. Your existing ledger was left unchanged.');
-      }
+      const imported = await persistDbAction(async () => { await importLedgerToDatabase(dbDriver, data, { skipValidation: true }); });
+      if (!imported) throw new Error('Import failed. Your existing ledger was left unchanged.');
       const refreshed = await loadStateFromDatabase(dbDriver);
       setAccountRecords(stripAccountBalances(refreshed.accounts));
       setTransactions(refreshed.transactions);
@@ -1767,11 +1405,8 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setAffordabilitySettingsState(normalizeAffordabilitySettings(restoredAppSettings[AFFORDABILITY_SETTINGS_KEY]));
       setSavingsGoals(normalizeSavingsGoals(restoredAppSettings[SAVINGS_GOALS_KEY]));
       const integrity = await auditDatabaseIntegrity(dbDriver);
-      if (integrity.mismatches.length > 0) {
-        setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
-      } else {
-        setIntegrityWarning(null);
-      }
+      if (integrity.mismatches.length > 0) setIntegrityWarning(`Imported ledger needs attention: ${integrity.mismatches.length} account balance${integrity.mismatches.length === 1 ? '' : 's'} could not be verified.`);
+      else setIntegrityWarning(null);
     } else {
       if (data.accounts && Array.isArray(data.accounts)) setAccountRecords(stripAccountBalances(data.accounts));
       if (data.transactions && Array.isArray(data.transactions)) setTransactions(data.transactions);
@@ -1784,7 +1419,6 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       setAffordabilitySettingsState(normalizeAffordabilitySettings(data.affordabilitySettings));
       setSavingsGoals(normalizeSavingsGoals(data.savingsGoals));
     }
-
     if (data.currency) setCurrency(data.currency);
     const importedConfig = data.users_config?.[0];
     if (importedConfig?.currency_code) setCurrency(importedConfig.currency_code);
@@ -1794,45 +1428,14 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
   };
 
   const exportLedgerData = () => ({
-    schemaVersion: 'coinbuddy-ledger-v5',
-    exportedAt: new Date().toISOString(),
-    accounts,
-    transactions,
-    categories,
-    events,
-    creditCards,
-    widgets,
-    loanRevisions,
-    recurringRules,
-    affordabilitySettings,
-    savingsGoals,
-    people,
-    sharedObligations,
-    sharedResponsibilities,
-    sharedPayments,
-    sharedSettlements,
-    loanSharingRules,
-    loanContributionRules,
-    sharedObligationTemplates,
-    sharedTemplateResponsibilities,
-    externalLoanContributions,
-    currency,
+    schemaVersion: 'coinbuddy-ledger-v5', exportedAt: new Date().toISOString(), accounts, transactions, categories, events, creditCards, widgets, loanRevisions, recurringRules, affordabilitySettings, savingsGoals, people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, currency,
   });
 
   const resetToDemoData = () => {
-    if (!dbDriver) {
-      window.alert('The local ledger is still loading. Please try again in a moment.');
-      return;
-    }
+    if (!dbDriver) { window.alert('The local ledger is still loading. Please try again in a moment.'); return; }
     void (async () => {
-      try {
-        await loadDemoDataFromJson(dbDriver);
-        await persistDatabase(dbDriver);
-        window.location.reload();
-      } catch (error) {
-        console.error('Unable to load CoinBuddy demo data:', error);
-        window.alert(`Demo data could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      try { await loadDemoDataFromJson(dbDriver); await persistDatabase(dbDriver); window.location.reload(); }
+      catch (error) { console.error('Unable to load CoinBuddy demo data:', error); window.alert(`Demo data could not be loaded: ${error instanceof Error ? error.message : String(error)}`); }
     })();
   };
 
@@ -1847,7 +1450,7 @@ const groupTransactionsToEvent = (transactionIds: string[], eventId: string | nu
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
       people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
-      updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
+      updateRecurringRule, deleteRecurringRule, skipRecurringRule,
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,
       addAccountModalType, setAddAccountModalType, creditCards, addCreditCard, updateCreditCard, payCreditCard, payLiability, deleteCreditCard,
