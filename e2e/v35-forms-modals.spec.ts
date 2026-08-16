@@ -28,7 +28,7 @@ async function openDestination(page: Page, destination: 'Activity' | 'Accounts')
   await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
-async function expectInsideViewport(page: Page, sheet: Locator) {
+async function expectInsideViewport(page: Page, sheet: Locator, bottomSheet = true) {
   await expect(sheet).toBeVisible();
   const bounds = await sheet.boundingBox();
   const viewport = page.viewportSize();
@@ -39,7 +39,7 @@ async function expectInsideViewport(page: Page, sheet: Locator) {
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport!.width + 1);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport!.height + 1);
 
-  if (viewport!.width < 640) {
+  if (viewport!.width < 640 && bottomSheet) {
     expect(Math.abs(bounds!.y + bounds!.height - viewport!.height)).toBeLessThanOrEqual(2);
 
     // V35ModalFrame renders one drag handle above each mobile sheet. A legacy
@@ -124,8 +124,19 @@ test('core money forms stay responsive after the locked redesign', async ({ page
 
   await openWallet(page);
   const walletSheet = page.getByTestId('wallet-summary-sheet');
-  await expectInsideViewport(page, walletSheet);
+  await expectInsideViewport(page, walletSheet, false);
   await expect(walletSheet.getByRole('heading', { name: 'Wallet Summary', exact: true })).toBeVisible();
+  await expect(walletSheet.getByText('Total Assets', { exact: true })).toBeVisible();
+  await expect(walletSheet.getByText('Total Liabilities', { exact: true })).toBeVisible();
+  await expect(walletSheet.getByText('Net Position', { exact: true })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) < 640) {
+    const bounds = await walletSheet.boundingBox();
+    const viewport = page.viewportSize();
+    expect(bounds).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(bounds!.y).toBeGreaterThan(8);
+    expect(bounds!.y + bounds!.height).toBeLessThan(viewport!.height - 8);
+  }
   await walletSheet.getByRole('button', { name: 'Close wallet summary', exact: true }).click();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
