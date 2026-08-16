@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { openAppDestination, openWalletSummary } from './helpers/navigation';
 
 async function prepare(page: Page) {
   await page.addInitScript(() => {
@@ -12,20 +13,6 @@ async function prepare(page: Page) {
   await expect(page.getByText('Load Demo Data', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
-}
-
-async function openDestination(page: Page, destination: 'Activity' | 'Accounts') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-  if (destination === 'Activity') {
-    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Activity', exact: true }).click();
-    return;
-  }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 async function expectInsideViewport(page: Page, sheet: Locator, bottomSheet = true) {
@@ -42,9 +29,6 @@ async function expectInsideViewport(page: Page, sheet: Locator, bottomSheet = tr
   if (viewport!.width < 640 && bottomSheet) {
     expect(Math.abs(bounds!.y + bounds!.height - viewport!.height)).toBeLessThanOrEqual(2);
 
-    // V35ModalFrame renders one drag handle above each mobile sheet. A legacy
-    // `> div:first-child` rule once stretched it to ~54px, producing a large
-    // grey oval above the form title. Keep the shared handle compact forever.
     const handle = sheet.locator(':scope > .v35-sheet-handle');
     if (await handle.count()) {
       await expect(handle).toBeVisible();
@@ -57,23 +41,13 @@ async function expectInsideViewport(page: Page, sheet: Locator, bottomSheet = tr
   }
 }
 
-async function openWallet(page: Page) {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('app-header').getByRole('button', { name: 'Wallet Summary', exact: true }).click();
-    return;
-  }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: 'Wallet Summary', exact: true }).click();
-}
-
 test('core money forms stay responsive after the locked redesign', async ({ page }, testInfo: TestInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
 
-  await openDestination(page, 'Activity');
+  await openAppDestination(page, 'Activity');
   await page.getByPlaceholder('Search transactions...').fill('Dinner Out');
   await page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true }).click();
   await page.getByTestId('transaction-detail').getByRole('button', { name: 'Edit transaction', exact: true }).click();
@@ -82,9 +56,9 @@ test('core money forms stay responsive after the locked redesign', async ({ page
   await expect(transactionSheet.getByRole('heading', { name: 'Edit Transaction', exact: true })).toBeVisible();
   await expect(transactionSheet.getByLabel('Transaction amount')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('locked-transaction-form.png'), fullPage: false });
-  await transactionSheet.getByRole('button', { name: /Close edit transaction/i }).click();
+  await transactionSheet.getByRole('button', { name: 'Back from transaction form', exact: true }).click();
 
-  await openDestination(page, 'Accounts');
+  await openAppDestination(page, 'Accounts');
   await page.getByRole('button', { name: /Add account/i }).click();
   await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
   const accountSheet = page.getByTestId('account-form-sheet');
@@ -92,7 +66,7 @@ test('core money forms stay responsive after the locked redesign', async ({ page
   await expect(accountSheet.getByRole('heading', { name: 'Add Account', exact: true })).toBeVisible();
   await expect(accountSheet.getByRole('button', { name: 'Investment', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('locked-account-form.png'), fullPage: false });
-  await accountSheet.getByRole('button', { name: /Close add account/i }).click();
+  await accountSheet.getByRole('button', { name: 'Back from account form', exact: true }).click();
 
   await page.getByRole('button', { name: /HDFC Salary Account/ }).click();
   await page.getByRole('button', { name: 'Reconcile', exact: true }).first().click();
@@ -122,7 +96,7 @@ test('core money forms stay responsive after the locked redesign', async ({ page
   await rateSheet.getByRole('button', { name: 'Close loan rate update', exact: true }).click();
   await paySheet.getByRole('button', { name: 'Close payment', exact: true }).click();
 
-  await openWallet(page);
+  await openWalletSummary(page);
   const walletSheet = page.getByTestId('wallet-summary-sheet');
   await expectInsideViewport(page, walletSheet, false);
   await expect(walletSheet.getByRole('heading', { name: 'Wallet Summary', exact: true })).toBeVisible();
