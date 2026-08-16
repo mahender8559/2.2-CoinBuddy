@@ -16,6 +16,77 @@
   display: none;
 }
 
+/*
+ * Compatibility firewall for the pre-redesign V3.5 showcase styles.
+ * Those styles intentionally force every finance input to 40px with !important.
+ * The locked form system is loaded later, but several legacy selectors are more
+ * specific, so explicitly out-rank them here instead of weakening the tests.
+ */
+[data-v35-form-system="locked"] input.cb-finance-field:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-v35-form-system="locked"] select.cb-finance-field,
+[data-v35-form-system="locked"] textarea.cb-finance-field {
+  min-height: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  border-color: var(--cb-locked-border) !important;
+  background: var(--cb-locked-field) !important;
+  padding-inline: 13px !important;
+  color: var(--cb-locked-text) !important;
+  font-size: 12.5px !important;
+  font-weight: 550 !important;
+}
+
+[data-v35-form-system="locked"] textarea.cb-finance-field {
+  height: auto !important;
+  min-height: 88px !important;
+  padding-block: 10px !important;
+}
+
+/* The transaction amount is intentionally payment-app sized, not a normal
+   40/44px text control. Keep this selector stronger than every legacy rule. */
+[data-testid="transaction-form-sheet"] input#transaction-amount.cb-amount-input {
+  min-height: 72px !important;
+  height: 72px !important;
+  border: 0 !important;
+  border-bottom: 2px solid var(--cb-locked-blue) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 12px 0 58px !important;
+  color: #fff !important;
+  font-size: clamp(38px, 7vw, 54px) !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  letter-spacing: -.04em !important;
+  text-align: center !important;
+  box-shadow: none !important;
+}
+
+[data-testid="transaction-form-sheet"] .cb-amount-red input#transaction-amount.cb-amount-input {
+  border-bottom-color: var(--cb-locked-red) !important;
+}
+
+[data-testid="transaction-form-sheet"] .cb-amount-green input#transaction-amount.cb-amount-input {
+  border-bottom-color: var(--cb-locked-green) !important;
+}
+
+[data-testid="transaction-form-sheet"] .cb-amount-purple input#transaction-amount.cb-amount-input {
+  border-bottom-color: var(--cb-locked-purple) !important;
+}
+
+/* Category and Goal are supporting forms that still live in their existing
+   panels. Match the same 44px field geometry using selectors at least as
+   specific as the old showcase layer. */
+[role="dialog"]:has(#category-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#category-form-title) select,
+[role="dialog"]:has(#goal-form-title) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[role="dialog"]:has(#goal-form-title) select {
+  min-height: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  border-color: var(--cb-locked-border) !important;
+  background: var(--cb-locked-field) !important;
+}
+
 /* Legacy form-reference CSS previously forced compact desktop widths. These
    final rules intentionally keep the approved mobile/desktop split. */
 @media (min-width: 640px) {
@@ -24,4 +95,13 @@
   [data-testid="reconcile-sheet"],
   [data-testid="pay-modal"],
   [data-testid="loan-rate-sheet"] { border-radius: 20px !important; }
+}
+
+@media (max-width: 639px) {
+  [data-testid="transaction-form-sheet"] input#transaction-amount.cb-amount-input {
+    min-height: 68px !important;
+    height: 68px !important;
+    padding-left: 46px !important;
+    font-size: clamp(36px, 12vw, 48px) !important;
+  }
 }
