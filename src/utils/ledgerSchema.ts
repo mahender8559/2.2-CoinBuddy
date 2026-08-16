@@ -202,7 +202,7 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
     sharedObligationTemplates: Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : [],
     sharedTemplateResponsibilities: Array.isArray(data.sharedTemplateResponsibilities) ? data.sharedTemplateResponsibilities : [],
     externalLoanContributions: Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : [],
-    currency: data.currency || 'INR',
+    currency: data.currency || '$',
     lastUpdated: new Date().toISOString(),
   };
 }
