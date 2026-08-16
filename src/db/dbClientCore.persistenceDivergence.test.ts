@@ -1,5 +1,15 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// dbClientCore imports the browser-facing `?url` form of sql.js' WASM asset.
+// In Vitest on Windows, Vite exposes that as a root-relative `/node_modules/...`
+// URL and sql.js then asks Node to open it from the drive root (for example
+// `M:\node_modules\...`) instead of this repository. Mock only the asset URL
+// for this Node-based test; production keeps using Vite's emitted browser URL.
+vi.mock('sql.js/dist/sql-wasm.wasm?url', () => ({
+  default: `${process.cwd().replace(/\\/g, '/')}/node_modules/sql.js/dist/sql-wasm.wasm`,
+}));
+
 import { initializeDatabase, persistDatabase } from './dbClientCore';
 
 function memoryLocalStorage() {
@@ -71,7 +81,7 @@ describe('dual-store persistence divergence recovery', () => {
     const staleOpfs = opfsBytes?.slice();
     expect(staleOpfs?.byteLength).toBeGreaterThan(0);
 
-    await first.execute(`INSERT INTO app_settings (key, value_json) VALUES ('divergence-proof', '"newer"')`);
+    await first.execute(`INSERT INTO app_settings (key, value_json) VALUES ('divergence-proof', '\"newer\"')`);
     failOpfsWrite = true;
     await expect(persistDatabase(first)).resolves.toBeUndefined();
     expect(opfsBytes).toEqual(staleOpfs);
@@ -80,7 +90,7 @@ describe('dual-store persistence divergence recovery', () => {
     failOpfsWrite = false;
     const reloaded = await initializeDatabase();
     const rows = await reloaded.query(`SELECT value_json FROM app_settings WHERE key = 'divergence-proof'`);
-    expect(rows).toEqual([{ value_json: '"newer"' }]);
+    expect(rows).toEqual([{ value_json: '\"newer\"' }]);
     reloaded.rawDb.close();
   });
 });
