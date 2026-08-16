@@ -39,11 +39,12 @@ export function normalizeSavingsGoal(value: Partial<SavingsGoal> & { id?: string
   const type = GOAL_TYPES.has(value.type as SavingsGoalType) ? value.type as SavingsGoalType : 'OTHER';
   const priority = PRIORITIES.has(value.priority as SavingsGoalPriority) ? value.priority as SavingsGoalPriority : 'MEDIUM';
   const linkedAccountIds = getGoalLinkedAccountIds(value);
+  const targetAmount = nonNegative(value.targetAmount);
   return {
     id: typeof value.id === 'string' && value.id ? value.id : crypto.randomUUID(),
     name: String(value.name ?? '').trim() || 'Savings goal',
     type,
-    targetAmount: nonNegative(value.targetAmount),
+    targetAmount,
     targetDate: typeof value.targetDate === 'string' && value.targetDate ? value.targetDate : undefined,
     monthlyContribution: nonNegative(value.monthlyContribution),
     linkedAccountIds,
@@ -53,7 +54,9 @@ export function normalizeSavingsGoal(value: Partial<SavingsGoal> & { id?: string
     manualSavedAmount: nonNegative(value.manualSavedAmount),
     protectLinkedBalance: Boolean(value.protectLinkedBalance),
     priority,
-    isActive: value.isActive !== false,
+    // Invalid/legacy zero-target goals are preserved but disabled instead of
+    // silently disappearing during load/restore. The user can repair them.
+    isActive: targetAmount > 0 && value.isActive !== false,
     createdAt: typeof value.createdAt === 'string' && value.createdAt ? value.createdAt : now,
   };
 }
@@ -62,8 +65,27 @@ export function normalizeSavingsGoals(value: unknown): SavingsGoal[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter(item => item && typeof item === 'object')
-    .map(item => normalizeSavingsGoal(item as Partial<SavingsGoal>))
-    .filter(goal => goal.targetAmount > 0);
+    .map(item => normalizeSavingsGoal(item as Partial<SavingsGoal>));
+}
+
+export interface GoalAccountOverlap {
+  accountId: string;
+  goalId: string;
+  goalName: string;
+}
+
+/** Finds active goals that already claim one of the proposed linked accounts. */
+export function getGoalAccountOverlaps(goals: SavingsGoal[], proposedGoalId: string | undefined, linkedAccountIds: string[]): GoalAccountOverlap[] {
+  const proposed = new Set(uniqueStrings(linkedAccountIds));
+  if (!proposed.size) return [];
+  const overlaps: GoalAccountOverlap[] = [];
+  for (const goal of goals) {
+    if (!goal.isActive || goal.id === proposedGoalId) continue;
+    for (const accountId of getGoalLinkedAccountIds(goal)) {
+      if (proposed.has(accountId)) overlaps.push({ accountId, goalId: goal.id, goalName: goal.name });
+    }
+  }
+  return overlaps;
 }
 
 export function getGoalLedgerContributions(goalId: string, transactions: Transaction[] = []): number {
