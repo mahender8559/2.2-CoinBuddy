@@ -73,11 +73,13 @@ export interface SavingsGoal {
   targetDate?: string;
   /** Explicit amount the user intends to contribute in a normal financial cycle. */
   monthlyContribution: number;
-  /** Optional asset account whose current balance represents goal progress. */
+  /** Asset accounts whose current balances together represent goal progress. */
+  linkedAccountIds?: string[];
+  /** @deprecated Legacy single-account field retained for old backups and migrations. */
   linkedAccountId?: string;
   /** Used only when no account is linked. */
   manualSavedAmount: number;
-  /** When linked to liquid cash, protect that account balance in affordability. */
+  /** When linked to liquid cash, protect all linked liquid account balances in affordability. */
   protectLinkedBalance: boolean;
   priority: SavingsGoalPriority;
   isActive: boolean;
@@ -229,7 +231,6 @@ export interface LoanContributionRule {
   value: number;
   isActive: boolean;
 }
-
 
 /** Recurring household obligation definition. Generated obligations are immutable occurrences. */
 export interface SharedObligationTemplate {
