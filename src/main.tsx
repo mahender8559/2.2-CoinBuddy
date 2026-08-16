@@ -11,6 +11,7 @@ import './locked-form-fixes.css';
 import './locked-form-transaction-polish.css';
 import './theme-compatibility.css';
 import './theme-palette-overrides.css';
+import './wallet-summary-polish.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
