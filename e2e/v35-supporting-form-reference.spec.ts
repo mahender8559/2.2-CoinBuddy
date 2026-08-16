@@ -21,7 +21,7 @@ async function chooseManageDestination(page: Page, destination: 'Categories' | '
   }, destination);
 }
 
-test('category and goal supporting forms keep the approved compact reference hierarchy', async ({ page }, testInfo: TestInfo) => {
+test('category and goal supporting forms follow the locked responsive field system', async ({ page }, testInfo: TestInfo) => {
   await prepareDemo(page);
 
   await chooseManageDestination(page, 'Categories');
@@ -35,9 +35,9 @@ test('category and goal supporting forms keep the approved compact reference hie
   await expect(categoryDialog.getByLabel('Category name')).toBeVisible();
   await expect(categoryDialog.getByRole('button', { name: 'Save Category', exact: true })).toBeVisible();
   const categoryNameBox = await categoryDialog.getByLabel('Category name').boundingBox();
-  expect(categoryNameBox?.height).toBeGreaterThanOrEqual(39);
-  expect(categoryNameBox?.height).toBeLessThanOrEqual(41);
-  await page.screenshot({ path: testInfo.outputPath('v35-category-reference.png'), fullPage: false });
+  expect(categoryNameBox?.height).toBeGreaterThanOrEqual(43);
+  expect(categoryNameBox?.height).toBeLessThanOrEqual(45);
+  await page.screenshot({ path: testInfo.outputPath('locked-category-form.png'), fullPage: false });
   await categoryDialog.getByRole('button', { name: 'Close category form', exact: true }).click();
 
   await chooseManageDestination(page, 'Goals');
@@ -50,8 +50,8 @@ test('category and goal supporting forms keep the approved compact reference hie
   await expect(goalDialog.getByLabel('Target Amount')).toBeVisible();
   await expect(goalDialog.getByRole('button', { name: /Create Goal/i })).toBeVisible();
   const goalNameBox = await goalDialog.locator('#goal-name').boundingBox();
-  expect(goalNameBox?.height).toBeGreaterThanOrEqual(39);
-  expect(goalNameBox?.height).toBeLessThanOrEqual(41);
-  await page.screenshot({ path: testInfo.outputPath('v35-goal-reference.png'), fullPage: false });
+  expect(goalNameBox?.height).toBeGreaterThanOrEqual(43);
+  expect(goalNameBox?.height).toBeLessThanOrEqual(45);
+  await page.screenshot({ path: testInfo.outputPath('locked-goal-form.png'), fullPage: false });
   await goalDialog.getByRole('button', { name: 'Close goal form', exact: true }).click();
 });
