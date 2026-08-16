@@ -12,11 +12,13 @@ import './locked-form-transaction-polish.css';
 import './wallet-summary-polish.css';
 import './coinbuddy-themes.css';
 import './theme-picker-polish.css';
+import './custom-theme-picker.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ThemeSystemBridge } from './components/ThemeSystemBridge';
 
 type LockableScreenOrientation = ScreenOrientation & { lock?: (orientation: 'portrait') => Promise<void> };
-const screenOrientation = typeof screen !== 'undefined' ? screen.orientation as LockableScreenOrientation : undefined;
+const screenOrientation = typeof screen !== 'undefined' ? screen.orientation as LockableScreenOrientation | undefined : undefined;
 
 if (screenOrientation?.lock) {
   screenOrientation.lock('portrait').catch(() => {
@@ -26,7 +28,12 @@ if (screenOrientation?.lock) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary><AppProvider><App /></AppProvider></ErrorBoundary>
+    <ErrorBoundary>
+      <AppProvider>
+        <ThemeSystemBridge />
+        <App />
+      </AppProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
 
