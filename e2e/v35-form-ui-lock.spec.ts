@@ -11,7 +11,7 @@ async function prepareDemo(page: Page) {
   await demo.click();
   await expect(page.getByText('Load Demo Data', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
 }
 
 async function openDestination(page: Page, destination: 'Activity' | 'Accounts') {
@@ -28,64 +28,52 @@ async function openDestination(page: Page, destination: 'Activity' | 'Accounts')
   await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
-test('locked V3.5 form design tokens and compact controls are applied to money forms', async ({ page }) => {
+test('locked finance form system uses the new responsive amount-first design', async ({ page }) => {
   await prepareDemo(page);
-
-  const tokens = await page.evaluate(() => {
-    const styles = getComputedStyle(document.documentElement);
-    return {
-      controlHeight: styles.getPropertyValue('--cb-form-control-height').trim(),
-      controlRadius: styles.getPropertyValue('--cb-form-radius').trim(),
-      panelRadius: styles.getPropertyValue('--cb-form-panel-radius').trim(),
-      panel: styles.getPropertyValue('--cb-form-panel').trim(),
-      field: styles.getPropertyValue('--cb-form-field').trim(),
-      blue: styles.getPropertyValue('--cb-form-blue').trim(),
-      purple: styles.getPropertyValue('--cb-form-purple').trim(),
-    };
-  });
-  expect(tokens).toEqual({
-    controlHeight: '40px',
-    controlRadius: '8px',
-    panelRadius: '18px',
-    panel: '#0b1523',
-    field: '#111c2c',
-    blue: '#1258e6',
-    purple: '#7425c9',
-  });
 
   await openDestination(page, 'Activity');
   await page.getByPlaceholder('Search transactions...').fill('Dinner Out');
   await page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true }).click();
   await page.getByTestId('transaction-detail').getByRole('button', { name: 'Edit transaction', exact: true }).click();
 
-  const transactionSheet = page.getByTestId('transaction-form-sheet');
-  await expect(transactionSheet).toHaveAttribute('data-v35-form-system', 'locked');
-  const amount = transactionSheet.getByLabel('Transaction amount');
+  const transaction = page.getByTestId('transaction-form-sheet');
+  await expect(transaction).toHaveAttribute('data-v35-form-system', 'locked');
+  await expect(transaction.getByRole('heading', { name: 'Edit Transaction', exact: true })).toBeVisible();
+  const amount = transaction.getByLabel('Transaction amount');
+  await expect(amount).toBeVisible();
   const amountBox = await amount.boundingBox();
   expect(amountBox).not.toBeNull();
-  expect(amountBox!.height).toBeGreaterThanOrEqual(39);
-  expect(amountBox!.height).toBeLessThanOrEqual(41);
-  const amountStyle = await amount.evaluate(element => {
-    const style = getComputedStyle(element);
-    return { borderRadius: style.borderRadius, fontSize: style.fontSize };
-  });
-  expect(amountStyle.borderRadius).toBe('8px');
-  expect(amountStyle.fontSize).toBe('14px');
-  await transactionSheet.getByRole('button', { name: 'Close transaction form', exact: true }).click();
+  expect(amountBox!.height).toBeGreaterThanOrEqual(64);
+  const amountFont = await amount.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
+  expect(amountFont).toBeGreaterThanOrEqual(36);
+  await expect(transaction.getByLabel('Notes')).toBeAttached();
+  await expect(transaction.getByText('More options', { exact: true })).toBeVisible();
+  await transaction.getByRole('button', { name: /Close edit transaction/i }).click();
 
   await openDestination(page, 'Accounts');
   await page.getByRole('button', { name: /Add account/i }).click();
   await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
-  const accountSheet = page.getByTestId('account-form-sheet');
-  await expect(accountSheet).toHaveAttribute('data-v35-form-system', 'locked');
-  await accountSheet.getByRole('button', { name: 'Close account form', exact: true }).click();
+  const account = page.getByTestId('account-form-sheet');
+  await expect(account).toHaveAttribute('data-v35-form-system', 'locked');
+  await expect(account.getByRole('button', { name: 'Account', exact: true })).toBeVisible();
+  await expect(account.getByRole('button', { name: 'Investment', exact: true })).toBeVisible();
+  await expect(account.getByRole('button', { name: 'Liability', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: /Car Loan/ }).click();
-  await page.getByRole('button', { name: 'Pay down', exact: true }).click();
-  const paySheet = page.getByTestId('pay-modal');
-  await expect(paySheet).toHaveAttribute('data-v35-form-system', 'locked');
-  const payButton = paySheet.getByTestId('confirm-payment');
-  const payButtonStyle = await payButton.evaluate(element => getComputedStyle(element).backgroundImage);
-  expect(payButtonStyle).toContain('linear-gradient');
-  await paySheet.getByRole('button', { name: 'Close payment', exact: true }).click();
+  await account.getByRole('button', { name: 'Investment', exact: true }).click();
+  await expect(account.getByRole('heading', { name: 'Add Investment', exact: true })).toBeVisible();
+  await expect(account.getByLabel('Total Invested Amount')).toBeVisible();
+  await expect(account.getByLabel('Monthly SIP Amount')).toBeVisible();
+  await expect(account.getByLabel('Funding Account')).toBeVisible();
+  await expect(account.getByText(/Provider|Platform|Fund Type/i)).toHaveCount(0);
+
+  await account.getByRole('button', { name: 'Liability', exact: true }).click();
+  await expect(account.getByRole('heading', { name: 'Add Credit Card', exact: true })).toBeVisible();
+  await expect(account.getByLabel('Credit Limit')).toBeVisible();
+  await expect(account.getByLabel('Billing Cycle Day')).toBeVisible();
+  await account.getByRole('button', { name: /Close add credit card/i }).click();
+
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
