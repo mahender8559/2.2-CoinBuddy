@@ -11,6 +11,7 @@ import { normalizeAffordabilityClass } from '../domain/categoryAffordability';
 import { AFFORDABILITY_SETTINGS_KEY, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { SAVINGS_GOALS_KEY, normalizeSavingsGoals } from '../domain/savingsGoals';
 import { buildInvestmentSipRule, investmentSipRuleId, isInvestmentSipAccount } from '../domain/investmentSip';
+import { persistenceCopiesDiverged, persistenceWriteWarning, selectNewestPersistenceCandidate } from './persistenceStrategy';
 
 export const DB_STORAGE_KEY = 'coinbuddy_sqlite_db';
 const SNAPSHOT_DB_NAME = 'coinbuddy-ledger';
@@ -63,6 +64,50 @@ export interface SqlJsDatabaseDriver {
   execute: (sql: string, params?: (string | number | null | undefined)[]) => Promise<void>;
   query: (sql: string, params?: (string | number | null | undefined)[]) => Promise<any[]>;
   exportToBase64: () => string;
+}
+
+const PERSISTENCE_META_TABLE = 'coinbuddy_persistence_meta';
+const PERSISTENCE_GENERATION_KEY = 'ledger_generation';
+
+function ensurePersistenceMetadata(db: any): void {
+  db.run(`CREATE TABLE IF NOT EXISTS ${PERSISTENCE_META_TABLE} (key TEXT PRIMARY KEY, value INTEGER NOT NULL)`);
+  db.run(`INSERT OR IGNORE INTO ${PERSISTENCE_META_TABLE} (key, value) VALUES (?, 0)`, [PERSISTENCE_GENERATION_KEY]);
+}
+
+function readPersistenceGeneration(db: any): number {
+  try {
+    const result = db.exec(`SELECT value FROM ${PERSISTENCE_META_TABLE} WHERE key = 'ledger_generation' LIMIT 1`);
+    const value = Number(result[0]?.values?.[0]?.[0] ?? 0);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setPersistenceGeneration(db: any, generation: number): void {
+  ensurePersistenceMetadata(db);
+  db.run(`UPDATE ${PERSISTENCE_META_TABLE} SET value = ? WHERE key = ?`, [Math.max(0, Math.trunc(generation)), PERSISTENCE_GENERATION_KEY]);
+}
+
+function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number {
+  let probe: any;
+  try {
+    probe = new SQL.Database(snapshot);
+    return readPersistenceGeneration(probe);
+  } catch {
+    return 0;
+  } finally {
+    try { probe?.close(); } catch { /* best effort */ }
+  }
+}
+
+function opfsIsAvailable(): boolean {
+  return typeof navigator !== 'undefined' && Boolean((navigator.storage as any)?.getDirectory);
+}
+
+function notifyPersistenceWarning(message: string): void {
+  console.warn(message);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('coinbuddy_persistence_warning', { detail: message }));
 }
 
 /** Reject malformed backups before clearing the existing ledger. */
@@ -169,7 +214,7 @@ export async function restoreRecoverySnapshot(driver: SqlJsDatabaseDriver, key: 
 }
 
 async function readOpfsSnapshot(): Promise<Uint8Array | null> {
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;
   if (!getDirectory) return null;
   try {
     const root = await getDirectory();
@@ -179,7 +224,7 @@ async function readOpfsSnapshot(): Promise<Uint8Array | null> {
 }
 
 async function writeOpfsSnapshot(snapshot: Uint8Array): Promise<boolean> {
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;
   if (!getDirectory) return false;
   const root = await getDirectory();
   const handle = await root.getFileHandle(OPFS_SNAPSHOT_FILE, { create: true });
@@ -239,10 +284,20 @@ export async function runAtomicDatabaseAction(driver: SqlJsDatabaseDriver, actio
 }
 
 export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
-  // Importing the binary lets Vite emit it under /assets, where Workbox
-  // precaches it with the rest of the application shell.
   const SQL = await initSqlJs({ locateFile: (file) => file.endsWith('.wasm') ? sqlWasmUrl : file });
-  let saved = await readOpfsSnapshot() ?? await readSnapshot();
+
+  const [opfsSnapshot, indexedDbSnapshot] = await Promise.all([
+    readOpfsSnapshot(),
+    readSnapshot().catch(error => { console.warn('IndexedDB snapshot read failed:', error); return null; }),
+  ]);
+  const candidates = [
+    ...(opfsSnapshot ? [{ source: 'OPFS' as const, generation: inspectSnapshotGeneration(SQL, opfsSnapshot), snapshot: opfsSnapshot }] : []),
+    ...(indexedDbSnapshot ? [{ source: 'INDEXED_DB' as const, generation: inspectSnapshotGeneration(SQL, indexedDbSnapshot), snapshot: indexedDbSnapshot }] : []),
+  ];
+  const selected = selectNewestPersistenceCandidate(candidates);
+  let saved = selected?.snapshot ?? null;
+  const diverged = persistenceCopiesDiverged(candidates, snapshotsMatch);
+
   if (!saved) {
     const legacy = localStorage.getItem(DB_STORAGE_KEY);
     if (legacy) {
@@ -256,6 +311,7 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
       localStorage.removeItem(DB_STORAGE_KEY);
     }
   }
+
   const isNewDatabase = !saved;
   const db = saved ? new SQL.Database(saved) : new SQL.Database();
   const shouldSkipDemoSeed = localStorage.getItem(SKIP_DEMO_SEED_KEY) === 'true';
@@ -263,32 +319,37 @@ export async function initializeDatabase(): Promise<SqlJsDatabaseDriver> {
   db.run(SQLITE_PRAGMA_SETUP);
   db.run(CREATE_TABLES_SQL);
   for (const migration of SQLITE_MIGRATIONS) {
-    try {
-      db.run(migration);
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) {
-        throw error;
-      }
+    try { db.run(migration); }
+    catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) throw error;
     }
   }
   migrateTransactionTypeConstraint(db);
+  ensurePersistenceMetadata(db);
 
-  if (shouldSkipDemoSeed) {
-    localStorage.removeItem(SKIP_DEMO_SEED_KEY);
+  if (shouldSkipDemoSeed) localStorage.removeItem(SKIP_DEMO_SEED_KEY);
+
+  const driver = createDriver(db, isNewDatabase, shouldSkipDemoSeed);
+  if (diverged && selected) {
+    notifyPersistenceWarning(`Local ledger copies disagreed. CoinBuddy selected the newer ${selected.source === 'OPFS' ? 'OPFS' : 'IndexedDB'} snapshot (generation ${selected.generation}) and is repairing redundancy.`);
+    try { await persistDatabase(driver); }
+    catch (error) { console.warn('Persistence redundancy repair could not complete:', error); }
   }
-
-  return createDriver(db, isNewDatabase, shouldSkipDemoSeed);
+  return driver;
 }
 
 export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
-  const snapshot = driver.rawDb.export();
+  ensurePersistenceMetadata(driver.rawDb);
+  const previousGeneration = readPersistenceGeneration(driver.rawDb);
+  const nextGeneration = previousGeneration + 1;
+  setPersistenceGeneration(driver.rawDb, nextGeneration);
+  const snapshot = driver.rawDb.export() as Uint8Array;
   let indexedDbError: unknown;
   let opfsError: unknown;
   let indexedDbSaved = false;
   let opfsSaved = false;
+  const opfsAvailable = opfsIsAvailable();
 
-  // Keep IndexedDB current even when OPFS succeeds. It is the durable fallback
-  // if OPFS is unavailable or reset when the page is refreshed.
   try {
     await writeSnapshot(snapshot);
     const verified = await readSnapshot();
@@ -298,16 +359,19 @@ export async function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void
     indexedDbError = error;
   }
 
-  try {
-    opfsSaved = await writeOpfsSnapshot(snapshot);
-  } catch (error) {
-    opfsError = error;
+  if (opfsAvailable) {
+    try { opfsSaved = await writeOpfsSnapshot(snapshot); }
+    catch (error) { opfsError = error; }
   }
 
   if (!indexedDbSaved && !opfsSaved) {
+    setPersistenceGeneration(driver.rawDb, previousGeneration);
     const cause = indexedDbError ?? opfsError ?? new Error('No persistent browser storage is available.');
     throw new Error(`Unable to save your ledger locally: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
+
+  const warning = persistenceWriteWarning({ indexedDbSaved, opfsSaved, opfsAvailable });
+  if (warning) notifyPersistenceWarning(warning);
 }
 
 export async function deletePersistedDatabase(): Promise<void> {
@@ -318,7 +382,7 @@ export async function deletePersistedDatabase(): Promise<void> {
       request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
     });
   } finally { database.close(); }
-  const getDirectory = (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined;
+  const getDirectory = typeof navigator !== 'undefined' ? (navigator.storage as any)?.getDirectory as (() => Promise<any>) | undefined : undefined;
   if (getDirectory) {
     try { await (await getDirectory()).removeEntry(OPFS_SNAPSHOT_FILE); } catch { /* file did not exist */ }
   }

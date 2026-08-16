@@ -292,6 +292,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = window.setTimeout(() => setToast(null), 6000);
   }, []);
 
+  useEffect(() => {
+    const onPersistenceWarning = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (message) showToast(message);
+    };
+    window.addEventListener('coinbuddy_persistence_warning', onPersistenceWarning);
+    return () => window.removeEventListener('coinbuddy_persistence_warning', onPersistenceWarning);
+  }, [showToast]);
+
   const getStoredSetting = useCallback(async (key: string): Promise<unknown> => {
     if (!dbDriver) return undefined;
     return (await loadAppSettings(dbDriver))[key];
@@ -609,7 +618,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('SQLite persistence failed:', error);
       // Restore the projection from the durable ledger and make failure visible.
       await refreshStateFromDatabase(dbDriver).catch(() => undefined);
-      window.alert(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      showToast(`Your change was not saved: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
@@ -624,7 +633,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Shared finance persistence failed:', error);
       await refreshSharedFinance(dbDriver).catch(() => undefined);
-      window.alert(`Your shared-finance change was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      showToast(`Your shared-finance change was not saved: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
@@ -682,7 +691,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Shared settlement failed:', error);
-      window.alert(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      showToast(`Settlement was not saved: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
@@ -697,7 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('External loan contribution failed:', error);
-      window.alert(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      showToast(`External loan payment was not saved: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };
