@@ -1,0 +1,27 @@
+#transaction-form-title.sr-only,
+#account-form-title.sr-only,
+#reconcile-form-title.sr-only {
+  min-height: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+}
+
+.cb-finance-segmented[aria-label="Liability type"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cb-finance-segmented[aria-label="Liability type"] > button.opacity-0 {
+  display: none;
+}
+
+/* Legacy form-reference CSS previously forced compact desktop widths. These
+   final rules intentionally keep the approved mobile/desktop split. */
+@media (min-width: 640px) {
+  [data-testid="transaction-form-sheet"] { border-radius: 22px !important; }
+  [data-testid="account-form-sheet"] { border-radius: 22px !important; }
+  [data-testid="reconcile-sheet"],
+  [data-testid="pay-modal"],
+  [data-testid="loan-rate-sheet"] { border-radius: 20px !important; }
+}
