@@ -1,9 +1,18 @@
-import { useState, FormEvent, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { AlertTriangle, CalendarDays } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { CurrencyInput } from './CurrencyInput';
-import { V35ModalFrame } from './ui/V35ModalFrame';
-import { AlertTriangle, ArrowLeft, Calendar as CalendarIcon, Check, ChevronDown, X } from 'lucide-react';
 import type { Transaction } from '../types';
+import { V35ModalFrame } from './ui/V35ModalFrame';
+import {
+  AmountHero,
+  FinanceField,
+  FinanceFormHeader,
+  FinanceSection,
+  FinanceSelect,
+  FinanceSubmitButton,
+  FinanceToggle,
+  financeFieldClass,
+} from './ui/FinanceForm';
 
 export function AddTransactionModal() {
   const {
@@ -23,91 +32,94 @@ export function AddTransactionModal() {
   } = useAppContext();
 
   const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [account, setAccount] = useState('');
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
-  const [error, setError] = useState<{ message: string; id: number } | null>(null);
-  const showError = (message: string) => setError({ message, id: Date.now() });
-
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUALLY'>('MONTHLY');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [groupId, setGroupId] = useState('');
   const [goalId, setGoalId] = useState('');
+  const [error, setError] = useState<{ message: string; id: number } | null>(null);
 
-  const activeAccounts = useMemo(() => accounts.filter(a => !a.is_archived), [accounts]);
-  const assets = useMemo(() => accounts.filter(a => a.type === 'asset' && !a.is_archived), [accounts]);
-  const liabilities = useMemo(() => accounts.filter(a => a.type === 'liability' && !a.is_archived), [accounts]);
+  const activeAccounts = useMemo(() => accounts.filter(item => !item.is_archived), [accounts]);
+  const assets = useMemo(() => accounts.filter(item => item.type === 'asset' && !item.is_archived), [accounts]);
+  const liabilities = useMemo(() => accounts.filter(item => item.type === 'liability' && !item.is_archived), [accounts]);
+  const availableCategories = useMemo(
+    () => categories.filter(category => type === 'income' ? category.type === 'income' : category.type !== 'income'),
+    [categories, type],
+  );
+  const eligibleAccounts = type === 'income' ? assets : activeAccounts;
+  const activeGoals = savingsGoals.filter(goal => goal.isActive);
 
-  const availableCategories = useMemo(() => {
-    return categories.filter(c => type === 'income' ? c.type === 'income' : c.type !== 'income');
-  }, [categories, type]);
+  const showError = (message: string) => setError({ message, id: Date.now() });
 
   useEffect(() => {
-    if (type !== 'transfer' && availableCategories.length > 0) {
-      const exists = availableCategories.some(c => c.id === categoryId);
-      if (!exists) setCategoryId(availableCategories[0].id);
-    }
+    if (type === 'transfer' || availableCategories.length === 0) return;
+    if (!availableCategories.some(category => category.id === categoryId)) setCategoryId(availableCategories[0].id);
   }, [availableCategories, categoryId, type]);
 
   useEffect(() => {
-    setError(null);
-  }, [amount, type, account, fromAccountId, toAccountId, isAddModalOpen]);
-
-  useEffect(() => {
     if (!error) return;
-    const timer = setTimeout(() => setError(null), 5000);
-    return () => clearTimeout(timer);
+    const timer = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timer);
   }, [error]);
 
   useEffect(() => {
     if (assets.length > 0 && !account) setAccount(assets[0].id);
     if (assets.length > 0 && !fromAccountId) setFromAccountId(assets[0].id);
-    if (accounts.length > 0 && !toAccountId) {
-      setToAccountId(liabilities.length > 0 ? liabilities[0].id : accounts[0].id);
-    }
-  }, [accounts, assets, liabilities, account, fromAccountId, toAccountId]);
+    if (activeAccounts.length > 0 && !toAccountId) setToAccountId(liabilities[0]?.id ?? activeAccounts[0].id);
+  }, [account, activeAccounts, assets, fromAccountId, liabilities, toAccountId]);
 
   useEffect(() => {
-    if (editingTransaction && isAddModalOpen) {
+    if (type !== 'transfer' || !fromAccountId) return;
+    if (toAccountId === fromAccountId || !activeAccounts.some(item => item.id === toAccountId)) {
+      setToAccountId(activeAccounts.find(item => item.id !== fromAccountId)?.id ?? '');
+    }
+  }, [activeAccounts, fromAccountId, toAccountId, type]);
+
+  useEffect(() => {
+    if (!isAddModalOpen) return;
+    if (editingTransaction) {
       setTitle(editingTransaction.title);
+      setNotes(editingTransaction.notes ?? '');
       setAmount(Math.abs(editingTransaction.amount).toString());
       setType(editingTransaction.type);
-      setAccount(editingTransaction.account || '');
+      setAccount(editingTransaction.account || editingTransaction.fromAccountId || editingTransaction.toAccountId || '');
       setFromAccountId(editingTransaction.fromAccountId || '');
       setToAccountId(editingTransaction.toAccountId || '');
-      setIsRecurring(editingTransaction.isRecurring || false);
-      setRecurrenceFrequency(recurringRules.find(rule => rule.id === editingTransaction.recurringRuleId)?.frequency ?? 'MONTHLY');
+      setIsRecurring(Boolean(editingTransaction.isRecurring));
+      setRecurrenceFrequency(recurringRules.find(rule => rule.id === editingTransaction.recurringRuleId)?.frequency ?? editingTransaction.recurrenceFrequency ?? 'MONTHLY');
       setDate(new Date(editingTransaction.date).toISOString().split('T')[0]);
       setGroupId(events.find(event => event.id === editingTransaction.eventId)?.name || '');
       setGoalId(editingTransaction.goalId || '');
-
-      const catObj = categories.find(c => `#${c.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
-      if (catObj) setCategoryId(catObj.id);
-    } else if (isAddModalOpen) {
-      setTitle('');
-      setAmount('');
-      setType('expense');
-      setIsRecurring(false);
-      setRecurrenceFrequency('MONTHLY');
-      setDate(new Date().toISOString().split('T')[0]);
-      setGroupId('');
-      setGoalId('');
-      setCategoryId(categories[0]?.id || '');
-
-      if (assets.length > 0) setAccount(assets[0].id);
-      if (assets.length > 0) setFromAccountId(assets[0].id);
-      if (liabilities.length > 0) setToAccountId(liabilities[0].id);
-      else if (accounts.length > 0) setToAccountId(accounts[0].id);
+      const category = categories.find(item => `#${item.name.toLowerCase().replace(/\s+/g, '')}` === editingTransaction.category);
+      if (category) setCategoryId(category.id);
+      return;
     }
-  }, [editingTransaction, isAddModalOpen, categories, assets, liabilities, accounts, events, recurringRules]);
+
+    setTitle('');
+    setNotes('');
+    setAmount('');
+    setType('expense');
+    setIsRecurring(false);
+    setRecurrenceFrequency('MONTHLY');
+    setDate(new Date().toISOString().split('T')[0]);
+    setGroupId('');
+    setGoalId('');
+    setCategoryId(categories.find(category => category.type !== 'income')?.id ?? categories[0]?.id ?? '');
+    setAccount(assets[0]?.id ?? activeAccounts[0]?.id ?? '');
+    setFromAccountId(assets[0]?.id ?? '');
+    setToAccountId(liabilities[0]?.id ?? activeAccounts.find(item => item.id !== assets[0]?.id)?.id ?? '');
+  }, [activeAccounts, assets, categories, editingTransaction, events, isAddModalOpen, liabilities, recurringRules]);
 
   useEffect(() => {
-    if (isAddModalOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = 'unset';
+    if (!isAddModalOpen) return;
+    document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isAddModalOpen]);
 
@@ -118,272 +130,197 @@ export function AddTransactionModal() {
     setEditingTransaction(null);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     const numAmount = Number(amount);
-    if (!amount || isNaN(numAmount) || numAmount <= 0) {
-      showError('Transaction amount must strictly be a positive number (> 0).');
-      return;
-    }
+    if (!Number.isFinite(numAmount) || numAmount <= 0) return showError('Enter an amount greater than zero.');
+    if (type === 'transfer' && (!fromAccountId || !toAccountId || fromAccountId === toAccountId)) return showError('Choose two different accounts for this transfer.');
+    if (type !== 'transfer' && !account) return showError('Choose an account.');
 
     const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const isFuture = date > todayStr;
-    const shouldRemainPending = isFuture || editingTransaction?.is_verified === 0 || (!editingTransaction && isRecurring);
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const shouldRemainPending = date > today || editingTransaction?.is_verified === 0 || (!editingTransaction && isRecurring);
 
     if (type === 'income') {
-      const selectedAcc = accounts.find(a => a.id === account);
-      if (selectedAcc && selectedAcc.type === 'liability') {
-        showError('Credit Cards and Loans (Liabilities) cannot be selected as the destination account for Income. Income can only flow into Asset accounts.');
-        return;
-      }
+      const selected = accounts.find(item => item.id === account);
+      if (selected?.type === 'liability') return showError('Income can only be received into an asset account.');
     }
 
     if (!shouldRemainPending && type === 'expense') {
-      const targetAccId = account || 'cash';
-      const selectedAcc = accounts.find(a => a.id === targetAccId);
-      if (selectedAcc && selectedAcc.type === 'asset') {
-        let availableBalance = selectedAcc.balance;
-        if (editingTransaction && editingTransaction.type === 'expense' && (editingTransaction.account || 'cash') === selectedAcc.id) {
-          availableBalance += Math.abs(editingTransaction.amount);
-        }
-        if (numAmount > availableBalance) {
-          showError(`Insufficient funds in ${selectedAcc.name}. Cannot process transaction.`);
-          return;
-        }
-      }
-    } else if (!shouldRemainPending && type === 'transfer') {
-      const sourceAcc = accounts.find(a => a.id === fromAccountId);
-      if (sourceAcc && sourceAcc.type === 'asset') {
-        let availableBalance = sourceAcc.balance;
-        if (editingTransaction && editingTransaction.type === 'transfer' && editingTransaction.fromAccountId === sourceAcc.id) {
-          availableBalance += Math.abs(editingTransaction.amount);
-        }
-        if (numAmount > availableBalance) {
-          showError(`Insufficient funds in ${sourceAcc.name}. Cannot process transaction.`);
-          return;
-        }
+      const selected = accounts.find(item => item.id === account);
+      if (selected?.type === 'asset') {
+        let available = selected.balance;
+        if (editingTransaction?.type === 'expense' && (editingTransaction.account || editingTransaction.fromAccountId) === selected.id) available += Math.abs(editingTransaction.amount);
+        if (numAmount > available) return showError(`Insufficient funds in ${selected.name}.`);
       }
     }
 
-    const categoryObj = categories.find(c => c.id === categoryId);
-    const categoryName = categoryObj?.name || 'General';
-    const iconName = categoryObj?.icon || 'ShoppingBag';
+    if (!shouldRemainPending && type === 'transfer') {
+      const source = accounts.find(item => item.id === fromAccountId);
+      if (source?.type === 'asset') {
+        let available = source.balance;
+        if (editingTransaction?.type === 'transfer' && editingTransaction.fromAccountId === source.id) available += Math.abs(editingTransaction.amount);
+        if (numAmount > available) return showError(`Insufficient funds in ${source.name}.`);
+      }
+    }
 
+    const category = categories.find(item => item.id === categoryId);
+    const categoryName = category?.name || 'General';
+    const iconName = category?.icon || 'ShoppingBag';
     let finalTitle = title.trim();
     if (!finalTitle) {
       if (type === 'transfer') {
-        const fromName = accounts.find(a => a.id === fromAccountId)?.name || 'Account';
-        const toName = accounts.find(a => a.id === toAccountId)?.name || 'Account';
+        const fromName = accounts.find(item => item.id === fromAccountId)?.name || 'Account';
+        const toName = accounts.find(item => item.id === toAccountId)?.name || 'Account';
         finalTitle = `Transfer: ${fromName} to ${toName}`;
-      } else if (type === 'income') {
-        finalTitle = 'Income';
-      } else {
-        finalTitle = categoryName;
-      }
+      } else finalTitle = type === 'income' ? 'Income' : categoryName;
     }
 
-    const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
     const eventName = groupId.trim();
     const eventId = eventName
-      ? (events.find(event => event.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
+      ? (events.find(item => item.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0) ?? createEvent(eventName)).id
       : undefined;
+    const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
 
     const newTx = {
       title: finalTitle,
-      subtitle: `${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
-      amount: type === 'expense' || type === 'transfer' ? -Math.abs(Number(amount) || 0) : Math.abs(Number(amount) || 0),
+      subtitle: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+      amount: type === 'income' ? Math.abs(numAmount) : -Math.abs(numAmount),
       date: new Date(`${date}T12:00:00`).toISOString(),
       category: type === 'transfer' ? '#transfer' : `#${categoryName.toLowerCase().replace(/\s+/g, '')}`,
-      icon: type === 'transfer' ? 'ArrowRightLeft' : iconName,
+      icon: type === 'transfer' ? 'ArrowRightLeft' as const : iconName,
       type,
       account: type === 'transfer' ? undefined : account,
-      fromAccountId: type === 'transfer' ? fromAccountId : (type === 'expense' ? account : undefined),
-      toAccountId: type === 'transfer' ? toAccountId : (type === 'income' ? account : undefined),
+      fromAccountId: type === 'transfer' ? fromAccountId : type === 'expense' ? account : undefined,
+      toAccountId: type === 'transfer' ? toAccountId : type === 'income' ? account : undefined,
       transaction_type: type.toUpperCase() as Transaction['transaction_type'],
       isRecurring,
       recurrenceFrequency: isRecurring ? recurrenceFrequency : undefined,
       isInterestOnly,
       eventId,
-      is_verified: shouldRemainPending ? 0 : 1,
       goalId: goalId || undefined,
+      notes: notes.trim() || undefined,
+      is_verified: shouldRemainPending ? 0 : 1,
     };
 
-    let res: { success: boolean; error?: string };
-    if (editingTransaction) res = updateTransaction(editingTransaction.id, newTx);
-    else res = await addTransaction(newTx);
-
-    if (!res.success) {
-      showError(res.error || 'Insufficient funds. Cannot process transaction.');
-      return;
-    }
-
+    const result = editingTransaction ? updateTransaction(editingTransaction.id, newTx) : await addTransaction(newTx);
+    if (!result.success) return showError(result.error || 'Unable to save this transaction.');
     close();
   };
 
-  const fieldClass = 'h-10 w-full rounded-lg border border-[#21334a] bg-[#111d2d] px-3 text-[12px] font-medium text-[#f5f7fb] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]';
-  const labelClass = 'mb-1.5 block text-[10.5px] font-medium text-[#cbd4e0]';
-  const eligibleAccounts = type === 'income' ? assets : activeAccounts;
+  const tone = type === 'expense' ? 'red' : type === 'income' ? 'green' : 'blue';
+  const titleLabel = type === 'income' ? 'Source / description' : type === 'transfer' ? 'Transfer title (optional)' : 'What was this for?';
 
   return (
-    <V35ModalFrame size="sm" testId="transaction-form-sheet" labelledBy="transaction-form-title">
-      <div className="grid h-[54px] shrink-0 grid-cols-[40px_1fr_40px] items-center border-b border-[#21334a]/70 px-2.5">
-        <button type="button" aria-label="Back from transaction form" onClick={close} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <h2 id="transaction-form-title" className="text-center text-[14px] font-semibold text-white">
-          {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
-        </h2>
-        <button type="button" aria-label="Close transaction form" onClick={close} className="v35-focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-[#b9c5d5] hover:bg-[#111d2d]">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title" panelClassName="p-0">
+      <div id="transaction-form-title" className="sr-only">{editingTransaction ? 'Edit Transaction' : 'Add Transaction'}</div>
+      <FinanceFormHeader
+        title={editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
+        subtitle="Expense, income and transfer in one focused form"
+        onClose={close}
+        closeLabel="Back from transaction form"
+      />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3.5">
-        <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="cb-finance-body min-h-0 flex-1">
+        <form onSubmit={handleSubmit} className="cb-finance-form">
           {error ? (
-            <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2.5 text-[11px] font-medium text-red-300">
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2.5 text-[11px] font-medium text-red-300">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error.message}</span>
             </div>
           ) : null}
 
           {!editingTransaction ? (
-            <div className="grid grid-cols-3 gap-1">
-              <button type="button" onClick={() => setType('expense')} aria-pressed={type === 'expense'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'expense' ? 'border-red-500/45 bg-red-500/10 text-red-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
-                <span className="mr-1 inline-block h-2 w-2 rounded-sm border border-current" /> Expense
-              </button>
-              <button type="button" onClick={() => { setType('income'); if (assets.length > 0 && !assets.some(a => a.id === account)) setAccount(assets[0].id); }} aria-pressed={type === 'income'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'income' ? 'border-emerald-500/45 bg-emerald-500/10 text-emerald-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
-                <span className="mr-1 inline-block h-2 w-2 rounded-sm border border-current" /> Income
-              </button>
-              <button type="button" onClick={() => setType('transfer')} aria-pressed={type === 'transfer'} className={`h-8 rounded-lg border text-[11px] font-medium transition ${type === 'transfer' ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-[#21334a] bg-[#0e1928] text-[#9aa8ba]'}`}>
-                <span className="mr-1 inline-block h-2 w-2 rounded-full border border-current" /> Transfer
-              </button>
+            <div className="cb-finance-segmented" aria-label="Transaction type">
+              <button className="expense" type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')}>Expense</button>
+              <button className="income" type="button" aria-pressed={type === 'income'} onClick={() => { setType('income'); if (assets[0]) setAccount(assets[0].id); }}>Income</button>
+              <button className="transfer" type="button" aria-pressed={type === 'transfer'} onClick={() => setType('transfer')}>Transfer</button>
             </div>
           ) : null}
 
-          <div>
-            <label htmlFor="transaction-amount" className={labelClass}>Amount</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#9aa8ba]">{getCurrencySymbol()}</span>
-              <CurrencyInput
-                id="transaction-amount"
-                aria-label="Transaction amount"
-                required
-                value={amount}
-                onValueChange={setAmount}
-                placeholder="0.00"
-                className={`${fieldClass} pl-8 font-numeric`}
-              />
-            </div>
-          </div>
+          <AmountHero id="transaction-amount" ariaLabel="Transaction amount" symbol={getCurrencySymbol()} value={amount} onValueChange={setAmount} tone={tone} />
+
+          <FinanceField label={titleLabel} htmlFor="transaction-title">
+            <input id="transaction-title" aria-label={titleLabel} value={title} onChange={event => setTitle(event.target.value)} placeholder={type === 'income' ? 'e.g. Salary, Freelance' : type === 'expense' ? 'e.g. Dinner with friends' : 'Optional'} className={financeFieldClass} />
+          </FinanceField>
 
           {type === 'transfer' ? (
-            <>
-              <div>
-                <label htmlFor="transaction-from-account" className={labelClass}>Paid From</label>
-                <div className="relative">
-                  <select id="transaction-from-account" aria-label="Paid From" name="fromAccount" value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
-                    {assets.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="transaction-to-account" className={labelClass}>Paid To</label>
-                <div className="relative">
-                  <select id="transaction-to-account" aria-label="Paid To" name="toAccount" value={toAccountId} onChange={e => setToAccountId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
-                    {activeAccounts.filter(acc => acc.id !== fromAccountId).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
-                </div>
-              </div>
-            </>
+            <div className="cb-finance-grid">
+              <FinanceField label="From account" htmlFor="transaction-from-account">
+                <FinanceSelect id="transaction-from-account" name="fromAccount" ariaLabel="Paid From" value={fromAccountId} onChange={setFromAccountId} required>
+                  {assets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </FinanceSelect>
+              </FinanceField>
+              <FinanceField label="To account" htmlFor="transaction-to-account">
+                <FinanceSelect id="transaction-to-account" name="toAccount" ariaLabel="Paid To" value={toAccountId} onChange={setToAccountId} required>
+                  {activeAccounts.filter(item => item.id !== fromAccountId).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </FinanceSelect>
+              </FinanceField>
+            </div>
           ) : (
-            <div>
-              <label htmlFor="transaction-account" className={labelClass}>{type === 'expense' ? 'Paid From' : 'Paid To'}</label>
-              <div className="relative">
-                <select id="transaction-account" aria-label={type === 'expense' ? 'Paid From' : 'Paid To'} value={account} onChange={e => setAccount(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
-                  {eligibleAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
-              </div>
+            <div className="cb-finance-grid">
+              <FinanceField label={type === 'expense' ? 'Paid from' : 'Paid to'} htmlFor="transaction-account">
+                <FinanceSelect id="transaction-account" ariaLabel={type === 'expense' ? 'Paid From' : 'Paid To'} value={account} onChange={setAccount} required>
+                  {eligibleAccounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </FinanceSelect>
+              </FinanceField>
+              <FinanceField label="Category" htmlFor="transaction-category">
+                <FinanceSelect id="transaction-category" ariaLabel="Category" value={categoryId} onChange={setCategoryId} required>
+                  {availableCategories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </FinanceSelect>
+              </FinanceField>
             </div>
           )}
 
-          {type !== 'transfer' ? (
-            <div>
-              <label htmlFor="transaction-category" className={labelClass}>Category</label>
-              <div className="relative">
-                <select id="transaction-category" aria-label="Category" value={categoryId} onChange={e => setCategoryId(e.target.value)} className={`${fieldClass} appearance-none pr-8`} required>
-                  {availableCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
-              </div>
-            </div>
-          ) : null}
-
-          <div>
-            <label htmlFor="transaction-date" className={labelClass}>Date</label>
+          <FinanceField label="Date" htmlFor="transaction-date">
             <div className="relative">
-              <input id="transaction-date" aria-label="Transaction date" type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} pr-9`} required />
-              <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
+              <input id="transaction-date" aria-label="Transaction date" type="date" value={date} onChange={event => setDate(event.target.value)} className={`${financeFieldClass} pr-10`} required />
+              <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#728299]" />
             </div>
-          </div>
+          </FinanceField>
 
-          <div>
-            <label htmlFor="transaction-notes" className={labelClass}>Notes (optional)</label>
-            <input id="transaction-notes" aria-label="Notes" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Add a note" className={fieldClass} />
-          </div>
+          <FinanceSection title="More options">
+            <FinanceField label="Notes (optional)" htmlFor="transaction-notes">
+              <input id="transaction-notes" aria-label="Notes" value={notes} onChange={event => setNotes(event.target.value)} placeholder="Anything useful to remember" className={financeFieldClass} />
+            </FinanceField>
 
-          <details className="group rounded-lg border border-[#1f3046] bg-[#0d1827]">
-            <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between px-3 text-[11px] font-medium text-[#9aa8ba]">
-              More options
-              <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
-            </summary>
-            <div className="space-y-3 border-t border-[#1f3046] p-3">
-              <div>
-                <label htmlFor="transaction-event" className={labelClass}>Event / outing (optional)</label>
-                <input id="transaction-event" list="coinbuddy-events" value={groupId} onChange={e => setGroupId(e.target.value)} placeholder="Choose or type an event" className={fieldClass} />
-                <datalist id="coinbuddy-events">{events.map(event => <option key={event.id} value={event.name} />)}</datalist>
-              </div>
+            <FinanceField label="Event / outing (optional)" htmlFor="transaction-event">
+              <input id="transaction-event" list="coinbuddy-events" value={groupId} onChange={event => setGroupId(event.target.value)} placeholder="Choose or type an event" className={financeFieldClass} />
+              <datalist id="coinbuddy-events">{events.map(item => <option key={item.id} value={item.name} />)}</datalist>
+            </FinanceField>
 
-              {type !== 'income' && savingsGoals.some(goal => goal.isActive) ? (
-                <div>
-                  <label htmlFor="transaction-goal" className={labelClass}>Goal contribution (optional)</label>
-                  <select id="transaction-goal" aria-label="Goal contribution" value={goalId} onChange={e => setGoalId(e.target.value)} className={fieldClass}>
-                    <option value="">No goal</option>
-                    {savingsGoals.filter(goal => goal.isActive).map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
-                  </select>
-                </div>
-              ) : null}
+            {type !== 'income' && activeGoals.length > 0 ? (
+              <FinanceField label="Goal contribution (optional)" htmlFor="transaction-goal">
+                <FinanceSelect id="transaction-goal" ariaLabel="Goal contribution" value={goalId} onChange={setGoalId}>
+                  <option value="">No goal</option>
+                  {activeGoals.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </FinanceSelect>
+              </FinanceField>
+            ) : null}
 
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-medium text-[#d6deea]">Recurring transaction</p>
-                  <p className="mt-0.5 text-[10px] text-[#718197]">Create future scheduled occurrences</p>
-                </div>
-                <button type="button" aria-label="Toggle recurring transaction" aria-pressed={isRecurring} disabled={Boolean(editingTransaction)} onClick={() => setIsRecurring(value => !value)} className={`relative h-6 w-11 rounded-full border transition ${isRecurring ? 'border-blue-500/60 bg-blue-600' : 'border-[#31445e] bg-[#162338]'}`}>
-                  <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white transition-all ${isRecurring ? 'left-[22px]' : 'left-1'}`} />
-                </button>
-              </div>
+            <FinanceToggle
+              label="Recurring transaction"
+              description="Create future scheduled occurrences"
+              checked={isRecurring}
+              onChange={setIsRecurring}
+              disabled={Boolean(editingTransaction)}
+              ariaLabel="Toggle recurring transaction"
+            />
 
-              {isRecurring ? (
-                <div>
-                  <label htmlFor="transaction-frequency" className={labelClass}>Frequency</label>
-                  <select id="transaction-frequency" value={recurrenceFrequency} disabled={Boolean(editingTransaction)} onChange={e => setRecurrenceFrequency(e.target.value as typeof recurrenceFrequency)} className={fieldClass}>
-                    <option value="MONTHLY">Monthly</option>
-                    <option value="QUARTERLY">Quarterly</option>
-                    <option value="ANNUALLY">Annually</option>
-                  </select>
-                </div>
-              ) : null}
-            </div>
-          </details>
+            {isRecurring ? (
+              <FinanceField label="Frequency" htmlFor="transaction-frequency">
+                <FinanceSelect id="transaction-frequency" ariaLabel="Frequency" value={recurrenceFrequency} onChange={value => setRecurrenceFrequency(value as typeof recurrenceFrequency)} disabled={Boolean(editingTransaction)}>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="ANNUALLY">Annually</option>
+                </FinanceSelect>
+              </FinanceField>
+            ) : null}
+          </FinanceSection>
 
-          <button type="submit" className="v35-focus-ring mt-1 flex h-10 w-full items-center justify-center rounded-lg border border-blue-400/20 bg-gradient-to-b from-[#1677ff] to-[#0d60ee] text-[12px] font-semibold text-white shadow-[0_8px_18px_rgba(13,96,238,.22)] hover:from-[#2582ff] hover:to-[#176bf5]">
-            {editingTransaction ? 'Save Changes' : 'Save Transaction'}
-          </button>
+          <FinanceSubmitButton tone={type === 'expense' ? 'danger' : type === 'income' ? 'success' : 'primary'}>
+            {editingTransaction ? 'Save Changes' : type === 'expense' ? 'Save Expense' : type === 'income' ? 'Save Income' : 'Transfer Money'}
+          </FinanceSubmitButton>
         </form>
       </div>
     </V35ModalFrame>
