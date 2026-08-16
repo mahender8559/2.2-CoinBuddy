@@ -127,7 +127,7 @@ export function ThemeSystemBridge() {
 
   useEffect(() => {
     const locate = () => {
-      const firstPreset = document.querySelector<HTMLButtonElement>('button[aria-label="Use blue color theme"]');
+      const firstPreset = document.querySelector<HTMLButtonElement>('button[aria-label="Use blue color theme"]:not(.cb-theme-swatch-button)');
       const nextTarget = firstPreset?.parentElement?.parentElement ?? null;
       setTarget(current => current === nextTarget ? current : nextTarget);
     };
