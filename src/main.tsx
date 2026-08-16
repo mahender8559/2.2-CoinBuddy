@@ -11,7 +11,6 @@ import './locked-form-fixes.css';
 import './locked-form-transaction-polish.css';
 import './wallet-summary-polish.css';
 import './coinbuddy-themes.css';
-import './theme-picker-polish.css';
 import './custom-theme-picker.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
