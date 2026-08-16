@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 type V35ModalFrameProps = {
@@ -23,6 +23,28 @@ const LOCKED_FORM_TEST_IDS = new Set([
   'loan-rate-sheet',
 ]);
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function visibleFocusableElements(panel: HTMLElement): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(element => {
+    if (element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    return style.visibility !== 'hidden' && style.display !== 'none';
+  });
+}
+
+function isTopmostDialog(panel: HTMLElement): boolean {
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'));
+  return dialogs[dialogs.length - 1] === panel;
+}
+
 export function V35ModalFrame({
   children,
   size = 'md',
@@ -31,10 +53,62 @@ export function V35ModalFrame({
   labelledBy,
 }: V35ModalFrameProps) {
   const usesLockedFormSystem = Boolean(testId && LOCKED_FORM_TEST_IDS.has(testId));
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusInitial = window.requestAnimationFrame(() => {
+      const focusable = visibleFocusableElements(panel);
+      (focusable[0] ?? panel).focus({ preventScroll: true });
+    });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopmostDialog(panel)) return;
+      if (event.key === 'Escape') {
+        const closeControl = panel.querySelector<HTMLElement>(
+          '[data-modal-close], button[aria-label^="Back from"], button[aria-label^="Close"], button[aria-label="Cancel"]',
+        );
+        if (closeControl) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeControl.click();
+        }
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = visibleFocusableElements(panel);
+      if (!focusable.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusInitial);
+      document.removeEventListener('keydown', onKeyDown, true);
+      if (previouslyFocused?.isConnected) window.requestAnimationFrame(() => previouslyFocused.focus({ preventScroll: true }));
+    };
+  }, []);
 
   return createPortal(
     <div className="v35-modal-backdrop fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
       <div
+        ref={panelRef}
+        tabIndex={-1}
         data-testid={testId}
         data-v35-form-system={usesLockedFormSystem ? 'locked' : undefined}
         role="dialog"
