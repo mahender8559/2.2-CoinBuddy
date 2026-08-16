@@ -31,11 +31,12 @@ async function expectCurrencyInputValue(input: Locator, expected: number) {
 }
 
 async function replaceCurrencyInputValue(input: Locator, value: string) {
-  // CurrencyInput is controlled and re-formats on focus. Empty it first so
-  // Playwright does not race that focus render and append to the previous value.
-  await input.fill('');
-  await expect(input).toHaveValue('');
-  await input.fill(value);
+  // CurrencyInput is controlled and re-formats while focused. Replace the
+  // visible value the same way a user does instead of racing React with fill().
+  await input.focus();
+  await input.press('Control+A');
+  await input.type(value, { delay: 10 });
+  await expectCurrencyInputValue(input, Number(value));
 }
 
 async function openTransactionForm(page: Page) {
@@ -297,7 +298,11 @@ test('effective loan-rate revision survives reload and becomes the current loan 
   await expect(modal).toBeVisible();
   await modal.locator('#new-interest-rate').fill('9.75');
   await modal.locator('#loan-rate-effective-date').fill(await localDateKey(page));
-  await modal.getByRole('button', { name: 'Update Rate', exact: true }).click();
+  await modal.getByText('Adjustment strategy', { exact: true }).click();
+  await modal.getByRole('radio', { name: 'Option B: Maintain Loan Tenure', exact: true }).check();
+  const updateRateButton = modal.getByRole('button', { name: 'Update Rate', exact: true });
+  await expect(updateRateButton).toBeEnabled();
+  await updateRateButton.click();
   try {
     await expect(modal.getByRole('status')).toContainText('Interest rate revised to 9.75%', { timeout: 3_000 });
   } catch (error) {
