@@ -42,8 +42,20 @@ test('v3.3 Goal-linked transaction advances unlinked Goal after confirmation', a
   await transaction.getByLabel('Transaction amount').fill('1000');
   await transaction.getByText('More options', { exact: true }).click();
   await transaction.getByLabel('Goal contribution').selectOption({ label: 'V33 Goal' });
-  await transaction.locator('label').filter({ has: transaction.locator('input[name="fromAccount"][value="acc_sbi_01"]') }).click();
-  await transaction.locator('label').filter({ has: transaction.locator('input[name="toAccount"][value="acc_cash_01"]') }).click();
+
+  const sourceAccount = transaction.locator('input[name="fromAccount"]').first();
+  await expect(sourceAccount).toBeAttached({ timeout: 15_000 });
+  await sourceAccount.check({ force: true });
+  const sourceId = await sourceAccount.getAttribute('value');
+
+  const destinationAccount = transaction.locator('input[name="toAccount"]').first();
+  await expect(destinationAccount).toBeAttached({ timeout: 15_000 });
+  await destinationAccount.check({ force: true });
+  const destinationId = await destinationAccount.getAttribute('value');
+  expect(sourceId).toBeTruthy();
+  expect(destinationId).toBeTruthy();
+  expect(destinationId).not.toBe(sourceId);
+
   await transaction.getByRole('button', { name: 'Transfer Money', exact: true }).click();
 
   await openAppDestination(page, 'Goals');
