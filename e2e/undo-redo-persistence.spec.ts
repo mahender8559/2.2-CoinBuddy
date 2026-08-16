@@ -14,7 +14,9 @@ async function prepareDemo(page: Page) {
   const demo = page.getByRole('button', { name: /Load demo data/i });
   await expect(demo).toBeVisible();
   await demo.click();
+  const demoReload = page.waitForEvent('load', { timeout: 30_000 });
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await demoReload;
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
 }
 
@@ -37,8 +39,6 @@ async function createPendingRecurringExpense(page: Page, title: string) {
   await page.locator('#transaction-amount').fill('500');
   await page.locator('#transaction-date').fill(await localDateKey(page));
 
-  // Recurrence is intentionally tucked into the collapsed More options section.
-  // Open that section before interacting with its accessible toggle button.
   const moreOptions = page.getByText('More options', { exact: true });
   await expect(moreOptions).toBeVisible();
   await moreOptions.click();
