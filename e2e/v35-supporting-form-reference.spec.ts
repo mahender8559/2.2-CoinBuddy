@@ -31,8 +31,16 @@ test('category and goal supporting forms follow the locked responsive field syst
 
   const categoryDialog = page.getByRole('dialog', { name: 'Add Category', exact: true });
   await expect(categoryDialog).toBeVisible();
-  await expect(categoryDialog.getByText('Icon & Color', { exact: true })).toBeVisible();
+  await expect(categoryDialog.getByText('Icon & Color', { exact: true })).toHaveCount(0);
+  await expect(categoryDialog.getByRole('button', { name: /^Use .* icon$/ })).toHaveCount(0);
   await expect(categoryDialog.getByLabel('Category name')).toBeVisible();
+
+  const autoIcon = categoryDialog.getByTestId('category-auto-icon');
+  await expect(autoIcon).toBeVisible();
+  await categoryDialog.getByLabel('Category name').fill('Food & Dining');
+  await expect(autoIcon).toHaveAttribute('data-icon-name', /.+/);
+  await expect(categoryDialog.getByText(/chooses a relevant unused icon/i)).toBeVisible();
+
   await expect(categoryDialog.getByRole('button', { name: 'Save Category', exact: true })).toBeVisible();
   const categoryNameBox = await categoryDialog.getByLabel('Category name').boundingBox();
   expect(categoryNameBox?.height).toBeGreaterThanOrEqual(43);
