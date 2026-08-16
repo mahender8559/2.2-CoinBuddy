@@ -63,6 +63,17 @@ async function themeTokens(page: Page) {
   });
 }
 
+async function resolvedChartThemeColor(page: Page) {
+  return page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--cb-blue)';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+}
+
 test('light appearance updates cards and navigation instead of leaving dark containers', async ({ page }) => {
   await prepare(page);
   await setLight(page);
@@ -181,7 +192,9 @@ test('selected theme reaches dashboard card environment and Net Worth chart', as
   const oceanTokens = await themeTokens(page);
   await openDashboard(page);
   const oceanCard = await page.getByRole('article', { name: 'Net Worth overview' }).evaluate(element => getComputedStyle(element).backgroundImage);
-  const oceanStroke = await page.locator('.recharts-area-curve').first().evaluate(element => getComputedStyle(element).stroke);
+  const oceanChart = page.locator('.recharts-area-curve').first();
+  await expect(oceanChart).toHaveAttribute('stroke', 'var(--cb-blue)');
+  const oceanChartColor = await resolvedChartThemeColor(page);
 
   await page.goto('/?tab=settings');
   await openThemePicker(page);
@@ -189,13 +202,15 @@ test('selected theme reaches dashboard card environment and Net Worth chart', as
   const emeraldTokens = await themeTokens(page);
   await openDashboard(page);
   const emeraldCard = await page.getByRole('article', { name: 'Net Worth overview' }).evaluate(element => getComputedStyle(element).backgroundImage);
-  const emeraldStroke = await page.locator('.recharts-area-curve').first().evaluate(element => getComputedStyle(element).stroke);
+  const emeraldChart = page.locator('.recharts-area-curve').first();
+  await expect(emeraldChart).toHaveAttribute('stroke', 'var(--cb-blue)');
+  const emeraldChartColor = await resolvedChartThemeColor(page);
 
   expect(emeraldTokens.background).not.toBe(oceanTokens.background);
   expect(emeraldTokens.surface).not.toBe(oceanTokens.surface);
   expect(emeraldTokens.accent).not.toBe(oceanTokens.accent);
   expect(emeraldCard).not.toBe(oceanCard);
-  expect(emeraldStroke).not.toBe(oceanStroke);
+  expect(emeraldChartColor).not.toBe(oceanChartColor);
 });
 
 test('dark appearance retains each theme personality and supports Custom', async ({ page }) => {
