@@ -74,18 +74,25 @@ export function FinanceField({
   label,
   htmlFor,
   hint,
+  icon,
   children,
   className = '',
 }: {
   label: string;
   htmlFor?: string;
   hint?: string;
+  icon?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div className={`cb-finance-field-group ${className}`}>
-      <label htmlFor={htmlFor} className={financeLabelClass}>{label}</label>
+      <label htmlFor={htmlFor} className={financeLabelClass}>
+        <span className="cb-finance-label-row">
+          {icon ? <span className="cb-finance-label-icon" aria-hidden="true">{icon}</span> : null}
+          <span>{label}</span>
+        </span>
+      </label>
       {children}
       {hint ? <p className="cb-finance-hint">{hint}</p> : null}
     </div>
@@ -101,6 +108,7 @@ export function FinanceSelect({
   required,
   disabled,
   name,
+  leadingIcon,
 }: {
   id?: string;
   ariaLabel: string;
@@ -110,9 +118,11 @@ export function FinanceSelect({
   required?: boolean;
   disabled?: boolean;
   name?: string;
+  leadingIcon?: ReactNode;
 }) {
   return (
-    <div className="relative">
+    <div className={`relative ${leadingIcon ? 'cb-finance-control-with-icon' : ''}`}>
+      {leadingIcon ? <span className="cb-finance-control-icon" aria-hidden="true">{leadingIcon}</span> : null}
       <select
         id={id}
         name={name}
@@ -132,17 +142,22 @@ export function FinanceSelect({
 
 export function FinanceSection({
   title,
+  icon,
   children,
   defaultOpen = false,
 }: {
   title: string;
+  icon?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
 }) {
   return (
     <details className="cb-finance-section" open={defaultOpen}>
       <summary>
-        <span>{title}</span>
+        <span className="cb-finance-section-title">
+          {icon ? <span className="cb-finance-label-icon" aria-hidden="true">{icon}</span> : null}
+          <span>{title}</span>
+        </span>
         <ChevronDown className="h-4 w-4 transition-transform" />
       </summary>
       <div className="cb-finance-section-body">{children}</div>
@@ -157,6 +172,7 @@ export function FinanceToggle({
   onChange,
   disabled,
   ariaLabel,
+  icon,
 }: {
   label: string;
   description?: string;
@@ -164,12 +180,16 @@ export function FinanceToggle({
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   ariaLabel: string;
+  icon?: ReactNode;
 }) {
   return (
     <div className="cb-finance-toggle-row">
-      <div>
-        <p className="cb-finance-toggle-title">{label}</p>
-        {description ? <p className="cb-finance-toggle-description">{description}</p> : null}
+      <div className="cb-finance-toggle-copy">
+        {icon ? <span className="cb-finance-toggle-icon" aria-hidden="true">{icon}</span> : null}
+        <div>
+          <p className="cb-finance-toggle-title">{label}</p>
+          {description ? <p className="cb-finance-toggle-description">{description}</p> : null}
+        </div>
       </div>
       <button
         type="button"
