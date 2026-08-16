@@ -24,6 +24,13 @@ async function setDark(page: Page) {
   await expect(page.locator('html')).toHaveClass(/\bdark\b/);
 }
 
+async function openThemePicker(page: Page) {
+  const toggle = page.getByTestId('app-theme-toggle');
+  await expect(toggle).toBeVisible();
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
 async function openActivity(page: Page) {
   const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
   if (isDesktop) {
@@ -51,6 +58,7 @@ async function themeTokens(page: Page) {
       primary: styles.getPropertyValue('--primary').trim(),
       nav: styles.getPropertyValue('--cb-theme-nav').trim(),
       accent: styles.getPropertyValue('--cb-theme-accent').trim(),
+      customAccent: styles.getPropertyValue('--cb-custom-accent').trim(),
     };
   });
 }
@@ -79,33 +87,36 @@ test('light appearance updates cards and navigation instead of leaving dark cont
   expect(navBackground).not.toMatch(/rgb\(4,\s*11,\s*21\)/);
 });
 
-test('theme picker presents complete app-theme previews instead of color dots', async ({ page }) => {
+test('App Theme stays compact until opened and uses swatches instead of large cards', async ({ page }) => {
   await prepare(page);
 
-  const expected = [
-    ['Use blue color theme', 'Ocean'],
-    ['Use green color theme', 'Emerald'],
-    ['Use purple color theme', 'Violet'],
-    ['Use orange color theme', 'Amber'],
-    ['Use pink color theme', 'Rose'],
-  ] as const;
+  const toggle = page.getByTestId('app-theme-toggle');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: 'Use custom color theme', exact: true })).not.toBeVisible();
 
-  for (const [label, visualName] of expected) {
+  await openThemePicker(page);
+  const expected = [
+    'Use blue color theme',
+    'Use green color theme',
+    'Use purple color theme',
+    'Use orange color theme',
+    'Use pink color theme',
+    'Use custom color theme',
+  ];
+
+  for (const label of expected) {
     const option = page.getByRole('button', { name: label, exact: true });
     await expect(option).toBeVisible();
     const box = await option.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(88);
-    const generatedName = await option.evaluate((element, name) => {
-      const value = getComputedStyle(element, '::after').content.replace(/^['"]|['"]$/g, '');
-      return { value, expected: name };
-    }, visualName);
-    expect(generatedName.value).toBe(generatedName.expected);
+    expect(box?.height ?? 0).toBeLessThan(70);
   }
 });
 
 test('Ocean Emerald Violet Amber and Rose change the full light environment', async ({ page }) => {
   await prepare(page);
   await setLight(page);
+  await openThemePicker(page);
 
   const options = [
     ['blue', 'Use blue color theme'],
@@ -129,9 +140,42 @@ test('Ocean Emerald Violet Amber and Rose change the full light environment', as
   expect(new Set(Object.values(snapshots).map(item => item.accent)).size).toBe(5);
 });
 
+test('Custom exposes a full hue ring and changes the environmental theme', async ({ page }) => {
+  await prepare(page);
+  await setLight(page);
+  await openThemePicker(page);
+
+  await page.getByRole('button', { name: 'Use blue color theme', exact: true }).click();
+  const ocean = await themeTokens(page);
+
+  await page.getByRole('button', { name: 'Use custom color theme', exact: true }).click();
+  await expect(page.getByTestId('custom-theme-controls')).toBeVisible();
+  const hueRing = page.getByRole('slider', { name: 'Custom theme hue', exact: true });
+  await expect(hueRing).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Custom theme saturation', exact: true })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Custom theme brightness', exact: true })).toBeVisible();
+  await expect(page.locator('html')).toHaveClass(/theme-custom-[0-9a-f]{6}/i);
+
+  const before = await themeTokens(page);
+  await hueRing.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  const after = await themeTokens(page);
+
+  expect(before.customAccent).toMatch(/^#[0-9a-f]{6}$/i);
+  expect(after.customAccent).toMatch(/^#[0-9a-f]{6}$/i);
+  expect(after.customAccent).not.toBe(before.customAccent);
+  expect(after.background).not.toBe(ocean.background);
+  expect(after.surface).not.toBe(ocean.surface);
+  expect(after.primary).not.toBe(ocean.primary);
+  expect(after.nav).not.toBe(ocean.nav);
+});
+
 test('selected theme reaches dashboard card environment and Net Worth chart', async ({ page }) => {
   await prepare(page);
   await setLight(page);
+  await openThemePicker(page);
 
   await page.getByRole('button', { name: 'Use blue color theme', exact: true }).click();
   const oceanTokens = await themeTokens(page);
@@ -140,6 +184,7 @@ test('selected theme reaches dashboard card environment and Net Worth chart', as
   const oceanStroke = await page.locator('.recharts-area-curve').first().evaluate(element => getComputedStyle(element).stroke);
 
   await page.goto('/?tab=settings');
+  await openThemePicker(page);
   await page.getByRole('button', { name: 'Use green color theme', exact: true }).click();
   const emeraldTokens = await themeTokens(page);
   await openDashboard(page);
@@ -153,17 +198,22 @@ test('selected theme reaches dashboard card environment and Net Worth chart', as
   expect(emeraldStroke).not.toBe(oceanStroke);
 });
 
-test('dark appearance retains each theme personality instead of reverting to Ocean', async ({ page }) => {
+test('dark appearance retains each theme personality and supports Custom', async ({ page }) => {
   await prepare(page);
   await setDark(page);
+  await openThemePicker(page);
 
   await page.getByRole('button', { name: 'Use purple color theme', exact: true }).click();
   const violet = await themeTokens(page);
   await page.getByRole('button', { name: 'Use orange color theme', exact: true }).click();
   const amber = await themeTokens(page);
+  await page.getByRole('button', { name: 'Use custom color theme', exact: true }).click();
+  const custom = await themeTokens(page);
 
   expect(violet.background).not.toBe(amber.background);
   expect(violet.surface).not.toBe(amber.surface);
   expect(violet.primary).not.toBe(amber.primary);
   expect(violet.nav).not.toBe(amber.nav);
+  expect(custom.background).not.toBe(amber.background);
+  expect(custom.primary).toMatch(/var\(--cb-custom-accent\)|#[0-9a-f]{6}|color-mix/i);
 });
