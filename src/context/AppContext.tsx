@@ -285,6 +285,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingLiabilityPayments = useRef(new Set<string>());
   const undoRedoInFlight = useRef(false);
   const toastTimer = useRef<number | null>(null);
+  // SQL.js uses one mutable in-memory database. Serialize every durable mutation
+  // so concurrent snapshots cannot overwrite a newer financial change.
+  const dbMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const runSerializedDbMutation = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
+    const run = dbMutationQueueRef.current.catch(() => undefined).then(operation);
+    dbMutationQueueRef.current = run.then(() => undefined, () => undefined);
+    return run;
+  }, []);
   const showToast = useCallback((message: string, actionLabel?: string, onAction?: () => void) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ message, actionLabel, onAction });
@@ -297,9 +305,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [dbDriver]);
   const setStoredSetting = useCallback(async (key: string, value: unknown): Promise<void> => {
     if (!dbDriver) return;
-    await upsertAppSetting(dbDriver, key, value);
-    await persistDatabase(dbDriver);
-  }, [dbDriver]);
+    await runSerializedDbMutation(() => runAtomicDatabaseAction(dbDriver, () => upsertAppSetting(dbDriver, key, value)));
+  }, [dbDriver, runSerializedDbMutation]);
 
   const [undoStack, setUndoStack] = useState<UndoRedoCommand[]>([]);
   const [redoStack, setRedoStack] = useState<UndoRedoCommand[]>([]);
@@ -591,8 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const persistAppSetting = async (key: string, value: unknown) => {
     if (!dbDriver) return;
     try {
-      await upsertAppSetting(dbDriver, key, value);
-      await persistDatabase(dbDriver);
+      await runSerializedDbMutation(() => runAtomicDatabaseAction(dbDriver, () => upsertAppSetting(dbDriver, key, value)));
     } catch (error) {
       console.error(`Failed to persist app setting ${key}:`, error);
     }
@@ -601,8 +607,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const persistDbAction = async (action: () => Promise<unknown>): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
-      await runAtomicDatabaseAction(dbDriver, action);
-      await refreshStateFromDatabase(dbDriver);
+      await runSerializedDbMutation(async () => {
+        await runAtomicDatabaseAction(dbDriver, action);
+        await refreshStateFromDatabase(dbDriver);
+      });
       return true;
     } catch (error) {
       console.error('SQLite persistence failed:', error);
@@ -617,8 +625,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const persistSharedAction = async (action: () => Promise<unknown>): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
-      await runAtomicDatabaseAction(dbDriver, action);
-      await refreshSharedFinance(dbDriver);
+      await runSerializedDbMutation(async () => {
+        await runAtomicDatabaseAction(dbDriver, action);
+        await refreshSharedFinance(dbDriver);
+      });
       return true;
     } catch (error) {
       console.error('Shared finance persistence failed:', error);
@@ -1694,8 +1704,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     void (async () => {
       try {
-        await loadDemoDataFromJson(dbDriver);
-        await persistDatabase(dbDriver);
+        await runSerializedDbMutation(async () => {
+          await loadDemoDataFromJson(dbDriver);
+          await persistDatabase(dbDriver);
+        });
         window.location.reload();
       } catch (error) {
         console.error('Unable to load CoinBuddy demo data:', error);
