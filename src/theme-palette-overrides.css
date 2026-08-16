@@ -1,0 +1,99 @@
+/*
+ * Final palette ownership layer.
+ *
+ * `v35.css` is intentionally unlayered and historically redefined --primary
+ * for dark mode, which outranked the palette declarations living in
+ * index.css's @layer base. Re-assert the selected palette here, after every
+ * V3.5 compatibility stylesheet, so Tailwind `primary` utilities and legacy
+ * `--cb-*` accents always agree.
+ */
+
+html.theme-blue:not(.dark) {
+  --primary: #00639c;
+  --on-primary: #ffffff;
+  --primary-container: #cee5ff;
+  --on-primary-container: #001d33;
+  --inverse-primary: #97cbff;
+  --surface-tint: #00639c;
+}
+
+html.theme-green:not(.dark) {
+  --primary: #15803d;
+  --on-primary: #ffffff;
+  --primary-container: #dcfce7;
+  --on-primary-container: #14532d;
+  --inverse-primary: #4ade80;
+  --surface-tint: #15803d;
+}
+
+html.theme-purple:not(.dark) {
+  --primary: #7e22ce;
+  --on-primary: #ffffff;
+  --primary-container: #f3e8ff;
+  --on-primary-container: #581c87;
+  --inverse-primary: #c084fc;
+  --surface-tint: #7e22ce;
+}
+
+html.theme-orange:not(.dark) {
+  --primary: #c2410c;
+  --on-primary: #ffffff;
+  --primary-container: #ffedd5;
+  --on-primary-container: #7c2d12;
+  --inverse-primary: #fb923c;
+  --surface-tint: #c2410c;
+}
+
+html.theme-pink:not(.dark) {
+  --primary: #be185d;
+  --on-primary: #ffffff;
+  --primary-container: #fce7f3;
+  --on-primary-container: #831843;
+  --inverse-primary: #f472b6;
+  --surface-tint: #be185d;
+}
+
+html.dark.theme-blue {
+  --primary: #4c8dff;
+  --on-primary: #ffffff;
+  --primary-container: #153a72;
+  --on-primary-container: #dceaff;
+  --inverse-primary: #00639c;
+  --surface-tint: #4c8dff;
+}
+
+html.dark.theme-green {
+  --primary: #4ade80;
+  --on-primary: #022c22;
+  --primary-container: #166534;
+  --on-primary-container: #dcfce7;
+  --inverse-primary: #15803d;
+  --surface-tint: #4ade80;
+}
+
+html.dark.theme-purple {
+  --primary: #c084fc;
+  --on-primary: #3b0764;
+  --primary-container: #6b21a8;
+  --on-primary-container: #f3e8ff;
+  --inverse-primary: #7e22ce;
+  --surface-tint: #c084fc;
+}
+
+html.dark.theme-orange {
+  --primary: #fb923c;
+  --on-primary: #431407;
+  --primary-container: #9a3412;
+  --on-primary-container: #ffedd5;
+  --inverse-primary: #c2410c;
+  --surface-tint: #fb923c;
+}
+
+html.dark.theme-pink {
+  --primary: #f472b6;
+  --on-primary: #500724;
+  --primary-container: #9d174d;
+  --on-primary-container: #fce7f3;
+  --inverse-primary: #be185d;
+  --surface-tint: #f472b6;
+}
