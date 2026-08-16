@@ -46,6 +46,20 @@ test('locked finance form system uses the new responsive amount-first design', a
   expect(amountBox!.height).toBeGreaterThanOrEqual(64);
   const amountFont = await amount.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
   expect(amountFont).toBeGreaterThanOrEqual(36);
+
+  // Accounts are intentionally shown as visible radio cards because the user
+  // normally has only a few choices. Category remains a dropdown because that
+  // list can grow substantially.
+  const accountChoices = transaction.locator('input[name="account"]');
+  expect(await accountChoices.count()).toBeGreaterThan(0);
+  await expect(accountChoices.first()).toBeAttached();
+  await expect(transaction.locator('.cb-account-choice').first()).toBeVisible();
+  await expect(transaction.locator('.cb-account-choice svg').first()).toBeVisible();
+  const category = transaction.getByLabel('Category');
+  await expect(category).toBeVisible();
+  expect(await category.evaluate(element => element.tagName)).toBe('SELECT');
+  await expect(transaction.locator('.cb-finance-control-icon svg').first()).toBeVisible();
+
   await expect(transaction.getByLabel('Notes')).toBeAttached();
   await expect(transaction.getByText('More options', { exact: true })).toBeVisible();
   await transaction.getByRole('button', { name: /Close edit transaction/i }).click();
