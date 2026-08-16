@@ -1,39 +1,69 @@
 import fs from 'node:fs';
-const file = 'src/components/V35GoalsPanelV2.tsx';
+const file = 'src/db/dbClientCore.ts';
 let source = fs.readFileSync(file, 'utf8');
 function replaceOnce(before, after) {
   const index = source.indexOf(before);
-  if (index < 0) throw new Error(`Expected source not found: ${before.slice(0, 140)}`);
+  if (index < 0) throw new Error(`Expected source not found: ${before.slice(0, 160)}`);
   source = source.slice(0, index) + after + source.slice(index + before.length);
 }
 
 replaceOnce(
-  "  getGoalCurrentAmount,\n  getGoalLinkedAccountIds,\n  getGoalLinkedAccounts,\n  getGoalProgressPercent,\n  getRequiredMonthlyContribution,",
-  "  getGoalAccountOverlaps,\n  getGoalCurrentAmount,\n  getGoalLinkedAccountIds,\n  getGoalLinkedAccounts,\n  getGoalProgressPercent,\n  getRequiredMonthlyContribution,",
+`function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number {
+  let probe: any;
+  try {
+    probe = new SQL.Database(snapshot);
+    return readPersistenceGeneration(probe);
+  } catch {
+    return 0;
+  } finally {
+    try { probe?.close(); } catch { /* best effort */ }
+  }
+}`,
+`function inspectSnapshotGeneration(SQL: any, snapshot: Uint8Array): number | null {
+  let probe: any;
+  try {
+    probe = new SQL.Database(snapshot);
+    const integrity = probe.exec('PRAGMA integrity_check;')[0]?.values?.[0]?.[0];
+    if (String(integrity).toLowerCase() !== 'ok') return null;
+    return readPersistenceGeneration(probe);
+  } catch {
+    return null;
+  } finally {
+    try { probe?.close(); } catch { /* best effort */ }
+  }
+}`,
 );
+
 replaceOnce(
-  "  const [isSaving, setIsSaving] = useState(false);\n  const [saveError, setSaveError] = useState('');",
-  "  const [isSaving, setIsSaving] = useState(false);\n  const [saveError, setSaveError] = useState('');\n  const [overlapAcknowledged, setOverlapAcknowledged] = useState(false);",
+`  const candidates = [
+    ...(opfsSnapshot ? [{ source: 'OPFS' as const, generation: inspectSnapshotGeneration(SQL, opfsSnapshot), snapshot: opfsSnapshot }] : []),
+    ...(indexedDbSnapshot ? [{ source: 'INDEXED_DB' as const, generation: inspectSnapshotGeneration(SQL, indexedDbSnapshot), snapshot: indexedDbSnapshot }] : []),
+  ];
+  const selected = selectNewestPersistenceCandidate(candidates);
+  let saved = selected?.snapshot ?? null;
+  const diverged = persistenceCopiesDiverged(candidates, snapshotsMatch);
+
+  if (!saved) {`,
+`  const opfsGeneration = opfsSnapshot ? inspectSnapshotGeneration(SQL, opfsSnapshot) : null;
+  const indexedDbGeneration = indexedDbSnapshot ? inspectSnapshotGeneration(SQL, indexedDbSnapshot) : null;
+  const candidates = [
+    ...(opfsSnapshot && opfsGeneration !== null ? [{ source: 'OPFS' as const, generation: opfsGeneration, snapshot: opfsSnapshot }] : []),
+    ...(indexedDbSnapshot && indexedDbGeneration !== null ? [{ source: 'INDEXED_DB' as const, generation: indexedDbGeneration, snapshot: indexedDbSnapshot }] : []),
+  ];
+  const invalidPrimarySnapshot = Boolean(
+    (opfsSnapshot && opfsGeneration === null) ||
+    (indexedDbSnapshot && indexedDbGeneration === null),
+  );
+  const selected = selectNewestPersistenceCandidate(candidates);
+  let saved = selected?.snapshot ?? null;
+  const diverged = invalidPrimarySnapshot || persistenceCopiesDiverged(candidates, snapshotsMatch);
+
+  if (!saved && (opfsSnapshot || indexedDbSnapshot)) {
+    throw new Error('CoinBuddy found local ledger snapshots, but none passed SQLite integrity verification. The primary copies were left untouched so a recovery snapshot can be restored safely.');
+  }
+
+  if (!saved) {`,
 );
-replaceOnce(
-  "    setSaveError('');\n    setModalOpen(true);\n  };\n\n  const openEdit",
-  "    setSaveError('');\n    setOverlapAcknowledged(false);\n    setModalOpen(true);\n  };\n\n  const openEdit",
-);
-replaceOnce(
-  "    setSaveError('');\n    setModalOpen(true);\n  };\n\n  const toggleLinkedAccount",
-  "    setSaveError('');\n    setOverlapAcknowledged(false);\n    setModalOpen(true);\n  };\n\n  const toggleLinkedAccount",
-);
-replaceOnce(
-  "  const toggleLinkedAccount = (accountId: string) => {\n    setDraft(current => {",
-  "  const toggleLinkedAccount = (accountId: string) => {\n    setOverlapAcknowledged(false);\n    setSaveError('');\n    setDraft(current => {",
-);
-replaceOnce(
-  "  const save = async () => {\n    if (isSaving || !draft.name.trim() || draft.targetAmount <= 0) return;\n    setIsSaving(true);\n    setSaveError('');\n    const linkedAccountIds = getGoalLinkedAccountIds(draft);",
-  "  const save = async () => {\n    if (isSaving || !draft.name.trim() || draft.targetAmount <= 0) return;\n    const linkedAccountIds = getGoalLinkedAccountIds(draft);\n    const overlaps = getGoalAccountOverlaps(savingsGoals, editing?.id, linkedAccountIds);\n    if (overlaps.length > 0 && !overlapAcknowledged) {\n      const goalNames = [...new Set(overlaps.map(overlap => overlap.goalName))];\n      setOverlapAcknowledged(true);\n      setSaveError(`One or more linked accounts are already used by ${goalNames.join(', ')}. Saving will show the same balance in both goals. Press Save again to continue.`);\n      return;\n    }\n    setIsSaving(true);\n    setSaveError('');",
-);
-replaceOnce(
-  "    setModalOpen(false);\n  };",
-  "    setOverlapAcknowledged(false);\n    setModalOpen(false);\n  };",
-);
+
 fs.writeFileSync(file, source);
-console.log('Goal overlap consent UI staged from current branch head.');
+console.log('Invalid persistence snapshot selection hardening staged.');
