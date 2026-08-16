@@ -29,9 +29,15 @@ test('Manage does not expose duplicate or unwired add/market/sinking-fund contro
   await openAppDestination(page, 'Categories');
   await expect(page.getByText('Updated just now', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add category', exact: true }).click();
-  await expect(page.getByText('Enable Rollover / Sinking Fund', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Where should leftover funds go?', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Rollover unused budget', { exact: true })).toBeVisible();
+  const categoryDialog = page.getByRole('dialog', { name: 'Add Category', exact: true });
+  await expect(categoryDialog).toBeVisible();
+  await expect(categoryDialog.getByText('Enable Rollover / Sinking Fund', { exact: true })).toHaveCount(0);
+  await expect(categoryDialog.getByText('Where should leftover funds go?', { exact: true })).toHaveCount(0);
+
+  const planningOptions = categoryDialog.getByText('Budget & planning options', { exact: true });
+  await expect(planningOptions).toBeVisible();
+  await planningOptions.click();
+  await expect(categoryDialog.getByText('Rollover unused budget', { exact: true })).toBeVisible();
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
 });
 
