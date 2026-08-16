@@ -283,6 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [recoverySnapshotCount, setRecoverySnapshotCount] = useState(0);
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const pendingLiabilityPayments = useRef(new Set<string>());
+  const pendingTransactionMutations = useRef(new Set<string>());
   const undoRedoInFlight = useRef(false);
   const toastTimer = useRef<number | null>(null);
   const showToast = useCallback((message: string, actionLabel?: string, onAction?: () => void) => {
@@ -918,9 +919,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
     }
 
-    const finalTx: Transaction = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
+    const mutationKey = 'add';
+    if (pendingTransactionMutations.current.has(mutationKey)) {
+      return { success: false, error: 'Another transaction is already being saved.' };
+    }
+    pendingTransactionMutations.current.add(mutationKey);
+    try {
+      const finalTx: Transaction = { ...tx, id: crypto.randomUUID(), amount: Math.abs(tx.amount) };
 
-    if (tx.isRecurring) {
+      if (tx.isRecurring) {
       const frequency = tx.recurrenceFrequency ?? 'MONTHLY';
       const startDateKey = toLocalDateKey(finalTx.date);
       const anchorDay = Number(startDateKey.slice(8, 10));
@@ -980,7 +987,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       previousState: null,
       newState: finalTx,
     });
-    return { success: true };
+      return { success: true };
+    } finally {
+      pendingTransactionMutations.current.delete(mutationKey);
+    }
   };
 
   const updateRecurringRule = async (rule: RecurringRule): Promise<boolean> => {
@@ -1014,8 +1024,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!validation.valid) return { success: false, error: validation.error };
     if (!dbDriver) return { success: false, error: 'The local ledger is still loading. Please try again in a moment.' };
 
-    const normalizedTx = { ...newTx, amount: Math.abs(Number(newTx.amount)) };
-    const updatedTx: Transaction = { ...normalizedTx, id };
+    const mutationKey = `update:${id}`;
+    if (pendingTransactionMutations.current.has(mutationKey)) return { success: false, error: 'This transaction is already being updated.' };
+    pendingTransactionMutations.current.add(mutationKey);
+    try {
+      const normalizedTx = { ...newTx, amount: Math.abs(Number(newTx.amount)) };
+      const updatedTx: Transaction = { ...normalizedTx, id };
     const saved = await persistDbAction(() => updateTransactionRow(dbDriver, id, normalizedTx));
     if (!saved) return { success: false, error: 'The transaction update could not be saved.' };
 
@@ -1025,7 +1039,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       previousState: existingTx,
       newState: updatedTx,
     });
-    return { success: true };
+      return { success: true };
+    } finally {
+      pendingTransactionMutations.current.delete(mutationKey);
+    }
   };
 
   const deleteTransaction = async (id: string): Promise<MutationResult> => {
@@ -1358,7 +1375,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let iAmount = interestAmount;
       if (pAmount === undefined || iAmount === undefined) {
         if (liabilityAcc.group === 'Bank Loan' || liabilityAcc.group === 'Loan' || liabilityAcc.group === 'Mortgage' || liabilityAcc.group === 'Interest-Only Loan' || liabilityAcc.interestRate !== undefined || liabilityAcc.monthlyEMI !== undefined) {
-          const split = calculateEmiSplit(liabilityAcc.balance, liabilityAcc.interestRate ?? 0, amount, liabilityAcc.interestCalculationType || 'REDUCING');
+          const split = calculateEmiSplit(liabilityAcc.balance, liabilityAcc.interestRate ?? 0, amount, liabilityAcc.interestCalculationType || 'REDUCING', false, getOriginalPrincipal(liabilityAcc, transactions), liabilityAcc.paymentFrequency ?? 'MONTHLY');
           pAmount = split.principalAmount;
           iAmount = split.interestAmount;
         } else {
@@ -1370,6 +1387,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const principal = Math.max(0, Number(pAmount ?? 0));
       const interest = Math.max(0, Number(iAmount ?? 0));
       if (!Number.isFinite(principal) || !Number.isFinite(interest) || principal + interest <= 0) return { success: false, error: 'Payment amount must be a positive number.' };
+      if ((principalAmount === undefined || interestAmount === undefined) && Math.abs((principal + interest) - Math.abs(amount)) >= 0.01) {
+        return { success: false, error: 'Payment exceeds the current payoff amount of ' + (principal + interest).toFixed(2) + '.' };
+      }
 
       const sourceAccount = accounts.find(account => account.id === defaultAsset);
       if (!sourceAccount) return { success: false, error: 'Payment source account could not be found.' };

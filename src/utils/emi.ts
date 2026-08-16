@@ -43,48 +43,36 @@ export function getTotalInterestPaid(account: Account, transactions: Transaction
  * @returns { interestAmount: number, principalAmount: number }
  */
 export function calculateEmiSplit(
-  balance: number, 
-  annualRate: number, 
+  balance: number,
+  annualRate: number,
   emi: number,
   interestType: 'REDUCING' | 'FLAT' | 'INTEREST_ONLY' = 'REDUCING',
-  isPrepayment: boolean = false
+  isPrepayment: boolean = false,
+  originalPrincipal: number = balance,
+  frequency: 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY' = 'MONTHLY',
 ) {
+  const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
   const safeBalance = Math.max(0, Number(balance) || 0);
   const safeAnnualRate = Math.max(0, Number(annualRate) || 0);
   const safeEmi = Math.max(0, Number(emi) || 0);
+  const safeOriginalPrincipal = Math.max(0, Number(originalPrincipal) || safeBalance);
 
   if (isPrepayment) {
-    return {
-      interestAmount: 0,
-      principalAmount: Math.min(safeBalance, safeEmi)
-    };
+    return { interestAmount: 0, principalAmount: roundMoney(Math.min(safeBalance, safeEmi)) };
   }
-
   if (interestType === 'INTEREST_ONLY') {
-    return {
-      interestAmount: safeEmi,
-      principalAmount: 0
-    };
+    return { interestAmount: roundMoney(safeEmi), principalAmount: 0 };
   }
 
-  const interestRes = safeCompute(() => {
-    const monthlyRate = safeAnnualRate / 12 / 100;
-    return safeBalance * monthlyRate;
-  }, SAFE_MATH_ERRORS.NAN);
+  const periodsPerYear = frequency === 'QUARTERLY' ? 4 : frequency === 'ANNUALLY' ? 1 : 12;
+  const interestBase = interestType === 'FLAT' ? safeOriginalPrincipal : safeBalance;
+  const interestRes = safeCompute(() => interestBase * (safeAnnualRate / 100) / periodsPerYear, SAFE_MATH_ERRORS.NAN);
+  const periodInterest = typeof interestRes === 'number' ? roundMoney(interestRes) : 0;
+  const applicablePayment = roundMoney(Math.min(safeEmi, safeBalance + periodInterest));
+  const interestAmount = roundMoney(Math.min(periodInterest, applicablePayment));
+  const principalAmount = roundMoney(Math.min(safeBalance, Math.max(0, applicablePayment - interestAmount)));
 
-  const interest = typeof interestRes === 'number' ? Math.round(interestRes * 100) / 100 : 0;
-
-  const principalRes = safeCompute(() => {
-    const rawPrincipal = safeEmi - interest;
-    return Math.min(safeBalance, Math.max(0, rawPrincipal));
-  }, SAFE_MATH_ERRORS.NAN);
-
-  const principal = typeof principalRes === 'number' ? Math.round(principalRes * 100) / 100 : 0;
-
-  return {
-    interestAmount: interest,
-    principalAmount: principal,
-  };
+  return { interestAmount: roundMoney(applicablePayment - principalAmount), principalAmount };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -141,6 +141,8 @@ export function AddTransactionModal() {
   const [groupId, setGroupId] = useState('');
   const [goalId, setGoalId] = useState('');
   const [error, setError] = useState<{ message: string; id: number } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
 
   const activeAccounts = useMemo(() => accounts.filter(item => !item.is_archived), [accounts]);
   const assets = useMemo(() => accounts.filter(item => item.type === 'asset' && !item.is_archived), [accounts]);
@@ -230,6 +232,7 @@ export function AddTransactionModal() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (submitInFlight.current) return;
     const numAmount = Number(amount);
     if (!Number.isFinite(numAmount) || numAmount <= 0) return showError('Enter an amount greater than zero.');
     if (type === 'transfer' && (!fromAccountId || !toAccountId || fromAccountId === toAccountId)) return showError('Choose two different accounts for this transfer.');
@@ -274,17 +277,20 @@ export function AddTransactionModal() {
       } else finalTitle = type === 'income' ? 'Income' : categoryName;
     }
 
-    const eventName = groupId.trim();
-    let eventId: string | undefined;
-    if (eventName) {
-      const existingEvent = events.find(item => item.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0);
-      const event = existingEvent ?? await createEvent(eventName);
-      if (!event) return showError('Unable to save this event.');
-      eventId = event.id;
-    }
-    const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
+    submitInFlight.current = true;
+    setIsSubmitting(true);
+    try {
+      const eventName = groupId.trim();
+      let eventId: string | undefined;
+      if (eventName) {
+        const existingEvent = events.find(item => item.name.localeCompare(eventName, undefined, { sensitivity: 'accent' }) === 0);
+        const event = existingEvent ?? await createEvent(eventName);
+        if (!event) return showError('Unable to save this event.');
+        eventId = event.id;
+      }
+      const isInterestOnly = categoryName.toLowerCase().includes('interest') || finalTitle.toLowerCase().includes('interest payment');
 
-    const newTx = {
+      const newTx = {
       title: finalTitle,
       subtitle: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
       amount: type === 'income' ? Math.abs(numAmount) : -Math.abs(numAmount),
@@ -305,9 +311,13 @@ export function AddTransactionModal() {
       is_verified: shouldRemainPending ? 0 : 1,
     };
 
-    const result = editingTransaction ? await updateTransaction(editingTransaction.id, newTx) : await addTransaction(newTx);
-    if (!result.success) return showError(result.error || 'Unable to save this transaction.');
-    close();
+      const result = editingTransaction ? await updateTransaction(editingTransaction.id, newTx) : await addTransaction(newTx);
+      if (!result.success) return showError(result.error || 'Unable to save this transaction.');
+      close();
+    } finally {
+      submitInFlight.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const tone = type === 'expense' ? 'red' : type === 'income' ? 'green' : 'blue';
@@ -319,7 +329,7 @@ export function AddTransactionModal() {
       <FinanceFormHeader
         title={editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
         subtitle="Expense, income and transfer in one focused form"
-        onClose={close}
+        onClose={() => { if (!isSubmitting) close(); }}
         closeLabel="Back from transaction form"
         titleId="transaction-form-title"
       />
@@ -454,8 +464,8 @@ export function AddTransactionModal() {
             ) : null}
           </FinanceSection>
 
-          <FinanceSubmitButton tone={type === 'expense' ? 'danger' : type === 'income' ? 'success' : 'primary'}>
-            {editingTransaction ? <><Save className="h-4 w-4" />Save Changes</> : type === 'expense' ? <><ArrowUpRight className="h-4 w-4" />Save Expense</> : type === 'income' ? <><ArrowDownLeft className="h-4 w-4" />Save Income</> : <><ArrowRightLeft className="h-4 w-4" />Transfer Money</>}
+          <FinanceSubmitButton disabled={isSubmitting} tone={type === 'expense' ? 'danger' : type === 'income' ? 'success' : 'primary'}>
+            {isSubmitting ? 'Saving…' : editingTransaction ? <><Save className="h-4 w-4" />Save Changes</> : type === 'expense' ? <><ArrowUpRight className="h-4 w-4" />Save Expense</> : type === 'income' ? <><ArrowDownLeft className="h-4 w-4" />Save Income</> : <><ArrowRightLeft className="h-4 w-4" />Transfer Money</>}
           </FinanceSubmitButton>
         </form>
       </div>

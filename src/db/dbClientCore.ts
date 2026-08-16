@@ -862,7 +862,7 @@ export async function generateDueRecurringTransactions(driver: SqlJsDatabaseDriv
         const liability = liabilityRows[0];
         const hasLoanTerms = liability && (liability.interest_rate != null || liability.monthly_emi != null);
         const split = hasLoanTerms
-          ? calculateEmiSplit(Number(liability.cached_balance), Number(liability.interest_rate ?? 0), Number(rule.amount), liability.interest_calculation_type ?? 'REDUCING')
+          ? calculateEmiSplit(Number(liability.cached_balance), Number(liability.interest_rate ?? 0), Number(rule.amount), liability.interest_calculation_type ?? 'REDUCING', false, Number(liability.original_principal ?? liability.cached_balance), liability.payment_frequency ?? 'MONTHLY')
           : null;
         const principalAmount = split ? split.principalAmount : Number(rule.amount);
         if (principalAmount > 0) await insertTransactionRow(driver, {
