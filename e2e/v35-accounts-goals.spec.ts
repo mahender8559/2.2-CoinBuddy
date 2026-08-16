@@ -20,8 +20,8 @@ async function openDestination(page: Page, destination: 'Accounts' | 'Goals') {
     await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
     return;
   }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
+  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Menu', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Money tools navigation' }).getByRole('button', { name: destination, exact: true }).click();
 }
 
 test('v3.5 Accounts and Goals use focused grouped surfaces', async ({ page }, testInfo: TestInfo) => {
