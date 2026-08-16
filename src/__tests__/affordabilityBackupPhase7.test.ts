@@ -60,6 +60,8 @@ describe('affordability phase 7 backup restore', () => {
         historicalMonths: 12,
         safetyLevel: 'CONSERVATIVE',
       },
+      // Deliberately keep this in the legacy single-link-era shape. Restore
+      // should normalize it into the current multi-account Goal model.
       savingsGoals: [
         {
           id: 'goal-emergency', name: 'Emergency Fund', type: 'EMERGENCY_FUND', targetAmount: 300000,
@@ -79,6 +81,11 @@ describe('affordability phase 7 backup restore', () => {
     expect(state.recurringRules).toHaveLength(1);
     expect(state.recurringRules[0]).toMatchObject({ id: 'rent-rule', frequency: 'MONTHLY', nextDueDate: '2026-09-03', anchorDay: 3 });
     expect(settings[AFFORDABILITY_SETTINGS_KEY]).toEqual(backup.affordabilitySettings);
-    expect(settings[SAVINGS_GOALS_KEY]).toEqual(backup.savingsGoals);
+    expect(settings[SAVINGS_GOALS_KEY]).toEqual([
+      {
+        ...backup.savingsGoals[0],
+        linkedAccountIds: [],
+      },
+    ]);
   });
 });
