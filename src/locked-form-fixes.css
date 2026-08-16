@@ -17,6 +17,32 @@
 }
 
 /*
+ * Every V35 modal renders the mobile drag handle as the first child of the
+ * panel. Older form-reference rules also targeted `> div:first-child` for
+ * header sizing, which accidentally stretched this 4px handle to ~54px and
+ * produced the large grey pill visible above forms on mobile.
+ *
+ * Keep the fix at the shared modal level so Transaction, Account, Pay Down,
+ * Reconcile, Loan Rate and Wallet sheets cannot regress independently.
+ */
+.v35-modal-frame > .v35-sheet-handle.v35-sheet-handle {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 4px !important;
+  min-height: 4px !important;
+  max-height: 4px !important;
+  flex: 0 0 4px !important;
+  padding: 0 !important;
+  margin-top: 8px !important;
+  margin-bottom: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #8795a8 !important;
+  opacity: .72 !important;
+}
+
+/*
  * Compatibility firewall for the pre-redesign V3.5 showcase styles.
  * Those styles intentionally force every finance input to 40px with !important.
  * The locked form system is loaded later, but several legacy selectors are more
