@@ -9,9 +9,8 @@ import './v35-form-markup-exact.css';
 import './locked-form-system.css';
 import './locked-form-fixes.css';
 import './locked-form-transaction-polish.css';
-import './theme-compatibility.css';
-import './theme-palette-overrides.css';
 import './wallet-summary-polish.css';
+import './coinbuddy-themes.css';
 import { AppProvider } from './context/AppContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -29,9 +28,6 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary><AppProvider><App /></AppProvider></ErrorBoundary>
   </StrictMode>,
 );
-
-
-
 
 if ('serviceWorker' in navigator) {
   registerSW({ immediate: true });
