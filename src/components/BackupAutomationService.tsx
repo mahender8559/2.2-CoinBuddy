@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { BackupManager, BackupStorageAdapter, DEFAULT_BACKUP_SETTINGS, getNextAutoBackupAt, type BackupSettings } from '../utils/backupManager';
+import {
+  clearSessionBackupPassword,
+  getSessionBackupPassword,
+  migrateLegacyBackupSettings,
+  sanitizeBackupSettings,
+} from '../utils/backupSession';
 
 function normalize(value: unknown): BackupSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_BACKUP_SETTINGS };
@@ -14,33 +20,48 @@ function normalize(value: unknown): BackupSettings {
 }
 
 export function BackupAutomationService() {
-  const { exportLedgerData, getStoredSetting, setStoredSetting } = useAppContext();
+  const { exportLedgerData, getStoredSetting, setStoredSetting, isUnlocked, passcode } = useAppContext();
   const [config, setConfig] = useState<BackupSettings | null>(null);
+  const [sessionVersion, setSessionVersion] = useState(0);
   const inFlight = useRef(false);
 
-  const reload = useCallback(async () => setConfig(normalize(await getStoredSetting('backupConfig'))), [getStoredSetting]);
+  const reload = useCallback(async () => {
+    const raw = normalize(await getStoredSetting('backupConfig'));
+    const migrated = await migrateLegacyBackupSettings(raw);
+    const sanitized = sanitizeBackupSettings(migrated);
+    setConfig(sanitized);
+    if (raw.backupPassword) await setStoredSetting('backupConfig', sanitized);
+  }, [getStoredSetting, setStoredSetting]);
 
   useEffect(() => {
     BackupStorageAdapter.configureHistoryStore({ get: () => getStoredSetting('backupHistory'), set: records => setStoredSetting('backupHistory', records) });
     void reload();
     const onConfigChanged = () => { void reload(); };
+    const onSessionChanged = () => setSessionVersion(value => value + 1);
     window.addEventListener('coinbuddy_backup_config_changed', onConfigChanged);
+    window.addEventListener('coinbuddy_backup_session_changed', onSessionChanged);
     return () => {
       window.removeEventListener('coinbuddy_backup_config_changed', onConfigChanged);
+      window.removeEventListener('coinbuddy_backup_session_changed', onSessionChanged);
       BackupStorageAdapter.configureHistoryStore(null);
     };
   }, [getStoredSetting, setStoredSetting, reload]);
 
   useEffect(() => {
-    if (!config?.isAutoBackupEnabled || !config.hasPassword || !config.backupPassword) return;
+    if (passcode && !isUnlocked && getSessionBackupPassword()) clearSessionBackupPassword();
+  }, [isUnlocked, passcode]);
+
+  useEffect(() => {
+    if (!config?.isAutoBackupEnabled || !config.hasPassword || !getSessionBackupPassword()) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const persist = async (next: BackupSettings) => {
       if (cancelled) return;
-      setConfig(next);
-      await setStoredSetting('backupConfig', next);
-      window.dispatchEvent(new CustomEvent('coinbuddy_backup_status_changed', { detail: next.lastBackupMetadata }));
+      const sanitized = sanitizeBackupSettings(next);
+      setConfig(sanitized);
+      await setStoredSetting('backupConfig', sanitized);
+      window.dispatchEvent(new CustomEvent('coinbuddy_backup_status_changed', { detail: sanitized.lastBackupMetadata }));
     };
 
     const run = async () => {
@@ -72,7 +93,7 @@ export function BackupAutomationService() {
     };
     window.addEventListener('online', onOnline);
     return () => { cancelled = true; if (timer) clearTimeout(timer); window.removeEventListener('online', onOnline); };
-  }, [config, exportLedgerData, setStoredSetting]);
+  }, [config, exportLedgerData, setStoredSetting, sessionVersion]);
 
   return null;
 }
