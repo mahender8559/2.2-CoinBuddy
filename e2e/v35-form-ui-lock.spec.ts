@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepareDemo(page: Page) {
   await page.addInitScript(() => {
@@ -14,24 +15,10 @@ async function prepareDemo(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15_000 });
 }
 
-async function openDestination(page: Page, destination: 'Activity' | 'Accounts') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-  if (destination === 'Activity') {
-    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Activity', exact: true }).click();
-    return;
-  }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
-
 test('locked finance form system uses the new responsive amount-first design', async ({ page }) => {
   await prepareDemo(page);
 
-  await openDestination(page, 'Activity');
+  await openAppDestination(page, 'Activity');
   await page.getByPlaceholder('Search transactions...').fill('Dinner Out');
   await page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true }).click();
   await page.getByTestId('transaction-detail').getByRole('button', { name: 'Edit transaction', exact: true }).click();
@@ -47,9 +34,6 @@ test('locked finance form system uses the new responsive amount-first design', a
   const amountFont = await amount.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
   expect(amountFont).toBeGreaterThanOrEqual(36);
 
-  // Accounts are intentionally shown as visible radio cards because the user
-  // normally has only a few choices. Category remains a dropdown because that
-  // list can grow substantially.
   const accountChoices = transaction.locator('input[name="account"]');
   expect(await accountChoices.count()).toBeGreaterThan(0);
   await expect(accountChoices.first()).toBeAttached();
@@ -73,9 +57,9 @@ test('locked finance form system uses the new responsive amount-first design', a
   await expect(event).toBeVisible();
   expect(await notes.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
   expect(await event.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
-  await transaction.getByRole('button', { name: /Close edit transaction/i }).click();
+  await transaction.getByRole('button', { name: /Back from transaction form/i }).click();
 
-  await openDestination(page, 'Accounts');
+  await openAppDestination(page, 'Accounts');
   await page.getByRole('button', { name: /Add account/i }).click();
   await page.getByRole('button', { name: 'Asset / investment', exact: true }).click();
   const account = page.getByTestId('account-form-sheet');
@@ -95,7 +79,7 @@ test('locked finance form system uses the new responsive amount-first design', a
   await expect(account.getByRole('heading', { name: 'Add Credit Card', exact: true })).toBeVisible();
   await expect(account.getByLabel('Credit Limit')).toBeVisible();
   await expect(account.getByLabel('Billing Cycle Day')).toBeVisible();
-  await account.getByRole('button', { name: /Close add credit card/i }).click();
+  await account.getByRole('button', { name: /Back from account form/i }).click();
 
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
@@ -105,7 +89,7 @@ test('locked finance form system uses the new responsive amount-first design', a
 
 test('transfer account cards stay before the action and remain readable', async ({ page }) => {
   await prepareDemo(page);
-  await page.goto('/?tab=dashboard');
+  await openAppDestination(page, 'Home');
   await page.getByRole('button', { name: /add transaction/i }).first().click();
   await page.getByRole('button', { name: 'Transfer', exact: true }).click();
 
@@ -141,5 +125,5 @@ test('transfer account cards stay before the action and remain readable', async 
   const titleInput = transaction.getByLabel('Transfer title (optional)');
   expect(await titleInput.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft))).toBeGreaterThanOrEqual(40);
 
-  await transaction.getByRole('button', { name: /Close add transaction/i }).click();
+  await transaction.getByRole('button', { name: /Back from transaction form/i }).click();
 });
