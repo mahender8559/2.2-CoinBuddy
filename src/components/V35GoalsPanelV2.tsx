@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import type { SavingsGoal, SavingsGoalType } from '../types';
 import { CurrencyInput } from './CurrencyInput';
 import {
+  getGoalAccountOverlaps,
   getGoalCurrentAmount,
   getGoalLinkedAccountIds,
   getGoalLinkedAccounts,
@@ -81,6 +82,7 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [overlapAcknowledged, setOverlapAcknowledged] = useState(false);
 
   const activeGoals = useMemo(() => savingsGoals.filter(goal => goal.isActive), [savingsGoals]);
   const monthlyTotal = activeGoals.reduce((sum, goal) => sum + goal.monthlyContribution, 0);
@@ -113,6 +115,7 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
     setEditing(null);
     setDraft({ ...EMPTY_GOAL, linkedAccountIds: [] });
     setSaveError('');
+    setOverlapAcknowledged(false);
     setModalOpen(true);
   };
 
@@ -122,10 +125,13 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
     const linkedAccountIds = getGoalLinkedAccountIds(goal);
     setDraft({ ...rest, linkedAccountIds, linkedAccountId: linkedAccountIds[0] });
     setSaveError('');
+    setOverlapAcknowledged(false);
     setModalOpen(true);
   };
 
   const toggleLinkedAccount = (accountId: string) => {
+    setOverlapAcknowledged(false);
+    setSaveError('');
     setDraft(current => {
       const currentIds = getGoalLinkedAccountIds(current);
       const nextIds = currentIds.includes(accountId)
@@ -143,9 +149,16 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
 
   const save = async () => {
     if (isSaving || !draft.name.trim() || draft.targetAmount <= 0) return;
+    const linkedAccountIds = getGoalLinkedAccountIds(draft);
+    const overlaps = getGoalAccountOverlaps(savingsGoals, editing?.id, linkedAccountIds);
+    if (overlaps.length > 0 && !overlapAcknowledged) {
+      const goalNames = [...new Set(overlaps.map(overlap => overlap.goalName))];
+      setOverlapAcknowledged(true);
+      setSaveError(`One or more linked accounts are already used by ${goalNames.join(', ')}. Saving will show the same balance in both goals. Press Save again to continue.`);
+      return;
+    }
     setIsSaving(true);
     setSaveError('');
-    const linkedAccountIds = getGoalLinkedAccountIds(draft);
     const payload = {
       ...draft,
       name: draft.name.trim(),
@@ -159,6 +172,7 @@ export function V35GoalsPanel({ searchQuery = '' }: { searchQuery?: string }) {
       setSaveError('Could not save this goal. No changes were persisted.');
       return;
     }
+    setOverlapAcknowledged(false);
     setModalOpen(false);
   };
 

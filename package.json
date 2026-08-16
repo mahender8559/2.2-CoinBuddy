@@ -28,6 +28,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.62.1",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^22.14.0",
@@ -36,6 +37,7 @@
     "@types/sql.js": "^1.4.11",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.9.0",
     "pngjs": "^7.0.0",
     "sql.js": "^1.14.1",
