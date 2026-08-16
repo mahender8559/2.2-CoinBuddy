@@ -145,7 +145,6 @@ export function Header({ onLogout, showLogout = true }: HeaderProps) {
           <img src="/logo.png" alt="CoinBuddy" className="h-9 w-9 rounded-xl object-cover ring-1 ring-primary/25" />
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate text-lg font-semibold tracking-tight text-on-surface sm:text-xl">CoinBuddy</h1>
-            <span className="hidden rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-primary sm:inline">V3.5</span>
           </div>
         </div>
 
