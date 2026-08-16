@@ -109,7 +109,7 @@ describe('Backup & Encryption Engine Suite', () => {
   // 2. Schema Migration Tests
   // ============================================================================
   describe('Schema Migration (upgradeBackupData)', () => {
-    it('should upgrade mock v1 backup JSON to current v2 schema specifications', () => {
+    it('should upgrade mock v1 backup JSON to current v5 schema specifications', () => {
       const mockV1Backup = JSON.stringify({
         accounts: [
           {
@@ -165,8 +165,10 @@ describe('Backup & Encryption Engine Suite', () => {
       expect(tx.category).toBe('General');
       expect(tx.note).toBe('');
 
-      // Validate default categories & credit cards added
-      expect(upgraded.categories).toContain('Food & Dining');
+      // Validate default categories are normalized into stable v5 records.
+      expect(upgraded.categories).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'food-dining', name: 'Food & Dining', type: 'expense' }),
+      ]));
       expect(Array.isArray(upgraded.creditCards)).toBe(true);
     });
 
