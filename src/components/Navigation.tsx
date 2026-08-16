@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight, Wallet, Eye, EyeOff } from 'lucide-react';
+import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight } from 'lucide-react';
 import { Tab } from '../types';
 import { useAppContext } from '../context/AppContext';
 
@@ -17,7 +17,7 @@ const getCurrentManageDestination = (): ManageDestination => {
 };
 
 export function Navigation({ activeTab, setActiveTab }: NavProps) {
-  const { setEditingTransaction, setAddModalOpen, balancesVisible, toggleBalancesVisible, setWalletModalOpen } = useAppContext();
+  const { setEditingTransaction, setAddModalOpen } = useAppContext();
   const [moreOpen, setMoreOpen] = useState(false);
   const [manageDestination, setManageDestination] = useState<ManageDestination>(getCurrentManageDestination);
 
@@ -51,7 +51,7 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
     { id: 'activity', label: 'Activity', icon: ReceiptText, onClick: () => setActiveTab('activity'), active: activeTab === 'activity' },
   ];
 
-  const moreActive = activeTab === 'settings' || activeTab === 'insights' || (activeTab === 'manage' && manageDestination !== 'Sharing');
+  const moreActive = activeTab === 'insights' || (activeTab === 'manage' && manageDestination !== 'Sharing');
 
   const desktopItems = [
     { key: 'home', label: 'Home', icon: Home, active: activeTab === 'dashboard', action: () => setActiveTab('dashboard') },
@@ -86,9 +86,9 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
           <span>Sharing</span>
         </button>
 
-        <button onClick={() => setMoreOpen(true)} aria-label="More" className={`v35-focus-ring flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium transition-colors ${moreActive ? 'text-primary' : 'text-on-surface-variant'}`}>
+        <button onClick={() => setMoreOpen(true)} aria-label="Menu" className={`v35-focus-ring flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium transition-colors ${moreActive ? 'text-primary' : 'text-on-surface-variant'}`}>
           <Menu className="h-[21px] w-[21px]" />
-          <span>More</span>
+          <span>Menu</span>
         </button>
       </nav>
 
@@ -115,13 +115,13 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
       </nav>
 
       {moreOpen ? (
-        <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-label="More navigation">
-          <button className="absolute inset-0 min-h-0 w-full bg-black/60" aria-label="Close More menu" onClick={() => setMoreOpen(false)} />
+        <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-label="Money tools navigation">
+          <button className="absolute inset-0 min-h-0 w-full bg-black/60" aria-label="Close menu" onClick={() => setMoreOpen(false)} />
           <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-outline-variant/40 bg-surface-container-low p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-on-surface">More</h2>
-                <p className="text-sm text-on-surface-variant">Everything else, without crowding your main navigation.</p>
+                <h2 className="text-lg font-semibold text-on-surface">Money tools</h2>
+                <p className="text-sm text-on-surface-variant">Accounts, categories, goals and insights.</p>
               </div>
               <button onClick={() => setMoreOpen(false)} aria-label="Close" className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container">
                 <X className="h-5 w-5" />
@@ -133,9 +133,6 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
                 { label: 'Categories', icon: Tags, action: () => openManage('Categories') },
                 { label: 'Goals', icon: Target, action: () => openManage('Goals') },
                 { label: 'Insights', icon: LineChart, action: () => { setMoreOpen(false); setActiveTab('insights'); } },
-                { label: 'Wallet Summary', icon: Wallet, action: () => { setMoreOpen(false); setWalletModalOpen(true); } },
-                { label: balancesVisible ? 'Hide balances' : 'Show balances', icon: balancesVisible ? EyeOff : Eye, action: () => { toggleBalancesVisible(); setMoreOpen(false); } },
-                { label: 'Settings', icon: Settings, action: () => { setMoreOpen(false); setActiveTab('settings'); } },
               ].map(({ label, icon: Icon, action }) => (
                 <button key={label} onClick={action} className="v35-focus-ring flex min-h-14 w-full items-center gap-3 border-b border-outline-variant/20 px-4 text-left last:border-b-0 hover:bg-surface-container-high">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
