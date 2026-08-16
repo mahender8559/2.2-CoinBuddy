@@ -1,0 +1,16 @@
+/* Wallet Summary is a centered floating quick-peek dialog, not a bottom sheet.
+ * Older V3.5 form CSS applies `border-radius: <top> <top> 0 0 !important` to
+ * this test id, flattening the lower edge. Keep the approved floating-card
+ * silhouette in both light and dark appearances. */
+[data-testid="wallet-summary-sheet"] {
+  border-radius: 22px !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 639px) {
+  [data-testid="wallet-summary-sheet"] {
+    border-radius: 22px !important;
+    border-bottom-width: 1px !important;
+    border-bottom-style: solid !important;
+  }
+}
