@@ -8,6 +8,22 @@ async function prepare(page: Page) {
   await page.goto('/?tab=settings');
 }
 
+async function setLight(page: Page) {
+  const themeSwitch = page.getByRole('switch', { name: /Dark Theme/i });
+  await expect(themeSwitch).toBeVisible();
+  if (await themeSwitch.getAttribute('aria-checked') === 'true') await themeSwitch.click();
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+}
+
+async function setDark(page: Page) {
+  const themeSwitch = page.getByRole('switch', { name: /Dark Theme/i });
+  await expect(themeSwitch).toBeVisible();
+  if (await themeSwitch.getAttribute('aria-checked') !== 'true') await themeSwitch.click();
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+}
+
 async function openActivity(page: Page) {
   const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
   if (isDesktop) {
@@ -17,32 +33,44 @@ async function openActivity(page: Page) {
   }
 }
 
-function brightness([r, g, b]: [number, number, number]) {
-  return (r * 299 + g * 587 + b * 114) / 1000;
+async function openDashboard(page: Page) {
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
+  if (isDesktop) {
+    await page.getByTestId('desktop-sidebar').getByRole('button', { name: 'Home', exact: true }).click();
+  } else {
+    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Home', exact: true }).click();
+  }
 }
 
-test('light mode updates V3.5 cards and navigation instead of leaving dark containers', async ({ page }) => {
+async function themeTokens(page: Page) {
+  return page.locator('html').evaluate(element => {
+    const styles = getComputedStyle(element);
+    return {
+      background: styles.getPropertyValue('--background').trim(),
+      surface: styles.getPropertyValue('--surface-container-low').trim(),
+      primary: styles.getPropertyValue('--primary').trim(),
+      nav: styles.getPropertyValue('--cb-theme-nav').trim(),
+      accent: styles.getPropertyValue('--cb-theme-accent').trim(),
+    };
+  });
+}
+
+test('light appearance updates cards and navigation instead of leaving dark containers', async ({ page }) => {
   await prepare(page);
-
-  const themeSwitch = page.getByRole('switch', { name: /Dark Theme/i });
-  await expect(themeSwitch).toBeVisible();
-  if (await themeSwitch.getAttribute('aria-checked') === 'true') await themeSwitch.click();
-  await expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
-  await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
-
+  await setLight(page);
   await openActivity(page);
+
   const activity = page.getByTestId('page-activity');
   await expect(activity).toBeVisible();
-
   const surface = activity.locator('.v35-surface').first();
   await expect(surface).toBeVisible();
-  const surfaceRgb = await surface.evaluate(element => {
-    const image = getComputedStyle(element).backgroundImage;
-    const match = image.match(/rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i);
-    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] as [number, number, number] : null;
+
+  const colors = await surface.evaluate(element => {
+    const styles = getComputedStyle(element);
+    return { background: styles.backgroundImage, color: styles.color, border: styles.borderColor };
   });
-  expect(surfaceRgb, 'Expected a resolved light-mode V3.5 surface gradient').not.toBeNull();
-  expect(brightness(surfaceRgb!)).toBeGreaterThan(180);
+  expect(colors.background).not.toContain('rgb(13, 27, 46)');
+  expect(colors.color).not.toBe('rgb(248, 250, 252)');
 
   const nav = (page.viewportSize()?.width ?? 0) >= 768
     ? page.getByTestId('desktop-sidebar')
@@ -51,22 +79,91 @@ test('light mode updates V3.5 cards and navigation instead of leaving dark conta
   expect(navBackground).not.toMatch(/rgb\(4,\s*11,\s*21\)/);
 });
 
-test('selected color palette propagates into the legacy V3.5 accent tokens', async ({ page }) => {
+test('theme picker presents complete app-theme previews instead of color dots', async ({ page }) => {
   await prepare(page);
 
+  const expected = [
+    ['Use blue color theme', 'Ocean'],
+    ['Use green color theme', 'Emerald'],
+    ['Use purple color theme', 'Violet'],
+    ['Use orange color theme', 'Amber'],
+    ['Use pink color theme', 'Rose'],
+  ] as const;
+
+  for (const [label, visualName] of expected) {
+    const option = page.getByRole('button', { name: label, exact: true });
+    await expect(option).toBeVisible();
+    const box = await option.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(88);
+    const generatedName = await option.evaluate((element, name) => {
+      const value = getComputedStyle(element, '::after').content.replace(/^['"]|['"]$/g, '');
+      return { value, expected: name };
+    }, visualName);
+    expect(generatedName.value).toBe(generatedName.expected);
+  }
+});
+
+test('Ocean Emerald Violet Amber and Rose change the full light environment', async ({ page }) => {
+  await prepare(page);
+  await setLight(page);
+
+  const options = [
+    ['blue', 'Use blue color theme'],
+    ['green', 'Use green color theme'],
+    ['purple', 'Use purple color theme'],
+    ['orange', 'Use orange color theme'],
+    ['pink', 'Use pink color theme'],
+  ] as const;
+
+  const snapshots: Record<string, Awaited<ReturnType<typeof themeTokens>>> = {};
+  for (const [id, label] of options) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await expect(page.locator('html')).toHaveClass(new RegExp(`theme-${id}`));
+    snapshots[id] = await themeTokens(page);
+  }
+
+  expect(new Set(Object.values(snapshots).map(item => item.background)).size).toBe(5);
+  expect(new Set(Object.values(snapshots).map(item => item.surface)).size).toBe(5);
+  expect(new Set(Object.values(snapshots).map(item => item.primary)).size).toBe(5);
+  expect(new Set(Object.values(snapshots).map(item => item.nav)).size).toBe(5);
+  expect(new Set(Object.values(snapshots).map(item => item.accent)).size).toBe(5);
+});
+
+test('selected theme reaches dashboard card environment and Net Worth chart', async ({ page }) => {
+  await prepare(page);
+  await setLight(page);
+
+  await page.getByRole('button', { name: 'Use blue color theme', exact: true }).click();
+  const oceanTokens = await themeTokens(page);
+  await openDashboard(page);
+  const oceanCard = await page.getByRole('article', { name: 'Net Worth overview' }).evaluate(element => getComputedStyle(element).backgroundImage);
+  const oceanStroke = await page.locator('.recharts-area-curve').first().evaluate(element => getComputedStyle(element).stroke);
+
+  await page.goto('/?tab=settings');
   await page.getByRole('button', { name: 'Use green color theme', exact: true }).click();
-  await expect(page.locator('html')).toHaveClass(/theme-green/);
+  const emeraldTokens = await themeTokens(page);
+  await openDashboard(page);
+  const emeraldCard = await page.getByRole('article', { name: 'Net Worth overview' }).evaluate(element => getComputedStyle(element).backgroundImage);
+  const emeraldStroke = await page.locator('.recharts-area-curve').first().evaluate(element => getComputedStyle(element).stroke);
 
-  const accents = await page.locator('html').evaluate(element => {
-    const styles = getComputedStyle(element);
-    return {
-      accent: styles.getPropertyValue('--cb-accent').trim(),
-      legacyBlue: styles.getPropertyValue('--cb-blue').trim(),
-      lockedBlue: styles.getPropertyValue('--cb-locked-blue').trim(),
-    };
-  });
+  expect(emeraldTokens.background).not.toBe(oceanTokens.background);
+  expect(emeraldTokens.surface).not.toBe(oceanTokens.surface);
+  expect(emeraldTokens.accent).not.toBe(oceanTokens.accent);
+  expect(emeraldCard).not.toBe(oceanCard);
+  expect(emeraldStroke).not.toBe(oceanStroke);
+});
 
-  expect(accents.accent.toLowerCase()).toBe('#15803d');
-  expect(accents.legacyBlue).toContain('var(--cb-accent)');
-  expect(accents.lockedBlue).toContain('var(--cb-accent)');
+test('dark appearance retains each theme personality instead of reverting to Ocean', async ({ page }) => {
+  await prepare(page);
+  await setDark(page);
+
+  await page.getByRole('button', { name: 'Use purple color theme', exact: true }).click();
+  const violet = await themeTokens(page);
+  await page.getByRole('button', { name: 'Use orange color theme', exact: true }).click();
+  const amber = await themeTokens(page);
+
+  expect(violet.background).not.toBe(amber.background);
+  expect(violet.surface).not.toBe(amber.surface);
+  expect(violet.primary).not.toBe(amber.primary);
+  expect(violet.nav).not.toBe(amber.nav);
 });
