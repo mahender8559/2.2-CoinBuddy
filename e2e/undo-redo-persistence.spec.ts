@@ -36,9 +36,17 @@ async function createPendingRecurringExpense(page: Page, title: string) {
   await page.locator('#transaction-title').fill(title);
   await page.locator('#transaction-amount').fill('500');
   await page.locator('#transaction-date').fill(await localDateKey(page));
-  await page.getByRole('button', { name: 'Toggle recurring transaction' }).click();
-  await page.getByRole('button', { name: 'Save Expense' }).click();
 
+  // Recurrence is intentionally tucked into the collapsed More options section.
+  // Open that section before interacting with its accessible toggle button.
+  const moreOptions = page.getByText('More options', { exact: true });
+  await expect(moreOptions).toBeVisible();
+  await moreOptions.click();
+  const recurringToggle = page.getByRole('button', { name: 'Toggle recurring transaction' });
+  await expect(recurringToggle).toBeVisible();
+  await recurringToggle.click();
+
+  await page.getByRole('button', { name: 'Save Expense' }).click();
   await expect(page.getByTestId('transaction-form-sheet')).not.toBeVisible();
 }
 
