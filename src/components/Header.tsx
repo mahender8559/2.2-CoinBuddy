@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldCheck, Undo2, Redo2, LogOut, Eye, EyeOff, Settings2, Wallet } from 'lucide-react';
+import { ShieldCheck, Undo2, Redo2, LogOut, Eye, EyeOff, SlidersHorizontal, WalletCards } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 interface HeaderProps {
@@ -93,28 +93,28 @@ function DashboardQuickActions() {
       {targets.greetingRow ? createPortal(
         <div
           data-testid="dashboard-header-actions"
-          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-outline-variant/35 bg-surface-container-low p-1"
+          className="inline-flex shrink-0 items-center gap-2"
           aria-label="Dashboard shortcuts"
         >
           <button
             type="button"
             onClick={() => setWalletModalOpen(true)}
-            className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary sm:h-9 sm:w-9"
+            className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant/45 bg-surface-container-low text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/10 sm:h-11 sm:w-11"
             title="Wallet Summary"
             aria-label="Wallet Summary"
             data-testid="dashboard-wallet-summary"
           >
-            <Wallet className="h-4 w-4" />
+            <WalletCards className="h-5 w-5 sm:h-[21px] sm:w-[21px]" strokeWidth={2.15} />
           </button>
           <button
             type="button"
             onClick={openSettings}
-            className="v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary sm:h-9 sm:w-9"
+            className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant/45 bg-surface-container-low text-on-surface-variant shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/8 hover:text-primary sm:h-11 sm:w-11"
             title="Settings"
             aria-label="Settings"
             data-testid="dashboard-settings-shortcut"
           >
-            <Settings2 className="h-4 w-4" />
+            <SlidersHorizontal className="h-5 w-5 sm:h-[21px] sm:w-[21px]" strokeWidth={2.15} />
           </button>
         </div>,
         targets.greetingRow,
