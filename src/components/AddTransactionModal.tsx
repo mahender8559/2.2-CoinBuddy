@@ -1,7 +1,30 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AlertTriangle, CalendarDays } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowRightLeft,
+  ArrowUpRight,
+  Banknote,
+  Building2,
+  CalendarDays,
+  Check,
+  CircleDollarSign,
+  CreditCard,
+  FileText,
+  Landmark,
+  NotebookPen,
+  Repeat2,
+  Save,
+  SlidersHorizontal,
+  Tag,
+  Target,
+  TrendingUp,
+  UsersRound,
+  WalletCards,
+} from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import type { Transaction } from '../types';
+import { icons } from '../icons';
+import type { Account, Transaction } from '../types';
 import { V35ModalFrame } from './ui/V35ModalFrame';
 import {
   AmountHero,
@@ -12,7 +35,79 @@ import {
   FinanceSubmitButton,
   FinanceToggle,
   financeFieldClass,
+  financeLabelClass,
 } from './ui/FinanceForm';
+
+function getAccountIcon(account: Account) {
+  const group = String(account.group ?? '').toLowerCase();
+  if (group.includes('cash')) return Banknote;
+  if (group.includes('wallet')) return WalletCards;
+  if (group.includes('investment')) return TrendingUp;
+  if (group.includes('credit card')) return CreditCard;
+  if (account.type === 'liability' || group.includes('loan') || group.includes('mortgage')) return CircleDollarSign;
+  if (group.includes('bank') || group.includes('saving') || group.includes('current') || group.includes('checking')) return Landmark;
+  return Building2;
+}
+
+function AccountChoiceGroup({
+  legend,
+  name,
+  accounts,
+  value,
+  onChange,
+  ariaPrefix,
+  formatCurrency,
+  icon,
+}: {
+  legend: string;
+  name: string;
+  accounts: Account[];
+  value: string;
+  onChange: (id: string) => void;
+  ariaPrefix: string;
+  formatCurrency: (amount: number | string) => string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <fieldset className="cb-account-choice-fieldset">
+      <legend className={financeLabelClass}>
+        <span className="cb-finance-label-row">
+          <span className="cb-finance-label-icon" aria-hidden="true">{icon}</span>
+          <span>{legend}</span>
+        </span>
+      </legend>
+      {accounts.length > 0 ? (
+        <div className="cb-account-choice-grid">
+          {accounts.map(account => {
+            const Icon = getAccountIcon(account);
+            const selected = account.id === value;
+            return (
+              <label key={account.id} className={`cb-account-choice ${selected ? 'is-selected' : ''}`}>
+                <input
+                  type="radio"
+                  name={name}
+                  value={account.id}
+                  checked={selected}
+                  onChange={() => onChange(account.id)}
+                  aria-label={`${ariaPrefix} ${account.name}`}
+                  className="sr-only"
+                />
+                <span className="cb-account-choice-icon" aria-hidden="true"><Icon className="h-4 w-4" /></span>
+                <span className="cb-account-choice-copy">
+                  <span className="cb-account-choice-name">{account.name}</span>
+                  <span className="cb-account-choice-meta">{account.group || (account.type === 'asset' ? 'Asset' : 'Liability')} · {formatCurrency(account.balance)}</span>
+                </span>
+                <span className="cb-account-choice-check" aria-hidden="true"><Check className="h-3.5 w-3.5" /></span>
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="cb-account-choice-empty">No eligible accounts available.</div>
+      )}
+    </fieldset>
+  );
+}
 
 export function AddTransactionModal() {
   const {
@@ -23,6 +118,7 @@ export function AddTransactionModal() {
     editingTransaction,
     setEditingTransaction,
     getCurrencySymbol,
+    formatCurrency,
     accounts,
     categories,
     events,
@@ -55,6 +151,8 @@ export function AddTransactionModal() {
   );
   const eligibleAccounts = type === 'income' ? assets : activeAccounts;
   const activeGoals = savingsGoals.filter(goal => goal.isActive);
+  const selectedCategory = availableCategories.find(item => item.id === categoryId);
+  const CategoryIcon = selectedCategory ? icons[selectedCategory.icon] : Tag;
 
   const showError = (message: string) => setError({ message, id: Date.now() });
 
@@ -210,15 +308,16 @@ export function AddTransactionModal() {
 
   const tone = type === 'expense' ? 'red' : type === 'income' ? 'green' : 'blue';
   const titleLabel = type === 'income' ? 'Source / description' : type === 'transfer' ? 'Transfer title (optional)' : 'What was this for?';
+  const titleIcon = type === 'expense' ? <ArrowUpRight className="h-3.5 w-3.5" /> : type === 'income' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowRightLeft className="h-3.5 w-3.5" />;
 
   return (
     <V35ModalFrame size="lg" testId="transaction-form-sheet" labelledBy="transaction-form-title" panelClassName="p-0">
-      <div id="transaction-form-title" className="sr-only">{editingTransaction ? 'Edit Transaction' : 'Add Transaction'}</div>
       <FinanceFormHeader
         title={editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
         subtitle="Expense, income and transfer in one focused form"
         onClose={close}
         closeLabel="Back from transaction form"
+        titleId="transaction-form-title"
       />
 
       <div className="cb-finance-body min-h-0 flex-1">
@@ -232,66 +331,98 @@ export function AddTransactionModal() {
 
           {!editingTransaction ? (
             <div className="cb-finance-segmented" aria-label="Transaction type">
-              <button className="expense" type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')}>Expense</button>
-              <button className="income" type="button" aria-pressed={type === 'income'} onClick={() => { setType('income'); if (assets[0]) setAccount(assets[0].id); }}>Income</button>
-              <button className="transfer" type="button" aria-pressed={type === 'transfer'} onClick={() => setType('transfer')}>Transfer</button>
+              <button className="expense" type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')}><ArrowUpRight className="h-4 w-4" />Expense</button>
+              <button className="income" type="button" aria-pressed={type === 'income'} onClick={() => { setType('income'); if (assets[0]) setAccount(assets[0].id); }}><ArrowDownLeft className="h-4 w-4" />Income</button>
+              <button className="transfer" type="button" aria-pressed={type === 'transfer'} onClick={() => setType('transfer')}><ArrowRightLeft className="h-4 w-4" />Transfer</button>
             </div>
           ) : null}
 
           <AmountHero id="transaction-amount" ariaLabel="Transaction amount" symbol={getCurrencySymbol()} value={amount} onValueChange={setAmount} tone={tone} />
 
-          <FinanceField label={titleLabel} htmlFor="transaction-title">
-            <input id="transaction-title" aria-label={titleLabel} value={title} onChange={event => setTitle(event.target.value)} placeholder={type === 'income' ? 'e.g. Salary, Freelance' : type === 'expense' ? 'e.g. Dinner with friends' : 'Optional'} className={financeFieldClass} />
+          <FinanceField label={titleLabel} htmlFor="transaction-title" icon={titleIcon}>
+            <div className="relative cb-finance-control-with-icon">
+              <span className="cb-finance-control-icon" aria-hidden="true"><FileText className="h-4 w-4" /></span>
+              <input id="transaction-title" aria-label={titleLabel} value={title} onChange={event => setTitle(event.target.value)} placeholder={type === 'income' ? 'e.g. Salary, Freelance' : type === 'expense' ? 'e.g. Dinner with friends' : 'Optional'} className={financeFieldClass} />
+            </div>
           </FinanceField>
 
           {type === 'transfer' ? (
-            <div className="cb-finance-grid">
-              <FinanceField label="From account" htmlFor="transaction-from-account">
-                <FinanceSelect id="transaction-from-account" name="fromAccount" ariaLabel="Paid From" value={fromAccountId} onChange={setFromAccountId} required>
-                  {assets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </FinanceSelect>
-              </FinanceField>
-              <FinanceField label="To account" htmlFor="transaction-to-account">
-                <FinanceSelect id="transaction-to-account" name="toAccount" ariaLabel="Paid To" value={toAccountId} onChange={setToAccountId} required>
-                  {activeAccounts.filter(item => item.id !== fromAccountId).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </FinanceSelect>
-              </FinanceField>
+            <div className="cb-transfer-account-groups">
+              <AccountChoiceGroup
+                legend="From account"
+                name="fromAccount"
+                accounts={assets}
+                value={fromAccountId}
+                onChange={setFromAccountId}
+                ariaPrefix="Paid From"
+                formatCurrency={formatCurrency}
+                icon={<ArrowUpRight className="h-3.5 w-3.5" />}
+              />
+              <AccountChoiceGroup
+                legend="To account"
+                name="toAccount"
+                accounts={activeAccounts.filter(item => item.id !== fromAccountId)}
+                value={toAccountId}
+                onChange={setToAccountId}
+                ariaPrefix="Paid To"
+                formatCurrency={formatCurrency}
+                icon={<ArrowDownLeft className="h-3.5 w-3.5" />}
+              />
             </div>
           ) : (
-            <div className="cb-finance-grid">
-              <FinanceField label={type === 'expense' ? 'Paid from' : 'Paid to'} htmlFor="transaction-account">
-                <FinanceSelect id="transaction-account" ariaLabel={type === 'expense' ? 'Paid From' : 'Paid To'} value={account} onChange={setAccount} required>
-                  {eligibleAccounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </FinanceSelect>
-              </FinanceField>
-              <FinanceField label="Category" htmlFor="transaction-category">
-                <FinanceSelect id="transaction-category" ariaLabel="Category" value={categoryId} onChange={setCategoryId} required>
+            <>
+              <AccountChoiceGroup
+                legend={type === 'expense' ? 'Paid from' : 'Paid to'}
+                name="account"
+                accounts={eligibleAccounts}
+                value={account}
+                onChange={setAccount}
+                ariaPrefix={type === 'expense' ? 'Paid From' : 'Paid To'}
+                formatCurrency={formatCurrency}
+                icon={<WalletCards className="h-3.5 w-3.5" />}
+              />
+
+              <FinanceField label="Category" htmlFor="transaction-category" icon={<Tag className="h-3.5 w-3.5" />}>
+                <FinanceSelect
+                  id="transaction-category"
+                  ariaLabel="Category"
+                  value={categoryId}
+                  onChange={setCategoryId}
+                  required
+                  leadingIcon={<CategoryIcon className="h-4 w-4" />}
+                >
                   {availableCategories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </FinanceSelect>
               </FinanceField>
-            </div>
+            </>
           )}
 
-          <FinanceField label="Date" htmlFor="transaction-date">
+          <FinanceField label="Date" htmlFor="transaction-date" icon={<CalendarDays className="h-3.5 w-3.5" />}>
             <div className="relative">
               <input id="transaction-date" aria-label="Transaction date" type="date" value={date} onChange={event => setDate(event.target.value)} className={`${financeFieldClass} pr-10`} required />
               <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#728299]" />
             </div>
           </FinanceField>
 
-          <FinanceSection title="More options">
-            <FinanceField label="Notes (optional)" htmlFor="transaction-notes">
-              <input id="transaction-notes" aria-label="Notes" value={notes} onChange={event => setNotes(event.target.value)} placeholder="Anything useful to remember" className={financeFieldClass} />
+          <FinanceSection title="More options" icon={<SlidersHorizontal className="h-3.5 w-3.5" />}>
+            <FinanceField label="Notes (optional)" htmlFor="transaction-notes" icon={<NotebookPen className="h-3.5 w-3.5" />}>
+              <div className="relative cb-finance-control-with-icon">
+                <span className="cb-finance-control-icon" aria-hidden="true"><NotebookPen className="h-4 w-4" /></span>
+                <input id="transaction-notes" aria-label="Notes" value={notes} onChange={event => setNotes(event.target.value)} placeholder="Anything useful to remember" className={financeFieldClass} />
+              </div>
             </FinanceField>
 
-            <FinanceField label="Event / outing (optional)" htmlFor="transaction-event">
-              <input id="transaction-event" list="coinbuddy-events" value={groupId} onChange={event => setGroupId(event.target.value)} placeholder="Choose or type an event" className={financeFieldClass} />
+            <FinanceField label="Event / outing (optional)" htmlFor="transaction-event" icon={<UsersRound className="h-3.5 w-3.5" />}>
+              <div className="relative cb-finance-control-with-icon">
+                <span className="cb-finance-control-icon" aria-hidden="true"><UsersRound className="h-4 w-4" /></span>
+                <input id="transaction-event" list="coinbuddy-events" value={groupId} onChange={event => setGroupId(event.target.value)} placeholder="Choose or type an event" className={financeFieldClass} />
+              </div>
               <datalist id="coinbuddy-events">{events.map(item => <option key={item.id} value={item.name} />)}</datalist>
             </FinanceField>
 
             {type !== 'income' && activeGoals.length > 0 ? (
-              <FinanceField label="Goal contribution (optional)" htmlFor="transaction-goal">
-                <FinanceSelect id="transaction-goal" ariaLabel="Goal contribution" value={goalId} onChange={setGoalId}>
+              <FinanceField label="Goal contribution (optional)" htmlFor="transaction-goal" icon={<Target className="h-3.5 w-3.5" />}>
+                <FinanceSelect id="transaction-goal" ariaLabel="Goal contribution" value={goalId} onChange={setGoalId} leadingIcon={<Target className="h-4 w-4" />}>
                   <option value="">No goal</option>
                   {activeGoals.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </FinanceSelect>
@@ -305,11 +436,12 @@ export function AddTransactionModal() {
               onChange={setIsRecurring}
               disabled={Boolean(editingTransaction)}
               ariaLabel="Toggle recurring transaction"
+              icon={<Repeat2 className="h-4 w-4" />}
             />
 
             {isRecurring ? (
-              <FinanceField label="Frequency" htmlFor="transaction-frequency">
-                <FinanceSelect id="transaction-frequency" ariaLabel="Frequency" value={recurrenceFrequency} onChange={value => setRecurrenceFrequency(value as typeof recurrenceFrequency)} disabled={Boolean(editingTransaction)}>
+              <FinanceField label="Frequency" htmlFor="transaction-frequency" icon={<Repeat2 className="h-3.5 w-3.5" />}>
+                <FinanceSelect id="transaction-frequency" ariaLabel="Frequency" value={recurrenceFrequency} onChange={value => setRecurrenceFrequency(value as typeof recurrenceFrequency)} disabled={Boolean(editingTransaction)} leadingIcon={<Repeat2 className="h-4 w-4" />}>
                   <option value="MONTHLY">Monthly</option>
                   <option value="QUARTERLY">Quarterly</option>
                   <option value="ANNUALLY">Annually</option>
@@ -319,7 +451,7 @@ export function AddTransactionModal() {
           </FinanceSection>
 
           <FinanceSubmitButton tone={type === 'expense' ? 'danger' : type === 'income' ? 'success' : 'primary'}>
-            {editingTransaction ? 'Save Changes' : type === 'expense' ? 'Save Expense' : type === 'income' ? 'Save Income' : 'Transfer Money'}
+            {editingTransaction ? <><Save className="h-4 w-4" />Save Changes</> : type === 'expense' ? <><ArrowUpRight className="h-4 w-4" />Save Expense</> : type === 'income' ? <><ArrowDownLeft className="h-4 w-4" />Save Income</> : <><ArrowRightLeft className="h-4 w-4" />Transfer Money</>}
           </FinanceSubmitButton>
         </form>
       </div>
