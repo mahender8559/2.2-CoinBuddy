@@ -38,7 +38,23 @@ async function expectInsideViewport(page: Page, sheet: Locator) {
   expect(bounds!.y).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport!.width + 1);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport!.height + 1);
-  if (viewport!.width < 640) expect(Math.abs(bounds!.y + bounds!.height - viewport!.height)).toBeLessThanOrEqual(2);
+
+  if (viewport!.width < 640) {
+    expect(Math.abs(bounds!.y + bounds!.height - viewport!.height)).toBeLessThanOrEqual(2);
+
+    // V35ModalFrame renders one drag handle above each mobile sheet. A legacy
+    // `> div:first-child` rule once stretched it to ~54px, producing a large
+    // grey oval above the form title. Keep the shared handle compact forever.
+    const handle = sheet.locator(':scope > .v35-sheet-handle');
+    if (await handle.count()) {
+      await expect(handle).toBeVisible();
+      const handleBox = await handle.boundingBox();
+      expect(handleBox).not.toBeNull();
+      expect(handleBox!.height).toBeLessThanOrEqual(5);
+      expect(handleBox!.width).toBeGreaterThanOrEqual(36);
+      expect(handleBox!.width).toBeLessThanOrEqual(44);
+    }
+  }
 }
 
 async function openWallet(page: Page) {
