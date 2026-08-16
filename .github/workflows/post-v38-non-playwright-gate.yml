@@ -22,7 +22,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Apply narrow typecheck fixes
+      - name: Apply narrow hardening fixes
         shell: bash
         run: |
           python - <<'PY'
@@ -45,13 +45,22 @@ jobs:
               raise SystemExit('backupSession legacy fixture pattern not found')
           text = text.replace(old, new, 1)
           test.write_text(text)
+
+          goals_test = Path('src/domain/savingsGoals.test.ts')
+          text = goals_test.read_text()
+          old = """    expect(goals).toHaveLength(1);\n    expect(goals[0].name).toBe('Laptop');"""
+          new = """    expect(goals).toHaveLength(2);\n    expect(goals[0]).toMatchObject({ name: 'Savings goal', targetAmount: 0, monthlyContribution: 0, isActive: false });\n    expect(goals[1].name).toBe('Laptop');"""
+          if old not in text and new not in text:
+              raise SystemExit('savingsGoals malformed-goal assertion pattern not found')
+          text = text.replace(old, new, 1)
+          goals_test.write_text(text)
           PY
 
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/context/AppContext.tsx src/utils/backupSession.test.ts
-            git commit -m "fix: resolve hardening typecheck errors"
+            git add src/context/AppContext.tsx src/utils/backupSession.test.ts src/domain/savingsGoals.test.ts
+            git commit -m "test: preserve malformed goals as disabled records"
             git push origin HEAD:fix/post-v38-quality-hardening
           fi
 
