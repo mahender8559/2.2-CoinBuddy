@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepareApp(page: Page) {
   const runtimeErrors: string[] = [];
@@ -16,22 +17,6 @@ async function prepareApp(page: Page) {
   return runtimeErrors;
 }
 
-async function openDestination(page: Page, destination: 'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings' | 'Sharing') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  if (destination === 'Home' || destination === 'Activity' || destination === 'Sharing') {
-    await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'More', exact: true }).click();
-  await page.getByRole('dialog', { name: 'More navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
-
 async function waitForActivatedServiceWorker(page: Page) {
   await page.waitForFunction(async () => {
     const registration = await navigator.serviceWorker?.ready;
@@ -42,15 +27,15 @@ async function waitForActivatedServiceWorker(page: Page) {
 test('primary navigation buttons work without runtime errors', async ({ page }) => {
   const errors = await prepareApp(page);
 
-  await openDestination(page, 'Accounts');
+  await openAppDestination(page, 'Accounts');
   await expect(page).toHaveURL(/tab=manage/);
-  await openDestination(page, 'Activity');
+  await openAppDestination(page, 'Activity');
   await expect(page).toHaveURL(/tab=activity/);
-  await openDestination(page, 'Insights');
+  await openAppDestination(page, 'Insights');
   await expect(page).toHaveURL(/tab=insights/);
-  await openDestination(page, 'Settings');
+  await openAppDestination(page, 'Settings');
   await expect(page).toHaveURL(/tab=settings/);
-  await openDestination(page, 'Home');
+  await openAppDestination(page, 'Home');
   await expect(page).toHaveURL(/tab=dashboard/);
 
   expect(errors, `Runtime errors:\n${errors.join('\n')}`).toEqual([]);
@@ -58,7 +43,7 @@ test('primary navigation buttons work without runtime errors', async ({ page }) 
 
 test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
   const errors = await prepareApp(page);
-  await openDestination(page, 'Accounts');
+  await openAppDestination(page, 'Accounts');
 
   const liabilityToggle = page.locator('[data-testid="account-group-loan"] button[aria-expanded], [data-testid="account-group-card"] button[aria-expanded]').first();
   await expect(liabilityToggle).toBeVisible();
@@ -92,10 +77,10 @@ test('Pay Down opens a usable Pay From dropdown', async ({ page }) => {
 
 test('interactive buttons expose an accessible name', async ({ page }) => {
   const errors = await prepareApp(page);
-  const destinations: Array<'Home' | 'Accounts' | 'Activity' | 'Insights' | 'Settings'> = ['Home', 'Accounts', 'Activity', 'Insights', 'Settings'];
+  const destinations = ['Home', 'Accounts', 'Activity', 'Insights', 'Settings'] as const;
 
   for (const destination of destinations) {
-    await openDestination(page, destination);
+    await openAppDestination(page, destination);
     const unnamed = await page.locator('button:visible').evaluateAll(buttons =>
       buttons
         .filter(button => {
