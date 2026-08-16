@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { openAppDestination } from './helpers/navigation';
 
 async function prepare(page: Page) {
   await page.addInitScript(() => {
@@ -14,23 +15,13 @@ async function prepare(page: Page) {
   await expect(page.getByText('Recurring Payments', { exact: true })).toBeVisible({ timeout: 15000 });
 }
 
-async function openDestination(page: Page, destination: 'Accounts' | 'Goals') {
-  const isDesktop = (page.viewportSize()?.width ?? 0) >= 768;
-  if (isDesktop) {
-    await page.getByTestId('desktop-sidebar').getByRole('button', { name: destination, exact: true }).click();
-    return;
-  }
-  await page.getByTestId('mobile-bottom-nav').getByRole('button', { name: 'Menu', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Money tools navigation' }).getByRole('button', { name: destination, exact: true }).click();
-}
-
 test('v3.5 Accounts and Goals use focused grouped surfaces', async ({ page }, testInfo: TestInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await prepare(page);
 
-  await openDestination(page, 'Accounts');
+  await openAppDestination(page, 'Accounts');
   await expect(page.getByTestId('page-accounts')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Accounts 👋', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-group-bank')).toBeVisible();
@@ -41,7 +32,7 @@ test('v3.5 Accounts and Goals use focused grouped surfaces', async ({ page }, te
   await expect(page.getByRole('button', { name: /Add account/i })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('v35-accounts.png'), fullPage: false });
 
-  await openDestination(page, 'Goals');
+  await openAppDestination(page, 'Goals');
   await expect(page.getByTestId('page-goals')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'All goals', exact: true })).toBeVisible();
