@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { icons } from '../icons';
 import type { AffordabilityClass, Category } from '../types';
 import { getCategorySpend } from '../utils/budget';
+import { selectCategoryIcon } from '../utils/categoryIcon';
 import { CurrencyInput } from './CurrencyInput';
 import { IconBadge, MoneyValue, StatusPill } from './ui/V35';
 
@@ -44,7 +45,6 @@ export function V35CategoriesPanel() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState<keyof typeof icons>('ShoppingBag');
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [behavior, setBehavior] = useState<AffordabilityClass>('NORMAL');
   const [budget, setBudget] = useState(0);
@@ -65,10 +65,18 @@ export function V35CategoriesPanel() {
     return a.name.localeCompare(b.name);
   }), [categories, filter, search]);
 
+  const autoIcon = useMemo(() => selectCategoryIcon({
+    name,
+    type,
+    categories,
+    editingId: editing?.id,
+    preferredIcon: editing?.icon,
+  }), [categories, editing?.id, editing?.icon, name, type]);
+  const AutoIcon = icons[autoIcon] || ShoppingBag;
+
   const resetDraft = () => {
     setEditing(null);
     setName('');
-    setIcon('ShoppingBag');
     setType('expense');
     setBehavior('NORMAL');
     setBudget(0);
@@ -83,7 +91,6 @@ export function V35CategoriesPanel() {
   const openEdit = (category: Category) => {
     setEditing(category);
     setName(category.name);
-    setIcon(category.icon as keyof typeof icons);
     setType(category.type ?? 'expense');
     setBehavior(defaultBehavior(category));
     setBudget(Number(category.budget || 0));
@@ -102,7 +109,7 @@ export function V35CategoriesPanel() {
     if (!trimmed) return;
     const payload = {
       name: trimmed,
-      icon,
+      icon: autoIcon,
       type,
       budget: type === 'income' ? 0 : Math.max(0, budget),
       isRollover: type === 'expense' && rollover,
@@ -115,8 +122,6 @@ export function V35CategoriesPanel() {
     setModalOpen(false);
     resetDraft();
   };
-
-  const iconPresets = (['Utensils', 'ShoppingBag', 'Car', 'Home', 'Plane', 'BookOpen'] as Array<keyof typeof icons>).filter(key => Boolean(icons[key]));
 
   return (
     <section data-testid="page-categories" className="w-full space-y-5 pb-24 md:pb-0 animate-fade-in">
@@ -182,20 +187,22 @@ export function V35CategoriesPanel() {
 
             <div className="space-y-3 p-3.5">
               <div>
-                <span className={labelClass}>Icon & Color</span>
-                <div className="flex items-center gap-2">
-                  {iconPresets.map((preset, index) => {
-                    const Icon = icons[preset] || ShoppingBag;
-                    const selected = icon === preset;
-                    const tones = ['bg-red-500/85 text-white', 'bg-blue-600/85 text-white', 'bg-amber-500/90 text-white', 'bg-emerald-600/85 text-white', 'bg-blue-600/85 text-white', 'bg-purple-600/85 text-white'];
-                    return <button key={String(preset)} type="button" aria-label={`Use ${String(preset)} icon`} aria-pressed={selected} onClick={() => setIcon(preset)} className={`v35-focus-ring flex h-8 w-8 items-center justify-center rounded-lg border ${selected ? 'border-blue-400 ring-1 ring-blue-500' : 'border-transparent'} ${tones[index % tones.length]}`}><Icon className="h-4 w-4" /></button>;
-                  })}
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label htmlFor="category-name" className="text-[10.5px] font-medium text-[#cbd4e0]">Category Name</label>
+                  <span className="text-[9px] font-medium text-[#718096]">Icon auto-selected</span>
                 </div>
-              </div>
-
-              <div>
-                <label htmlFor="category-name" className={labelClass}>Category Name</label>
-                <input id="category-name" aria-label="Category name" value={name} onChange={event => setName(event.target.value)} placeholder="Food & Dining" className={fieldClass} />
+                <div className="relative">
+                  <span
+                    data-testid="category-auto-icon"
+                    data-icon-name={autoIcon}
+                    aria-label={`Automatic icon: ${autoIcon}`}
+                    className="pointer-events-none absolute left-2.5 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md bg-primary/12 text-primary"
+                  >
+                    <AutoIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <input id="category-name" aria-label="Category name" value={name} onChange={event => setName(event.target.value)} placeholder="Food & Dining" className={`${fieldClass} !pl-10`} />
+                </div>
+                <p className="mt-1 text-[9px] leading-4 text-[#718096]">CoinBuddy chooses a relevant unused icon from the category name and type.</p>
               </div>
 
               <div>
