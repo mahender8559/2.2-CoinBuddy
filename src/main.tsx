@@ -17,6 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemeSystemBridge } from './components/ThemeSystemBridge';
 import { BuildUpdateCelebration } from './components/BuildUpdateCelebration';
 import { LoanRecurringScheduleService } from './components/LoanRecurringScheduleService';
+import { MobileUndoRedoControls } from './components/MobileUndoRedoControls';
 
 type LockableScreenOrientation = ScreenOrientation & { lock?: (orientation: 'portrait') => Promise<void> };
 const screenOrientation = typeof screen !== 'undefined' ? screen.orientation as LockableScreenOrientation | undefined : undefined;
@@ -34,6 +35,7 @@ createRoot(document.getElementById('root')!).render(
         <ThemeSystemBridge />
         <BuildUpdateCelebration />
         <LoanRecurringScheduleService />
+        <MobileUndoRedoControls />
         <App />
       </AppProvider>
     </ErrorBoundary>
