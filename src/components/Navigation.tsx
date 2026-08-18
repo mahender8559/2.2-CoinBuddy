@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight } from 'lucide-react';
+import { Home, ReceiptText, Plus, UsersRound, Menu, WalletCards, Target, LineChart, Settings, Tags, X, ChevronRight, CalendarClock } from 'lucide-react';
 import { Tab } from '../types';
 import { useAppContext } from '../context/AppContext';
 
@@ -51,12 +51,13 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
     { id: 'activity', label: 'Activity', icon: ReceiptText, onClick: () => setActiveTab('activity'), active: activeTab === 'activity' },
   ];
 
-  const moreActive = activeTab === 'insights' || (activeTab === 'manage' && manageDestination !== 'Sharing');
+  const moreActive = activeTab === 'insights' || activeTab === 'scheduled' || (activeTab === 'manage' && manageDestination !== 'Sharing');
 
   const desktopItems = [
     { key: 'home', label: 'Home', icon: Home, active: activeTab === 'dashboard', action: () => setActiveTab('dashboard') },
     { key: 'activity', label: 'Activity', icon: ReceiptText, active: activeTab === 'activity', action: () => setActiveTab('activity') },
     { key: 'accounts', label: 'Accounts', icon: WalletCards, active: activeTab === 'manage' && manageDestination === 'Accounts', action: () => openManage('Accounts'), group: 'Money' },
+    { key: 'scheduled', label: 'Scheduled Payments', icon: CalendarClock, active: activeTab === 'scheduled', action: () => setActiveTab('scheduled') },
     { key: 'categories', label: 'Categories', icon: Tags, active: activeTab === 'manage' && manageDestination === 'Categories', action: () => openManage('Categories') },
     { key: 'goals', label: 'Goals', icon: Target, active: activeTab === 'manage' && manageDestination === 'Goals', action: () => openManage('Goals') },
     { key: 'insights', label: 'Insights', icon: LineChart, active: activeTab === 'insights', action: () => setActiveTab('insights') },
@@ -121,7 +122,7 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-on-surface">Money tools</h2>
-                <p className="text-sm text-on-surface-variant">Accounts, categories, goals and insights.</p>
+                <p className="text-sm text-on-surface-variant">Accounts, schedules, categories, goals and insights.</p>
               </div>
               <button onClick={() => setMoreOpen(false)} aria-label="Close" className="v35-focus-ring flex h-10 w-10 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container">
                 <X className="h-5 w-5" />
@@ -130,6 +131,7 @@ export function Navigation({ activeTab, setActiveTab }: NavProps) {
             <div className="overflow-hidden rounded-2xl border border-outline-variant/35 bg-surface-container">
               {[
                 { label: 'Accounts', icon: WalletCards, action: () => openManage('Accounts') },
+                { label: 'Scheduled Payments', icon: CalendarClock, action: () => { setMoreOpen(false); setActiveTab('scheduled'); } },
                 { label: 'Categories', icon: Tags, action: () => openManage('Categories') },
                 { label: 'Goals', icon: Target, action: () => openManage('Goals') },
                 { label: 'Insights', icon: LineChart, action: () => { setMoreOpen(false); setActiveTab('insights'); } },
