@@ -1,0 +1,38 @@
+name: Post-v3.8 sync validation
+
+on:
+  push:
+    branches:
+      - fix/post-v38-quality-hardening
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Vitest
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify Google Drive auth integration
+        run: node scripts/verify-google-drive-auth.mjs
