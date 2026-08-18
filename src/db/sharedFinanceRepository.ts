@@ -97,7 +97,7 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
     driver.query(`SELECT * FROM shared_payments ORDER BY paid_at DESC, id DESC`),
     driver.query(`SELECT * FROM shared_settlements ORDER BY settled_at DESC, id DESC`),
     driver.query(`SELECT * FROM loan_sharing_rules ORDER BY account_id`),
-    driver.query(`SELECT * FROM loan_contribution_rules ORDER BY account_id, id`),
+    driver.query(`SELECT lcr.*, CASE WHEN p.is_archived = 1 THEN 0 ELSE lcr.is_active END AS effective_is_active FROM loan_contribution_rules lcr JOIN people p ON p.id = lcr.person_id ORDER BY lcr.account_id, lcr.id`),
     driver.query(`SELECT * FROM shared_obligation_templates ORDER BY is_active DESC, next_due_date, title`),
     driver.query(`SELECT * FROM shared_template_responsibilities ORDER BY template_id, id`),
     driver.query(`SELECT * FROM external_loan_contributions ORDER BY paid_at DESC, id DESC`),
@@ -113,7 +113,7 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
     })),
     loanContributionRules: loanContributions.map((row: any) => ({
       id: String(row.id), accountId: String(row.account_id), personId: String(row.person_id),
-      mode: row.mode, value: Number(row.value), isActive: Number(row.is_active) === 1,
+      mode: row.mode, value: Number(row.value), isActive: Number(row.effective_is_active ?? row.is_active) === 1,
     })),
     obligationTemplates: templates.map(templateFromRow),
     templateResponsibilities: templateResponsibilities.map(templateResponsibilityFromRow),
@@ -136,6 +136,10 @@ export async function archivePerson(driver: SqlJsDatabaseDriver, personId: strin
   const rows = await driver.query(`SELECT is_self FROM people WHERE id = ?`, [personId]);
   if (!rows[0]) throw new Error('Person not found.');
   if (Number(rows[0].is_self) === 1) throw new Error('The CoinBuddy owner cannot be archived.');
+  // Preserve historical responsibilities/payments, but an archived person can no
+  // longer own any future EMI contribution. The caller wraps this lifecycle
+  // operation in the shared-finance atomic persistence flow.
+  await driver.execute(`UPDATE loan_contribution_rules SET is_active = 0 WHERE person_id = ? AND is_active = 1`, [personId]);
   await driver.execute(`UPDATE people SET is_archived = 1 WHERE id = ?`, [personId]);
 }
 
