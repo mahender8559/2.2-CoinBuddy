@@ -18,38 +18,45 @@ export function CreditCardStatementService() {
 
   useEffect(() => {
     if (syncingRef.current) return;
+
+    const now = new Date();
+    const pending = creditCards.map(card => {
+      const account = accounts.find(item => item.id === card.id && item.type === 'liability');
+      if (!account) return null;
+      const statement = projectCreditCardStatement(account, card, transactions, now);
+      const dueChanged = Math.abs((Number(card.dueAmount) || 0) - statement.dueAmount) > 0.009;
+      const dateChanged = card.dueDate !== statement.dueDate;
+      if (!dueChanged && !dateChanged) return null;
+      return { card, account, statement };
+    }).find(Boolean);
+
+    if (!pending) {
+      setHasSynced(true);
+      return;
+    }
+
+    // updateCreditCard treats its balance field as the editable opening balance.
+    // Automatic statement synchronization must preserve that original ledger row
+    // rather than passing the current outstanding balance back into it.
+    const openingTransaction = transactions.find(transaction =>
+      (transaction.isOpeningBalance || transaction.transaction_type === 'OPENING_BALANCE' || transaction.category === '#opening') &&
+      (transaction.account === pending.card.id || transaction.fromAccountId === pending.card.id || transaction.toAccountId === pending.card.id)
+    );
+    const originalOpeningBalance = Math.max(0, Number(openingTransaction?.amount) || 0);
+
     syncingRef.current = true;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const now = new Date();
-        for (const card of creditCards) {
-          if (cancelled) return;
-          const account = accounts.find(item => item.id === card.id && item.type === 'liability');
-          if (!account) continue;
-          const statement = projectCreditCardStatement(account, card, transactions, now);
-          const dueChanged = Math.abs((Number(card.dueAmount) || 0) - statement.dueAmount) > 0.009;
-          const dateChanged = card.dueDate !== statement.dueDate;
-          if (!dueChanged && !dateChanged) continue;
-
-          const result = await updateCreditCard(card.id, {
-            ...card,
-            balance: account.balance,
-            dueAmount: statement.dueAmount,
-            dueDate: statement.dueDate,
-          });
-          if (!result.success) console.error('Unable to sync credit-card statement:', result.error);
-        }
-      } catch (error) {
-        console.error('Unable to sync credit-card statement:', error);
-      } finally {
-        syncingRef.current = false;
-        if (!cancelled) setHasSynced(true);
-      }
-    })();
-
-    return () => { cancelled = true; };
+    void updateCreditCard(pending.card.id, {
+      ...pending.card,
+      balance: originalOpeningBalance,
+      dueAmount: pending.statement.dueAmount,
+      dueDate: pending.statement.dueDate,
+    }).then(result => {
+      if (!result.success) console.error('Unable to sync credit-card statement:', result.error);
+    }).catch(error => {
+      console.error('Unable to sync credit-card statement:', error);
+    }).finally(() => {
+      syncingRef.current = false;
+    });
   }, [accounts, creditCards, transactions, updateCreditCard, dayTick]);
 
   useEffect(() => {
