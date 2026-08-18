@@ -5,9 +5,15 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const buildTime = new Date().toISOString();
+  const deploymentSha = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '';
+  const fallbackBuildNumber = buildTime.replace(/\D/g, '').slice(0, 14);
+  const buildNumber = deploymentSha ? deploymentSha.slice(0, 7) : fallbackBuildNumber;
+
   return {
     define: {
-      __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+      __BUILD_TIME__: JSON.stringify(buildTime),
+      __BUILD_NUMBER__: JSON.stringify(buildNumber),
     },
     plugins: [react(), tailwindcss(), VitePWA({
       registerType: 'autoUpdate',
