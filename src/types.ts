@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'activity' | 'insights' | 'manage' | 'settings';
+export type Tab = 'dashboard' | 'activity' | 'insights' | 'manage' | 'scheduled' | 'settings';
 import type { IconName } from './icons';
 
 export interface LoanRevision {
