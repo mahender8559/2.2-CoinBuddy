@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldCheck, Undo2, Redo2, LogOut, Eye, EyeOff, SlidersHorizontal, WalletCards } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { CreditCardStatementService } from './CreditCardStatementService';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -140,6 +141,7 @@ export function Header({ onLogout, showLogout = true }: HeaderProps) {
 
   return (
     <>
+      <CreditCardStatementService />
       <header data-testid="app-header" className="fixed inset-x-0 top-0 z-50 hidden h-16 items-center justify-between md:flex border-b border-outline-variant/35 bg-background/88 px-4 backdrop-blur-xl md:px-6 xl:px-8">
         <div className="flex min-w-0 items-center gap-2.5">
           <img src="/logo.png" alt="CoinBuddy" className="h-9 w-9 rounded-xl object-cover ring-1 ring-primary/25" />
