@@ -8,6 +8,7 @@ import { BackupAutomationService } from './components/BackupAutomationService';
 import { Activity } from './components/Activity';
 import { V35Insights } from './components/V35Insights';
 import { Settings } from './components/Settings';
+import { ScheduledPayments } from './components/ScheduledPayments';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { AddAccountModal } from './components/AddAccountModal';
 import { WalletSummaryModal } from './components/WalletSummaryModal';
@@ -24,13 +25,15 @@ import { registerDailyCronWorker, calculateEmiReminders, triggerNativeNotificati
 // Change this to true when the app is ready to require Google sign-in again.
 const GOOGLE_LOGIN_ENABLED = false;
 
+const parseAppTab = (value: string | null): Tab =>
+  value === 'settings' || value === 'activity' || value === 'manage' || value === 'insights' || value === 'scheduled'
+    ? value
+    : 'dashboard';
+
 export default function App() {
   const [googleAuth, setGoogleAuth] = useState<{ loading: boolean; authenticated: boolean }>({ loading: true, authenticated: false });
   const [isExitConfirmOpen, setExitConfirmOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>(() => {
-    const tab = new URLSearchParams(window.location.search).get('tab');
-    return tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
-  });
+  const [activeTab, setActiveTab] = useState<Tab>(() => parseAppTab(new URLSearchParams(window.location.search).get('tab')));
   const { accounts, transactions, biometric, passcode, verifyPasscode, integrityWarning, dismissIntegrityWarning, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, setEditingTransaction, addAccountModalType, setAddAccountModalType, isWalletModalOpen, setWalletModalOpen, payCardModalState, setPayCardModalState, isManageCategoriesOpen, setManageCategoriesOpen, toast } = useAppContext();
 
   // Daily Cron Job Worker at 09:00 AM local time for Smart EMI Reminders
@@ -127,13 +130,12 @@ export default function App() {
   useEffect(() => {
     // Initialize history state on load if not already set
     if (!window.history.state || !window.history.state.tab) {
-      const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null;
-      const initialTab = tab === 'settings' || tab === 'activity' || tab === 'manage' || tab === 'insights' ? tab : 'dashboard';
+      const initialTab = parseAppTab(new URLSearchParams(window.location.search).get('tab'));
       window.history.replaceState({ exitPrompt: true }, '');
       window.history.pushState({ tab: initialTab }, '', `?tab=${initialTab}${new URLSearchParams(window.location.search).get('drive') ? `&drive=${new URLSearchParams(window.location.search).get('drive')}` : ''}${new URLSearchParams(window.location.search).get('drive_error') ? `&drive_error=${encodeURIComponent(new URLSearchParams(window.location.search).get('drive_error') || '')}` : ''}`);
       setActiveTab(initialTab);
     } else if (window.history.state.tab) {
-      setActiveTab(window.history.state.tab as Tab);
+      setActiveTab(parseAppTab(String(window.history.state.tab)));
     }
   }, []);
 
@@ -160,7 +162,7 @@ export default function App() {
         setActiveTab('dashboard');
         setExitConfirmOpen(true);
       } else if (e.state && e.state.tab) {
-        setActiveTab(e.state.tab as Tab);
+        setActiveTab(parseAppTab(String(e.state.tab)));
       }
     };
 
@@ -356,12 +358,13 @@ export default function App() {
           {activeTab === 'dashboard' && <Dashboard />}
           {activeTab === 'activity' && <Activity onOpenSharing={handleOpenSharingForTransaction} />}
           {activeTab === 'manage' && <ManageFinances />}
+          {activeTab === 'scheduled' && <ScheduledPayments />}
           {activeTab === 'insights' && <V35Insights />}
           {activeTab === 'settings' && <Settings />}
         </div>
       </main>
       
-      {activeTab !== 'settings' && activeTab !== 'manage' && (
+      {activeTab !== 'settings' && activeTab !== 'manage' && activeTab !== 'scheduled' && (
         <button 
           data-tour-id="tour-add-transaction"
           onClick={() => {
