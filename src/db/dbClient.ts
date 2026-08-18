@@ -50,9 +50,10 @@ async function persistWithVerificationRetry(driver: SqlJsDatabaseDriver): Promis
 export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
   const state = await loadStateFromDatabaseCore(driver);
   const loanDateRows = await driver.query(`SELECT id, next_emi_date FROM accounts WHERE is_archived = 0;`);
-  const nextEmiDateByAccount = new Map<string, string | undefined>(
-    loanDateRows.map(row => [String(row.id), row.next_emi_date == null ? undefined : String(row.next_emi_date)]),
-  );
+  const nextEmiDateByAccount = new Map<string, string>();
+  for (const row of loanDateRows) {
+    if (row.next_emi_date != null) nextEmiDateByAccount.set(String(row.id), String(row.next_emi_date));
+  }
 
   return {
     ...state,
