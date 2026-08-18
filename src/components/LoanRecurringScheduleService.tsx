@@ -45,6 +45,11 @@ export function LoanRecurringScheduleService() {
   const [saving, setSaving] = useState(false);
 
   const locked = Boolean((biometric || passcode) && !isUnlocked);
+  // Account metadata hydrates before shared-finance state during startup. Wait
+  // for the canonical self person so a shared loan can never be mistaken for a
+  // personal loan during that brief window and scheduled at the full EMI.
+  const sharedFinanceReady = people.some(person => person.isSelf && !person.isArchived);
+  const schedulerUnavailable = locked || !sharedFinanceReady;
   const paymentSources = useMemo(() => getLoanPaymentSourceAccounts(accounts), [accounts]);
   const loanSchedules = useMemo(() => accounts
     .filter(isSchedulableLoanAccount)
@@ -62,7 +67,7 @@ export function LoanRecurringScheduleService() {
   // Loan-owned schedules follow loan amount/frequency/date edits. A manually
   // created transfer to the same liability is left entirely under user control.
   useEffect(() => {
-    if (locked) return;
+    if (schedulerUnavailable) return;
     const managed = loanSchedules.find(item => item.rule && isManagedLoanPaymentRule(item.rule, item.loan.id));
     if (!managed?.rule) return;
     const key = `sync:${managed.loan.id}`;
@@ -89,7 +94,7 @@ export function LoanRecurringScheduleService() {
     if (parsed?.amount === 0) update.isActive = true;
     syncInFlight.add(key);
     void updateRecurringRule(update).finally(() => syncInFlight.delete(key));
-  }, [loanSchedules, locked, updateRecurringRule]);
+  }, [loanSchedules, schedulerUnavailable, updateRecurringRule]);
 
   const missingSchedules = useMemo(() => loanSchedules.filter(item => item.amount > 0 && !item.rule), [loanSchedules]);
 
@@ -109,13 +114,13 @@ export function LoanRecurringScheduleService() {
 
   // If there is only one sensible funding account, no extra setup is necessary.
   useEffect(() => {
-    if (locked || paymentSources.length !== 1) return;
+    if (schedulerUnavailable || paymentSources.length !== 1) return;
     const item = missingSchedules.find(candidate => !creationInFlight.has(candidate.loan.id));
     if (!item) return;
     void createSchedule(item.loan.id, paymentSources[0].id);
-  }, [locked, missingSchedules, paymentSources]);
+  }, [schedulerUnavailable, missingSchedules, paymentSources]);
 
-  const promptItem = !locked && paymentSources.length > 1
+  const promptItem = !schedulerUnavailable && paymentSources.length > 1
     ? missingSchedules.find(item => !dismissed.has(item.loan.id) && !creationInFlight.has(item.loan.id))
     : undefined;
 
