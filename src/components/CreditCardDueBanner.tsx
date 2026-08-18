@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, CalendarCheck, CheckCircle2, CreditCard } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { calculateCreditCardDueReminders } from '../domain/creditCardStatements';
@@ -6,7 +6,16 @@ import { calculateCreditCardDueReminders } from '../domain/creditCardStatements'
 export function CreditCardDueBanner() {
   const { creditCards, setPayCardModalState, formatCurrency } = useAppContext();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const reminders = useMemo(() => calculateCreditCardDueReminders(creditCards), [creditCards]);
+  const [dayTick, setDayTick] = useState(0);
+
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1, 0);
+    const timer = window.setTimeout(() => setDayTick(value => value + 1), Math.max(1000, nextMidnight.getTime() - now.getTime()));
+    return () => window.clearTimeout(timer);
+  }, [dayTick]);
+
+  const reminders = useMemo(() => calculateCreditCardDueReminders(creditCards), [creditCards, dayTick]);
   const visible = reminders.filter(reminder => !dismissedIds.has(reminder.id));
 
   if (visible.length === 0) return null;
