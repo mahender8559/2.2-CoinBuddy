@@ -287,7 +287,7 @@ export function AddAccountModal() {
     const finalInterestCalculation = liabilityType === 'Interest-Only Loan' ? 'INTEREST_ONLY' as const : interestCalculationType;
     const sharingContributions = activePeople
       .map(person => ({ personId: person.id, mode: contributionMode, value: Math.max(0, Number(contributionValues[person.id] || 0)), isActive: isSharedLoan }))
-      .filter(rule => !isSharedLoan || rule.value > 0);
+      .filter(rule => !isSharedLoan || rule.value > 0 || !activePeople.find(person => person.id === rule.personId)?.isSelf);
     const responsibilityPercent = Number(personalResponsibilityPercent);
 
     if (isSharedLoan) {
