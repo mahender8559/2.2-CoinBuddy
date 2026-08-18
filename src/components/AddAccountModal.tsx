@@ -286,8 +286,7 @@ export function AddAccountModal() {
     if (principal <= 0) return showError('Enter the original loan amount.');
     const finalInterestCalculation = liabilityType === 'Interest-Only Loan' ? 'INTEREST_ONLY' as const : interestCalculationType;
     const sharingContributions = activePeople
-      .map(person => ({ personId: person.id, mode: contributionMode, value: Math.max(0, Number(contributionValues[person.id] || 0)), isActive: isSharedLoan }))
-      .filter(rule => !isSharedLoan || rule.value > 0);
+      .map(person => ({ personId: person.id, mode: contributionMode, value: Math.max(0, Number(contributionValues[person.id] || 0)), isActive: isSharedLoan }));
     const responsibilityPercent = Number(personalResponsibilityPercent);
 
     if (isSharedLoan) {
@@ -296,7 +295,6 @@ export function AddAccountModal() {
       const contributionTotal = sharingContributions.reduce((sum, rule) => sum + rule.value, 0);
       if (contributionMode === 'PERCENT' && Math.abs(contributionTotal - 100) > 0.01) return showError('EMI contribution percentages must add up to 100%.');
       if (contributionMode === 'FIXED' && Math.abs(contributionTotal - Math.abs(Number(monthlyEMI) || 0)) > 0.01) return showError('Fixed EMI contributions must add up to the full loan payment.');
-      if (!sharingContributions.some(rule => people.find(person => person.id === rule.personId)?.isSelf)) return showError('Set your own EMI contribution before saving the shared loan.');
     }
 
     const loanData = {

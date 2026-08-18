@@ -97,7 +97,7 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
     driver.query(`SELECT * FROM shared_payments ORDER BY paid_at DESC, id DESC`),
     driver.query(`SELECT * FROM shared_settlements ORDER BY settled_at DESC, id DESC`),
     driver.query(`SELECT * FROM loan_sharing_rules ORDER BY account_id`),
-    driver.query(`SELECT * FROM loan_contribution_rules ORDER BY account_id, id`),
+    driver.query(`SELECT lcr.*, CASE WHEN p.is_archived = 1 THEN 0 ELSE lcr.is_active END AS effective_is_active FROM loan_contribution_rules lcr JOIN people p ON p.id = lcr.person_id ORDER BY lcr.account_id, lcr.id`),
     driver.query(`SELECT * FROM shared_obligation_templates ORDER BY is_active DESC, next_due_date, title`),
     driver.query(`SELECT * FROM shared_template_responsibilities ORDER BY template_id, id`),
     driver.query(`SELECT * FROM external_loan_contributions ORDER BY paid_at DESC, id DESC`),
@@ -113,7 +113,7 @@ export async function loadSharedFinanceState(driver: SqlJsDatabaseDriver): Promi
     })),
     loanContributionRules: loanContributions.map((row: any) => ({
       id: String(row.id), accountId: String(row.account_id), personId: String(row.person_id),
-      mode: row.mode, value: Number(row.value), isActive: Number(row.is_active) === 1,
+      mode: row.mode, value: Number(row.value), isActive: Number(row.effective_is_active ?? row.is_active) === 1,
     })),
     obligationTemplates: templates.map(templateFromRow),
     templateResponsibilities: templateResponsibilities.map(templateResponsibilityFromRow),
@@ -133,9 +133,41 @@ export async function createPerson(driver: SqlJsDatabaseDriver, input: { name: s
 }
 
 export async function archivePerson(driver: SqlJsDatabaseDriver, personId: string): Promise<void> {
-  const rows = await driver.query(`SELECT is_self FROM people WHERE id = ?`, [personId]);
+  const rows = await driver.query(`SELECT name, is_self, is_archived FROM people WHERE id = ?`, [personId]);
   if (!rows[0]) throw new Error('Person not found.');
   if (Number(rows[0].is_self) === 1) throw new Error('The CoinBuddy owner cannot be archived.');
+  if (Number(rows[0].is_archived) === 1) return;
+
+  // A person cannot disappear while a future EMI still depends on them. Require
+  // the user to explicitly set this contributor to zero and redistribute the
+  // same payment among the remaining active people in the loan editor first.
+  const blockingLoans = await driver.query(
+    `SELECT lcr.mode, lcr.value, a.name AS loan_name, a.next_emi_date
+       FROM loan_contribution_rules lcr
+       JOIN accounts a ON a.id = lcr.account_id
+      WHERE lcr.person_id = ?
+        AND lcr.is_active = 1
+        AND lcr.value > 0.009
+        AND a.is_archived = 0
+      ORDER BY a.name`,
+    [personId],
+  );
+  if (blockingLoans.length) {
+    const details = blockingLoans.map((row: any) => {
+      const contribution = String(row.mode) === 'PERCENT'
+        ? `${Number(row.value)}%`
+        : Number(row.value).toFixed(2);
+      const nextPayment = row.next_emi_date ? ` · next EMI ${String(row.next_emi_date)}` : '';
+      return `${String(row.loan_name)}: ${contribution}${nextPayment}`;
+    }).join('; ');
+    throw new Error(
+      `Before removing ${String(rows[0].name)}, redefine their next EMI contribution. Open Accounts → edit the affected shared loan, set ${String(rows[0].name)} to 0, and redistribute that contribution among the remaining people so the payment still totals 100% or the full EMI. ${details}`,
+    );
+  }
+
+  // Zero-valued rules have already been explicitly reassigned. Mark them
+  // inactive before archiving so future calculations and exports remain clean.
+  await driver.execute(`UPDATE loan_contribution_rules SET is_active = 0 WHERE person_id = ? AND is_active = 1`, [personId]);
   await driver.execute(`UPDATE people SET is_archived = 1 WHERE id = ?`, [personId]);
 }
 

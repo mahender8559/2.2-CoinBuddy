@@ -1,5 +1,6 @@
 import {
   deletePersistedDatabase as deletePersistedDatabaseCore,
+  loadStateFromDatabase as loadStateFromDatabaseCore,
   persistDatabase as persistDatabaseCore,
   restoreRecoverySnapshot as restoreRecoverySnapshotCore,
   type SqlJsDatabaseDriver,
@@ -38,6 +39,29 @@ async function persistWithVerificationRetry(driver: SqlJsDatabaseDriver): Promis
     await new Promise<void>(resolve => setTimeout(resolve, 0));
     await persistDatabaseCore(driver);
   }
+}
+
+/**
+ * The balance view intentionally focuses on ledger-derived balance fields and
+ * historically omitted next_emi_date. Enrich the loaded account projection from
+ * the canonical accounts table so editing a loan never falls back to its start
+ * date after a database refresh.
+ */
+export async function loadStateFromDatabase(driver: SqlJsDatabaseDriver) {
+  const state = await loadStateFromDatabaseCore(driver);
+  const loanDateRows = await driver.query(`SELECT id, next_emi_date FROM accounts WHERE is_archived = 0;`);
+  const nextEmiDateByAccount = new Map<string, string>();
+  for (const row of loanDateRows) {
+    if (row.next_emi_date != null) nextEmiDateByAccount.set(String(row.id), String(row.next_emi_date));
+  }
+
+  return {
+    ...state,
+    accounts: state.accounts.map(account => ({
+      ...account,
+      nextEMIDate: nextEmiDateByAccount.get(account.id) ?? account.nextEMIDate,
+    })),
+  };
 }
 
 export function persistDatabase(driver: SqlJsDatabaseDriver): Promise<void> {

@@ -3,6 +3,7 @@ import { CalendarClock, Pause, Play, SkipForward, Trash2, Pencil, Save, X, LockK
 import { useAppContext } from '../context/AppContext';
 import type { RecurringRule } from '../types';
 import { CurrencyInput } from './CurrencyInput';
+import { isManagedLoanPaymentRule } from '../domain/loanRecurring';
 
 export function RecurringPayments() {
   const { recurringRules, events, accounts, transactions, creditCards, formatCurrency, updateRecurringRule, deleteRecurringRule, skipRecurringRule } = useAppContext();
@@ -83,6 +84,11 @@ export function RecurringPayments() {
     return true;
   });
 
+  // Settings used to own this manager. Keep the old render call harmless so the
+  // security/settings screen does not need to be rewritten; the single visible
+  // home for schedules is now Menu → Scheduled Payments.
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'settings') return null;
+
   return (
     <section>
       <div className="mb-3 ml-2 flex items-center gap-2">
@@ -96,7 +102,7 @@ export function RecurringPayments() {
       <div className="overflow-hidden rounded-2xl border border-outline-variant/30 bg-surface-container">
         {recurringRules.length === 0 ? (
           <div className="p-5 text-sm text-on-surface-variant">
-            No recurring schedules yet. Turn on Recurring while creating a transaction, or configure an SIP on an Investment account.
+            No recurring schedules yet. Loan EMIs appear automatically after a payment account is linked; you can also create recurring transactions or configure an Investment SIP.
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/20">
@@ -104,11 +110,13 @@ export function RecurringPayments() {
               const eventName = events.find(event => event.id === rule.eventId)?.name;
               const isBusy = busyId === rule.id;
               const isManagedSip = rule.id.startsWith('investment-sip:');
+              const isManagedLoan = isManagedLoanPaymentRule(rule);
+              const isManaged = isManagedSip || isManagedLoan;
               const pendingCount = pendingByRule.get(rule.id) ?? 0;
               const ruleWarnings = warningMap.get(rule.id) ?? [];
               return (
                 <div key={rule.id} className="p-4">
-                  {isManagedSip ? (
+                  {isManaged ? (
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-on-surface">{rule.title}</p>
@@ -116,7 +124,7 @@ export function RecurringPayments() {
                           {rule.isActive ? 'Active' : 'Paused'}
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
-                          <LockKeyhole className="h-3 w-3" /> Investment SIP
+                          <LockKeyhole className="h-3 w-3" /> {isManagedLoan ? 'Loan EMI' : 'Investment SIP'}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-on-surface-variant">
@@ -125,7 +133,9 @@ export function RecurringPayments() {
                       </p>
                       {pendingCount > 0 && <p className="mt-2 text-xs font-semibold text-amber-500">{pendingCount} occurrence{pendingCount === 1 ? '' : 's'} waiting for confirmation.</p>}
                       {ruleWarnings.length > 0 && <div className="mt-2 space-y-1">{ruleWarnings.map(warning => <p key={warning} className="flex items-start gap-1.5 text-xs text-amber-500"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}</div>}
-                      <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">Managed by its Investment account. Edit the SIP amount, funding account, or date from Manage → Accounts → Investment.</p>
+                      <p className="mt-2 max-w-2xl text-xs leading-relaxed text-on-surface-variant">{isManagedLoan
+                        ? 'Managed by its Loan account. Edit the EMI amount, frequency, or next payment date from Accounts → Loan; CoinBuddy keeps this schedule synchronized.'
+                        : 'Managed by its Investment account. Edit the SIP amount, funding account, or date from Accounts → Investment.'}</p>
                     </div>
                   ) : (
                     <div className="flex items-start justify-between gap-3">

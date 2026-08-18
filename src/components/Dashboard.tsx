@@ -16,8 +16,15 @@ import { isCashFlowTransaction } from '../domain/ledgerRules';
 import { getPersonalLiabilityExposure } from '../domain/loanSharing';
 import { getGoalCurrentAmount, getGoalProgressPercent } from '../domain/savingsGoals';
 
+function formatCreditCardDueDate(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  if (!Number.isFinite(parsed.getTime())) return dateString;
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function Dashboard() {
-  const { transactions, personalExpenseRecords, loanSharingRules, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, savingsGoals, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard } = useAppContext();
+  const { transactions, personalExpenseRecords, loanSharingRules, addTransaction, formatCurrency, setAddModalOpen, creditCards, deleteTransaction, approveTransaction, rejectTransaction, categories, profile, setEditingTransaction, isDateInCurrentCycle, getCycleDetails, netWorth, accounts, savingsGoals, setAddAccountModalType, widgets, addWidget, removeWidget, monthCycleDay, setEditingAccount, setEditingCreditCard, setPayCardModalState } = useAppContext();
   const [isWidgetModalOpen, setWidgetModalOpen] = useState(false);
   const [pendingConfirmTx, setPendingConfirmTx] = useState<Transaction | null>(null);
   const [pendingConfirmDate, setPendingConfirmDate] = useState<string>('');
@@ -131,6 +138,13 @@ export function Dashboard() {
     const days = diff / (1000 * 3600 * 24);
     return days <= 5;
   });
+
+  // Credit-card statements are different from ordinary scheduled items: once a
+  // bill has been generated it stays visible until that statement due is cleared.
+  const creditCardDues = useMemo(() => creditCards
+    .filter(card => Number(card.dueAmount) > 0.009)
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))), [creditCards]);
+  const attentionCount = creditCardDues.length + pendingTxs.length;
 
   const currentMonthTxs = transactions.filter(t => isDateInCurrentCycle(t.date) && !t.isOpeningBalance && t.is_verified !== 0 && isCashFlowTransaction(t));
   
@@ -300,9 +314,22 @@ export function Dashboard() {
           <article className="v35-surface overflow-hidden rounded-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-outline-variant/20 px-5 py-4 sm:px-6">
               <div className="flex items-center gap-2"><Bell className="h-5 w-5 text-[var(--cb-amber)]"/><h2 className="text-base font-semibold text-on-surface">Needs Attention</h2></div>
-              {pendingTxs.length > 0 ? <span className="rounded-full bg-[var(--cb-amber-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--cb-amber)]">{pendingTxs.length}</span> : null}
+              {attentionCount > 0 ? <span className="rounded-full bg-[var(--cb-amber-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--cb-amber)]">{attentionCount}</span> : null}
             </div>
             <div className="divide-y divide-outline-variant/20">
+              {creditCardDues.map(card => (
+                <div key={`card-due-${card.id}`} className="flex items-center gap-3 px-5 py-3.5 sm:px-6" data-testid={`credit-card-due-attention-${card.id}`}>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--cb-amber-soft)] text-[var(--cb-amber)]"><CreditCard className="h-4 w-4"/></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-on-surface">{card.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-on-surface-variant">Credit card statement · Due {formatCreditCardDueDate(card.dueDate)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-numeric text-sm font-semibold text-on-surface">{formatCurrency(card.dueAmount)}</p>
+                    <button onClick={() => setPayCardModalState({ isOpen: true, cardId: card.id })} className="mt-1 min-h-0 text-xs font-semibold text-primary hover:text-primary/80">Pay</button>
+                  </div>
+                </div>
+              ))}
               {pendingTxs.slice(0, 3).map(tx => (
                 <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 sm:px-6">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--cb-amber-soft)] text-[var(--cb-amber)]"><AlertTriangle className="h-4 w-4"/></span>
@@ -316,7 +343,7 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
-              {pendingTxs.length === 0 ? <div className="px-5 py-6 text-sm text-on-surface-variant sm:px-6">You’re all caught up. Nothing needs confirmation.</div> : null}
+              {attentionCount === 0 ? <div className="px-5 py-6 text-sm text-on-surface-variant sm:px-6">You’re all caught up. Nothing needs confirmation or payment.</div> : null}
             </div>
           </article>
         </div>
