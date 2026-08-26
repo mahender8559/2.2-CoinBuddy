@@ -49,6 +49,12 @@ function getAccountIcon(account: Account) {
   return Building2;
 }
 
+function isLoanAccount(account: Account | undefined) {
+  if (!account || account.type !== 'liability') return false;
+  const group = String(account.group ?? '').toLowerCase();
+  return group.includes('loan') || group.includes('mortgage');
+}
+
 function AccountChoiceGroup({
   legend,
   name,
@@ -142,14 +148,20 @@ export function AddTransactionModal() {
   const [goalId, setGoalId] = useState('');
   const [error, setError] = useState<{ message: string; id: number } | null>(null);
 
-  const activeAccounts = useMemo(() => accounts.filter(item => !item.is_archived), [accounts]);
-  const assets = useMemo(() => accounts.filter(item => item.type === 'asset' && !item.is_archived), [accounts]);
-  const liabilities = useMemo(() => accounts.filter(item => item.type === 'liability' && !item.is_archived), [accounts]);
+  const transactionAccounts = useMemo(
+    () => accounts.filter(item => !item.is_archived && !isLoanAccount(item)),
+    [accounts],
+  );
+  const assets = useMemo(() => transactionAccounts.filter(item => item.type === 'asset'), [transactionAccounts]);
+  const transactionLiabilities = useMemo(
+    () => transactionAccounts.filter(item => item.type === 'liability'),
+    [transactionAccounts],
+  );
   const availableCategories = useMemo(
     () => categories.filter(category => type === 'income' ? category.type === 'income' : category.type !== 'income'),
     [categories, type],
   );
-  const eligibleAccounts = type === 'income' ? assets : activeAccounts;
+  const eligibleAccounts = type === 'income' ? assets : transactionAccounts;
   const activeGoals = savingsGoals.filter(goal => goal.isActive);
   const selectedCategory = availableCategories.find(item => item.id === categoryId);
   const CategoryIcon = selectedCategory ? icons[selectedCategory.icon] : Tag;
@@ -170,15 +182,15 @@ export function AddTransactionModal() {
   useEffect(() => {
     if (assets.length > 0 && !account) setAccount(assets[0].id);
     if (assets.length > 0 && !fromAccountId) setFromAccountId(assets[0].id);
-    if (activeAccounts.length > 0 && !toAccountId) setToAccountId(liabilities[0]?.id ?? activeAccounts[0].id);
-  }, [account, activeAccounts, assets, fromAccountId, liabilities, toAccountId]);
+    if (transactionAccounts.length > 0 && !toAccountId) setToAccountId(transactionLiabilities[0]?.id ?? transactionAccounts[0].id);
+  }, [account, assets, fromAccountId, toAccountId, transactionAccounts, transactionLiabilities]);
 
   useEffect(() => {
     if (type !== 'transfer' || !fromAccountId) return;
-    if (toAccountId === fromAccountId || !activeAccounts.some(item => item.id === toAccountId)) {
-      setToAccountId(activeAccounts.find(item => item.id !== fromAccountId)?.id ?? '');
+    if (toAccountId === fromAccountId || !transactionAccounts.some(item => item.id === toAccountId)) {
+      setToAccountId(transactionAccounts.find(item => item.id !== fromAccountId)?.id ?? '');
     }
-  }, [activeAccounts, fromAccountId, toAccountId, type]);
+  }, [fromAccountId, toAccountId, transactionAccounts, type]);
 
   useEffect(() => {
     if (!isAddModalOpen) return;
@@ -210,10 +222,10 @@ export function AddTransactionModal() {
     setGroupId('');
     setGoalId('');
     setCategoryId(categories.find(category => category.type !== 'income')?.id ?? categories[0]?.id ?? '');
-    setAccount(assets[0]?.id ?? activeAccounts[0]?.id ?? '');
+    setAccount(assets[0]?.id ?? transactionAccounts[0]?.id ?? '');
     setFromAccountId(assets[0]?.id ?? '');
-    setToAccountId(liabilities[0]?.id ?? activeAccounts.find(item => item.id !== assets[0]?.id)?.id ?? '');
-  }, [activeAccounts, assets, categories, editingTransaction, events, isAddModalOpen, liabilities, recurringRules]);
+    setToAccountId(transactionLiabilities[0]?.id ?? transactionAccounts.find(item => item.id !== assets[0]?.id)?.id ?? '');
+  }, [assets, categories, editingTransaction, events, isAddModalOpen, recurringRules, transactionAccounts, transactionLiabilities]);
 
   useEffect(() => {
     if (!isAddModalOpen) return;
@@ -234,6 +246,14 @@ export function AddTransactionModal() {
     if (!Number.isFinite(numAmount) || numAmount <= 0) return showError('Enter an amount greater than zero.');
     if (type === 'transfer' && (!fromAccountId || !toAccountId || fromAccountId === toAccountId)) return showError('Choose two different accounts for this transfer.');
     if (type !== 'transfer' && !account) return showError('Choose an account.');
+
+    if (type === 'transfer') {
+      const destination = accounts.find(item => item.id === toAccountId);
+      if (isLoanAccount(destination)) return showError('Use Pay Down to make loan payments.');
+    } else {
+      const selected = accounts.find(item => item.id === account);
+      if (isLoanAccount(selected)) return showError('Use Pay Down to make loan payments.');
+    }
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -365,7 +385,7 @@ export function AddTransactionModal() {
               <AccountChoiceGroup
                 legend="To account"
                 name="toAccount"
-                accounts={activeAccounts.filter(item => item.id !== fromAccountId)}
+                accounts={transactionAccounts.filter(item => item.id !== fromAccountId)}
                 value={toAccountId}
                 onChange={setToAccountId}
                 ariaPrefix="Paid To"
