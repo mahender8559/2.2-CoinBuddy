@@ -48,6 +48,16 @@ test('core money forms stay responsive after the locked redesign', async ({ page
   await prepare(page);
 
   await openAppDestination(page, 'Activity');
+
+  await page.getByRole('button', { name: 'Add Transaction', exact: true }).first().click();
+  const newTransactionSheet = page.getByTestId('transaction-form-sheet');
+  await expectInsideViewport(page, newTransactionSheet);
+  await expect(newTransactionSheet.getByLabel('Paid From HDFC Salary Account')).toBeVisible();
+  await expect(newTransactionSheet.getByText('Car Loan', { exact: true })).toHaveCount(0);
+  await newTransactionSheet.getByRole('button', { name: 'Transfer', exact: true }).click();
+  await expect(newTransactionSheet.getByText('Car Loan', { exact: true })).toHaveCount(0);
+  await newTransactionSheet.getByRole('button', { name: 'Back from transaction form', exact: true }).click();
+
   await page.getByPlaceholder('Search transactions...').fill('Dinner Out');
   await page.getByRole('button', { name: 'Open transaction Dinner Out', exact: true }).click();
   await page.getByTestId('transaction-detail').getByRole('button', { name: 'Edit transaction', exact: true }).click();
