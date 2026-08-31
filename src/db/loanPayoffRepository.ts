@@ -54,6 +54,24 @@ async function signedReserved(driver: SqlJsDatabaseDriver, whereSql: string, par
   return Math.max(0, Math.round(Number(rows[0]?.reserved ?? 0) * 100) / 100);
 }
 
+async function consumedAmount(driver: SqlJsDatabaseDriver, whereSql: string, params: unknown[]): Promise<number> {
+  const rows = await driver.query(`SELECT COALESCE(SUM(amount), 0) AS consumed FROM loan_payoff_fund_movements WHERE movement_type = 'CONSUME' AND ${whereSql}`, params as any[]);
+  return Math.max(0, Math.round(Number(rows[0]?.consumed ?? 0) * 100) / 100);
+}
+
+async function fundedAmount(driver: SqlJsDatabaseDriver, whereSql: string, params: unknown[]): Promise<number> {
+  const reserved = await signedReserved(driver, whereSql, params);
+  const consumed = await consumedAmount(driver, whereSql, params);
+  return Math.round((reserved + consumed) * 100) / 100;
+}
+
+async function completePlanIfTargetPaid(driver: SqlJsDatabaseDriver, plan: LoanPayoffPlan): Promise<void> {
+  const consumed = await consumedAmount(driver, `plan_id = ?`, [plan.id]);
+  if (consumed + 0.009 >= plan.targetAmount) {
+    await driver.execute(`UPDATE loan_payoff_plans SET status = 'COMPLETED' WHERE id = ? AND status = 'ACTIVE'`, [plan.id]);
+  }
+}
+
 export async function saveLoanPayoffPlan(
   driver: SqlJsDatabaseDriver,
   input: { id?: string; liabilityAccountId: string; targetAmount: number; targetDate: string; payoffType: LoanPayoffType; responsibilities: Array<{ personId: string; targetAmount: number }> },
@@ -61,9 +79,12 @@ export async function saveLoanPayoffPlan(
   const targetAmount = money(input.targetAmount, 'Payoff target');
   const targetMs = new Date(`${input.targetDate}T12:00:00`).getTime();
   if (!Number.isFinite(targetMs)) throw new Error('Target date is invalid.');
-  const liabilityRows = await driver.query(`SELECT id, name, type, cached_balance FROM account_balances_view WHERE id = ? AND is_archived = 0`, [input.liabilityAccountId]);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  if (input.targetDate < todayKey) throw new Error('Target date cannot be in the past.');
+  const liabilityRows = await driver.query(`SELECT id, name, type, subtype, cached_balance FROM account_balances_view WHERE id = ? AND is_archived = 0`, [input.liabilityAccountId]);
   const liability = liabilityRows[0];
   if (!liability || String(liability.type).toUpperCase() !== 'LIABILITY') throw new Error('Choose an active loan liability.');
+  if (String(liability.subtype ?? '').trim().toLowerCase() === 'credit card') throw new Error('Loan payoff plans are for installment loans, not revolving credit cards.');
   const balance = Number(liability.cached_balance ?? 0);
   if (targetAmount > balance + 0.009) throw new Error(`Payoff target cannot exceed the current outstanding balance of ${balance.toFixed(2)}.`);
 
@@ -81,8 +102,8 @@ export async function saveLoanPayoffPlan(
   if (input.id) {
     const existing = await getPlan(driver, input.id);
     if (existing.status !== 'ACTIVE') throw new Error('Only an active payoff plan can be edited.');
-    const reserved = await signedReserved(driver, `plan_id = ?`, [existing.id]);
-    if (targetAmount + 0.009 < reserved) throw new Error(`Release reserved funds before lowering the target below ${reserved.toFixed(2)}.`);
+    const funded = await fundedAmount(driver, `plan_id = ?`, [existing.id]);
+    if (targetAmount + 0.009 < funded) throw new Error(`The target cannot be lowered below ${funded.toFixed(2)}, which is already reserved or paid toward this plan.`);
     plan = { ...existing, liabilityAccountId: input.liabilityAccountId, targetAmount, targetDate: input.targetDate, payoffType: input.payoffType };
   } else {
     const existing = await driver.query(`SELECT id FROM loan_payoff_plans WHERE liability_account_id = ? AND status = 'ACTIVE' LIMIT 1`, [input.liabilityAccountId]);
@@ -115,10 +136,10 @@ export async function reserveLoanPayoffFunds(driver: SqlJsDatabaseDriver, input:
   const amount = money(input.amount, 'Reserve amount');
   const responsibility = await driver.query(`SELECT target_amount FROM loan_payoff_responsibilities WHERE plan_id = ? AND person_id = ?`, [plan.id, input.personId]);
   if (!responsibility[0]) throw new Error('This person is not a contributor to the payoff plan.');
-  const personReserved = await signedReserved(driver, `plan_id = ? AND person_id = ?`, [plan.id, input.personId]);
-  if (personReserved + amount > Number(responsibility[0].target_amount) + 0.009) throw new Error('This reserve would exceed the contributor target.');
-  const planReserved = await signedReserved(driver, `plan_id = ?`, [plan.id]);
-  if (planReserved + amount > plan.targetAmount + 0.009) throw new Error('This reserve would exceed the payoff target.');
+  const personFunded = await fundedAmount(driver, `plan_id = ? AND person_id = ?`, [plan.id, input.personId]);
+  if (personFunded + amount > Number(responsibility[0].target_amount) + 0.009) throw new Error('This reserve would exceed the contributor target after including amounts already paid.');
+  const planFunded = await fundedAmount(driver, `plan_id = ?`, [plan.id]);
+  if (planFunded + amount > plan.targetAmount + 0.009) throw new Error('This reserve would exceed the remaining payoff target.');
 
   let assetAccountId: string | undefined;
   if (input.holdingType === 'TRACKED') {
@@ -165,6 +186,7 @@ export async function consumeTrackedReservedForLoanPayment(driver: SqlJsDatabase
     consumed += take;
     remaining -= take;
   }
+  await completePlanIfTargetPaid(driver, plan);
   return Math.round(consumed * 100) / 100;
 }
 
@@ -176,6 +198,7 @@ export async function consumeExternalReservedForLoanPayment(driver: SqlJsDatabas
   const consume = Math.min(money(input.amount, 'External payment amount'), available);
   if (consume <= 0.009) return 0;
   await driver.execute(`INSERT INTO loan_payoff_fund_movements (id, plan_id, person_id, asset_account_id, holding_type, movement_type, amount, transaction_id, external_loan_contribution_id, created_at) VALUES (?, ?, ?, NULL, 'EXTERNAL', 'CONSUME', ?, NULL, ?, ?)`, [crypto.randomUUID(), plan.id, input.personId, consume, input.externalLoanContributionId ?? null, nowIso()]);
+  await completePlanIfTargetPaid(driver, plan);
   return consume;
 }
 

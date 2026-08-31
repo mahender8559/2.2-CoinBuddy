@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Settings2, ShieldAlert, Tags } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { loanPayoffPlansToPlanningGoals } from '../domain/loanPayoff';
 import { projectAffordabilityWithHistory, type AffordabilityPlannerResult } from '../domain/affordabilityPlanner';
 import { buildUpcomingMoneyProjection } from '../domain/upcomingMoney';
 import { isLiquidCashAccount } from '../domain/affordability';
@@ -21,7 +22,7 @@ function statusCopy(status: AffordabilityPlannerResult['projection']['status']) 
 }
 
 export function AffordabilityPlanner() {
-  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, personalExpenseRecords, sharedObligationTemplates, sharedTemplateResponsibilities, monthCycleDay, formatCurrency, getSpendableBalance } = useAppContext();
+  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, personalExpenseRecords, sharedObligationTemplates, sharedTemplateResponsibilities, loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements, monthCycleDay, formatCurrency, getSpendableBalance } = useAppContext();
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
@@ -40,6 +41,7 @@ export function AffordabilityPlanner() {
   }, [monthCycleDay]);
 
   const planningAccounts = useMemo(() => accounts.map(account => account.type === 'asset' ? { ...account, balance: getSpendableBalance(account.id) } : account), [accounts, getSpendableBalance]);
+  const planningGoals = useMemo(() => [...savingsGoals, ...loanPayoffPlansToPlanningGoals(loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements)], [savingsGoals, loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements]);
 
   const run = () => {
     const amount = Number(purchaseAmount);
@@ -65,12 +67,12 @@ export function AffordabilityPlanner() {
       historicalSpendingTransactions: personalExpenseRecordsToTransactions(personalExpenseRecords),
       purchaseAmount: amount,
       affordabilitySettings,
-      savingsGoals,
+      savingsGoals: planningGoals,
       monthCycleDay,
     }));
   };
 
-  const sourceProjection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, planningAccounts, transactions, recurringRules, creditCards, savingsGoals]);
+  const sourceProjection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals: planningGoals }), [horizon, planningAccounts, transactions, recurringRules, creditCards, planningGoals]);
   const copy = result ? statusCopy(result.projection.status) : null;
   const amount = Number(purchaseAmount) || 0;
   const safeDifference = result ? amount - result.projection.safePurchaseCapacity : 0;

@@ -28,7 +28,12 @@ describe('loan payoff reserved funds', () => {
       { id: 'r1', planId: 'plan', personId: 'me', targetAmount: 120000 },
       { id: 'r2', planId: 'plan', personId: 'brother', targetAmount: 80000 },
     ];
-    expect(getLoanPayoffFundingSummary(plan, responsibilities, movements)).toMatchObject({ reserved: 90000, remaining: 110000, progress: 45, funded: false });
+    expect(getLoanPayoffFundingSummary(plan, responsibilities, movements)).toMatchObject({ reserved: 90000, consumed: 0, fundedAmount: 90000, remaining: 110000, progress: 45, funded: false });
+  });
+
+  it('keeps consumed lender payments counted toward payoff progress', () => {
+    const paid = [...movements, { id: 'm4', planId: 'plan', personId: 'me', assetAccountId: 'hdfc', holdingType: 'TRACKED' as const, movementType: 'CONSUME' as const, amount: 50000, createdAt: '2026-09-02T00:00:00.000Z' }];
+    expect(getLoanPayoffFundingSummary(plan, [], paid)).toMatchObject({ reserved: 40000, consumed: 50000, fundedAmount: 90000, remaining: 110000, progress: 45 });
   });
 
   it('requires contributor targets to exactly match the payoff target', () => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CircleDollarSign, Landmark, PiggyBank, TrendingUp, WalletCards } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { loanPayoffPlansToPlanningGoals } from '../domain/loanPayoff';
 import { buildSmarterPlanningReport, compareDebtPrepayment, simulatePurchaseAcrossHorizons, type ForecastHorizon } from '../domain/smarterPlanning';
 import { CurrencyInput } from './CurrencyInput';
 import { IconBadge, MoneyValue, StatusPill } from './ui/V35';
@@ -10,13 +11,14 @@ function localDateKey(date: Date): string {
 }
 
 export function SmarterPlanningDashboard() {
-  const { accounts, transactions, recurringRules, creditCards, savingsGoals, formatCurrency, getSpendableBalance } = useAppContext();
+  const { accounts, transactions, recurringRules, creditCards, savingsGoals, loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements, formatCurrency, getSpendableBalance } = useAppContext();
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const planningAccounts = useMemo(() => accounts.map(account => account.type === 'asset' ? { ...account, balance: getSpendableBalance(account.id) } : account), [accounts, getSpendableBalance]);
+  const planningGoals = useMemo(() => [...savingsGoals, ...loanPayoffPlansToPlanningGoals(loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements)], [savingsGoals, loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements]);
   const liabilities = useMemo(() => accounts.filter(account => account.type === 'liability' && account.is_archived !== 1 && account.balance > 0), [accounts]);
   const [debtId, setDebtId] = useState('');
   const [extraPayment, setExtraPayment] = useState('');
-  const report = useMemo(() => buildSmarterPlanningReport({ asOfDate: localDateKey(new Date()), accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals }), [planningAccounts, transactions, recurringRules, creditCards, savingsGoals]);
+  const report = useMemo(() => buildSmarterPlanningReport({ asOfDate: localDateKey(new Date()), accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals: planningGoals }), [planningAccounts, transactions, recurringRules, creditCards, planningGoals]);
   const purchase = useMemo(() => simulatePurchaseAcrossHorizons(report, Number(purchaseAmount)), [report, purchaseAmount]);
   const selectedDebt = liabilities.find(account => account.id === debtId) ?? liabilities[0];
   const debtComparison = selectedDebt ? compareDebtPrepayment(selectedDebt, Number(extraPayment)) : null;
