@@ -11,6 +11,7 @@ import {
   Pencil,
   Percent,
   Plus,
+  Target,
   RefreshCw,
   Trash2,
   TrendingUp,
@@ -26,6 +27,7 @@ import { getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { isSafeMathError } from '../utils/safeMath';
 import { findInvestmentSipRule } from '../domain/investmentSip';
 import { IconBadge, MoneyValue, SectionHeader, StatusPill } from './ui/V35';
+import { LoanPayoffPlanModal } from './LoanPayoffPlanModal';
 
 type AccountGroupKey = 'bank' | 'investment' | 'cash' | 'other' | 'loan' | 'card';
 
@@ -77,6 +79,9 @@ export function V35AccountsPanel() {
     setEditingAccount,
     setEditingCreditCard,
     setPayCardModalState,
+    getReservedBalance,
+    getSpendableBalance,
+    getLoanPayoffPlanForLiability,
   } = useAppContext();
 
   const activeAccounts = accounts.filter(account => !account.is_archived);
@@ -85,6 +90,7 @@ export function V35AccountsPanel() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
   const [rateUpdateAccount, setRateUpdateAccount] = useState<Account | null>(null);
+  const [payoffPlanAccount, setPayoffPlanAccount] = useState<Account | null>(null);
   const [adjustmentTarget, setAdjustmentTarget] = useState<{ account: Account; kind: 'BALANCE_ADJUSTMENT' | 'MARKET_ADJUSTMENT' } | null>(null);
 
   useEffect(() => {
@@ -236,6 +242,8 @@ export function V35AccountsPanel() {
                   const principalPaid = isLoan && originalPrincipal > 0 ? Math.max(0, originalPrincipal - account.balance) : 0;
                   const payoffPct = isLoan && originalPrincipal > 0 ? Math.min(100, Math.max(0, principalPaid / originalPrincipal * 100)) : account.balance === 0 ? 100 : 0;
                   const interestPaid = isLoan ? getTotalInterestPaid(account, transactions) : 0;
+                  const reservedAmount = account.type === 'asset' ? getReservedBalance(account.id) : 0;
+                  const activePayoffPlan = isLoan ? getLoanPayoffPlanForLiability(account.id) : undefined;
 
                   return (
                     <div key={account.id} data-tour-id={group.key === 'bank' && index === 0 ? 'tour-account-interactions' : undefined} className="border-b border-outline-variant/20 last:border-b-0">
@@ -249,12 +257,15 @@ export function V35AccountsPanel() {
                             <span>{account.group || (group.liability ? 'Liability' : 'Asset')}</span>
                             {due ? <span>· Due {due.label}</span> : null}
                             {needsSipLink ? <span className="text-[var(--cb-amber)]">· SIP needs funding account</span> : null}
+                            {reservedAmount > 0 ? <span className="text-primary">· {formatCurrency(reservedAmount)} reserved</span> : null}
+                            {activePayoffPlan ? <span className="text-primary">· payoff target {new Date(`${activePayoffPlan.targetDate}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span> : null}
                           </span>
                         </span>
                         <span className="text-right">
                           <span className={`block text-base font-semibold font-numeric tabular-nums ${group.liability ? 'text-[var(--cb-red)]' : 'text-on-surface'}`}>
                             {isSafeMathError(account.balance) ? <SafeValueBadge errorCode={account.balance} /> : <>{group.liability ? '-' : ''}<AnimatedNumber value={account.balance} format={formatCurrency} /></>}
                           </span>
+                          {reservedAmount > 0 ? <span className="mt-1 block text-[10px] text-on-surface-variant">Available {formatCurrency(getSpendableBalance(account.id))}</span> : null}
                           {due?.soon ? <StatusPill tone="warning">Due soon</StatusPill> : investmentGain !== null && investmentPct !== null ? <span className={`mt-1 block text-[11px] font-semibold ${investmentGain >= 0 ? 'text-[var(--cb-green)]' : 'text-[var(--cb-red)]'}`}>{investmentGain >= 0 ? '+' : ''}{investmentPct.toFixed(1)}%</span> : null}
                         </span>
                         {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-on-surface-variant" /> : <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />}
@@ -291,6 +302,7 @@ export function V35AccountsPanel() {
                               <button onClick={() => setAdjustmentTarget({ account, kind: 'BALANCE_ADJUSTMENT' })} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary"><RefreshCw className="h-3.5 w-3.5" /> Reconcile</button>
                               {isInvestment ? <button onClick={() => setAdjustmentTarget({ account, kind: 'MARKET_ADJUSTMENT' })} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--cb-green-soft)] px-3 text-xs font-semibold text-[var(--cb-green)]"><TrendingUp className="h-3.5 w-3.5" /> Market value</button> : null}
                               {group.liability ? <button onClick={() => setPayCardModalState({ isOpen: true, cardId: card?.id ?? account.id })} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--cb-green-soft)] px-3 text-xs font-semibold text-[var(--cb-green)]"><Banknote className="h-3.5 w-3.5" /> Pay down</button> : null}
+                              {isLoan ? <button onClick={() => setPayoffPlanAccount(account)} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary"><Target className="h-3.5 w-3.5" /> Payoff plan</button> : null}
                               {isLoan ? <button onClick={() => setRateUpdateAccount(account)} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--cb-blue-soft)] px-3 text-xs font-semibold text-primary"><Percent className="h-3.5 w-3.5" /> Update rate</button> : null}
                               <button onClick={() => editAccount(account)} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"><Pencil className="h-3.5 w-3.5" /> Edit</button>
                               <button onClick={() => setAccountToDelete(account)} className="v35-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-on-surface-variant hover:bg-error/10 hover:text-error"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
@@ -315,6 +327,7 @@ export function V35AccountsPanel() {
         </div>
       ) : null}
 
+      <LoanPayoffPlanModal account={payoffPlanAccount} onClose={() => setPayoffPlanAccount(null)} />
       <UpdateLoanRateModal isOpen={Boolean(rateUpdateAccount)} onClose={() => setRateUpdateAccount(null)} account={rateUpdateAccount} />
       {adjustmentTarget ? <ReconcileWizard account={adjustmentTarget.account} kind={adjustmentTarget.kind} onClose={() => setAdjustmentTarget(null)} /> : null}
 

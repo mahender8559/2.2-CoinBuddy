@@ -264,6 +264,44 @@ export interface ExternalLoanContribution {
   paidAt: string;
 }
 
+export type LoanPayoffType = 'PARTIAL' | 'FULL';
+export type LoanPayoffPlanStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+export type LoanPayoffHoldingType = 'TRACKED' | 'EXTERNAL';
+export type LoanPayoffMovementType = 'RESERVE' | 'RELEASE' | 'CONSUME';
+
+/** A dated lump-sum repayment objective against one real liability. */
+export interface LoanPayoffPlan {
+  id: string;
+  liabilityAccountId: string;
+  targetAmount: number;
+  targetDate: string;
+  payoffType: LoanPayoffType;
+  status: LoanPayoffPlanStatus;
+  createdAt: string;
+}
+
+/** Who intends to fund the payoff plan; independent of legal ownership and EMI split. */
+export interface LoanPayoffResponsibility {
+  id: string;
+  planId: string;
+  personId: string;
+  targetAmount: number;
+}
+
+/** Append-only reserve ledger. RESERVE adds; RELEASE/CONSUME subtract. */
+export interface LoanPayoffFundMovement {
+  id: string;
+  planId: string;
+  personId: string;
+  assetAccountId?: string;
+  holdingType: LoanPayoffHoldingType;
+  movementType: LoanPayoffMovementType;
+  amount: number;
+  transactionId?: string;
+  externalLoanContributionId?: string;
+  createdAt: string;
+}
+
 export interface Event {
   id: string;
   name: string;

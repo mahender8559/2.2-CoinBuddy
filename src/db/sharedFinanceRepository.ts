@@ -165,6 +165,9 @@ export async function archivePerson(driver: SqlJsDatabaseDriver, personId: strin
     );
   }
 
+  const blockingPayoff = await driver.query(`SELECT p.target_amount, lp.target_date, a.name AS loan_name FROM loan_payoff_responsibilities p JOIN loan_payoff_plans lp ON lp.id = p.plan_id JOIN accounts a ON a.id = lp.liability_account_id WHERE p.person_id = ? AND lp.status = 'ACTIVE' AND p.target_amount > 0.009 LIMIT 1`, [personId]);
+  if (blockingPayoff[0]) throw new Error(`Before removing ${String(rows[0].name)}, update or cancel their active payoff contribution for ${String(blockingPayoff[0].loan_name)} (target date ${String(blockingPayoff[0].target_date)}).`);
+
   // Zero-valued rules have already been explicitly reassigned. Mark them
   // inactive before archiving so future calculations and exports remain clean.
   await driver.execute(`UPDATE loan_contribution_rules SET is_active = 0 WHERE person_id = ? AND is_active = 1`, [personId]);

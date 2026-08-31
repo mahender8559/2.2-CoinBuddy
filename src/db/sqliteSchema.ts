@@ -299,6 +299,52 @@ CREATE TABLE IF NOT EXISTS external_loan_contributions (
   FOREIGN KEY (adjustment_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
 );
 
+-- Loan payoff plans reserve existing cash without moving it. The movement table is
+-- append-only so every reserve/release/consume action remains auditable.
+CREATE TABLE IF NOT EXISTS loan_payoff_plans (
+  id TEXT PRIMARY KEY,
+  liability_account_id TEXT NOT NULL,
+  target_amount REAL NOT NULL CHECK(target_amount > 0),
+  target_date TEXT NOT NULL,
+  payoff_type TEXT NOT NULL CHECK(payoff_type IN ('PARTIAL', 'FULL')),
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'COMPLETED', 'CANCELLED')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (liability_account_id) REFERENCES accounts(id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_payoff_plan_per_liability
+  ON loan_payoff_plans(liability_account_id) WHERE status = 'ACTIVE';
+
+CREATE TABLE IF NOT EXISTS loan_payoff_responsibilities (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  target_amount REAL NOT NULL CHECK(target_amount > 0),
+  FOREIGN KEY (plan_id) REFERENCES loan_payoff_plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  UNIQUE(plan_id, person_id)
+);
+
+CREATE TABLE IF NOT EXISTS loan_payoff_fund_movements (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  asset_account_id TEXT,
+  holding_type TEXT NOT NULL CHECK(holding_type IN ('TRACKED', 'EXTERNAL')),
+  movement_type TEXT NOT NULL CHECK(movement_type IN ('RESERVE', 'RELEASE', 'CONSUME')),
+  amount REAL NOT NULL CHECK(amount > 0),
+  transaction_id TEXT,
+  external_loan_contribution_id TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (plan_id) REFERENCES loan_payoff_plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT,
+  FOREIGN KEY (asset_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+  FOREIGN KEY (external_loan_contribution_id) REFERENCES external_loan_contributions(id) ON DELETE SET NULL,
+  CHECK((holding_type = 'TRACKED' AND asset_account_id IS NOT NULL) OR (holding_type = 'EXTERNAL' AND asset_account_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_loan_payoff_movements_plan ON loan_payoff_fund_movements(plan_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_loan_payoff_movements_asset ON loan_payoff_fund_movements(asset_account_id, holding_type);
+
 CREATE UNIQUE INDEX IF NOT EXISTS one_shared_expense_per_transaction
   ON shared_obligations(transaction_id) WHERE transaction_id IS NOT NULL AND kind = 'EXPENSE';
 CREATE INDEX IF NOT EXISTS idx_shared_responsibility_obligation ON shared_responsibilities(obligation_id);

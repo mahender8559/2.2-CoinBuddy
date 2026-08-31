@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
-import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution, RecurrenceFrequency } from '../types';
+import { Transaction, CreditCardInfo, Category, Account, Event, Widget, LoanRevision, RecurringRule, AffordabilitySettings, SavingsGoal, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution, LoanPayoffPlan, LoanPayoffResponsibility, LoanPayoffFundMovement, LoanPayoffHoldingType, LoanPayoffType, RecurrenceFrequency } from '../types';
 import { calculateEmiSplit, getOriginalPrincipal, getTotalInterestPaid } from '../utils/emi';
 import { recomputeAllAccountBalances, syncCreditCardsWithAccounts as projectCreditCards } from '../utils/balanceManager';
 import {
@@ -84,6 +84,18 @@ import {
   setSharedObligationTemplateActive,
   type SharedFinanceState,
 } from '../db/sharedFinanceRepository';
+import {
+  loadLoanPayoffState,
+  saveLoanPayoffPlan as saveLoanPayoffPlanRow,
+  reserveLoanPayoffFunds as reserveLoanPayoffFundsRow,
+  releaseLoanPayoffFunds as releaseLoanPayoffFundsRow,
+  consumeTrackedReservedForLoanPayment,
+  consumeExternalReservedForLoanPayment,
+  cancelLoanPayoffPlan as cancelLoanPayoffPlanRow,
+  completeLoanPayoffPlan as completeLoanPayoffPlanRow,
+  type LoanPayoffState,
+} from '../db/loanPayoffRepository';
+import { getActiveLoanPayoffPlan, getLoanPayoffTrackedReservedForAccount, getSpendableAccountBalance, getTrackedReservedForAccount } from '../domain/loanPayoff';
 
 export { applyUndoRedoCommand };
 export type { UndoRedoCommand, AccountUndoState };
@@ -111,6 +123,9 @@ type LedgerImportData = {
   sharedObligationTemplates?: SharedObligationTemplate[];
   sharedTemplateResponsibilities?: SharedTemplateResponsibility[];
   externalLoanContributions?: ExternalLoanContribution[];
+  loanPayoffPlans?: LoanPayoffPlan[];
+  loanPayoffResponsibilities?: LoanPayoffResponsibility[];
+  loanPayoffFundMovements?: LoanPayoffFundMovement[];
   currency?: string;
 };
 const MAX_UNDO_HISTORY = 5;
@@ -167,6 +182,18 @@ interface AppContextType {
   sharedObligationTemplates: SharedObligationTemplate[];
   sharedTemplateResponsibilities: SharedTemplateResponsibility[];
   externalLoanContributions: ExternalLoanContribution[];
+  loanPayoffPlans: LoanPayoffPlan[];
+  loanPayoffResponsibilities: LoanPayoffResponsibility[];
+  loanPayoffFundMovements: LoanPayoffFundMovement[];
+  getReservedBalance: (accountId: string) => number;
+  getSpendableBalance: (accountId: string) => number;
+  getLoanPayoffPlanForLiability: (accountId: string) => LoanPayoffPlan | undefined;
+  getLoanPayoffReservedForAccount: (liabilityAccountId: string, assetAccountId: string) => number;
+  saveLoanPayoffPlan: (input: { id?: string; liabilityAccountId: string; targetAmount: number; targetDate: string; payoffType: LoanPayoffType; responsibilities: Array<{ personId: string; targetAmount: number }> }) => Promise<boolean>;
+  reserveLoanPayoffFunds: (input: { planId: string; personId: string; holdingType: LoanPayoffHoldingType; assetAccountId?: string; amount: number }) => Promise<boolean>;
+  releaseLoanPayoffFunds: (input: { planId: string; personId: string; holdingType: LoanPayoffHoldingType; assetAccountId?: string; amount: number }) => Promise<boolean>;
+  cancelLoanPayoffPlan: (planId: string) => Promise<boolean>;
+  completeLoanPayoffPlan: (planId: string) => Promise<boolean>;
   personalExpenseRecords: PersonalExpenseRecord[];
   addSharedPerson: (name: string, relationship?: string) => Promise<boolean>;
   archiveSharedPerson: (id: string) => Promise<boolean>;
@@ -208,7 +235,7 @@ interface AppContextType {
   addCreditCard: (card: Omit<CreditCardInfo, 'id'>) => Promise<MutationResult>;
   updateCreditCard: (id: string, card: Omit<CreditCardInfo, 'id'>) => Promise<MutationResult>;
   payCreditCard: (cardId: string, amount: number, fromAccountId?: string) => Promise<MutationResult>;
-  payLiability: (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string) => Promise<MutationResult>;
+  payLiability: (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string, useReservedFunds?: boolean) => Promise<MutationResult>;
   deleteCreditCard: (cardId: string) => Promise<MutationResult>;
   categories: Category[];
   events: Event[];
@@ -420,6 +447,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sharedObligationTemplates = sharedFinance.obligationTemplates;
   const sharedTemplateResponsibilities = sharedFinance.templateResponsibilities;
   const externalLoanContributions = sharedFinance.externalLoanContributions;
+  const EMPTY_LOAN_PAYOFF_STATE: LoanPayoffState = { plans: [], responsibilities: [], movements: [] };
+  const [loanPayoffState, setLoanPayoffState] = useState<LoanPayoffState>(EMPTY_LOAN_PAYOFF_STATE);
+  const loanPayoffPlans = loanPayoffState.plans;
+  const loanPayoffResponsibilities = loanPayoffState.responsibilities;
+  const loanPayoffFundMovements = loanPayoffState.movements;
   const personalExpenseRecords = useMemo(
     () => buildPersonalExpenseRecords(transactions, people, sharedObligations, sharedResponsibilities),
     [transactions, people, sharedObligations, sharedResponsibilities],
@@ -459,6 +491,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const netWorthRes = safeCompute(() => totalAssets - totalLiabilities, SAFE_MATH_ERRORS.DRIFT);
   const netWorth = typeof netWorthRes === 'number' ? netWorthRes : 0;
   const getAccountBalance = (accountId: string) => accounts.find(a => a.id === accountId)?.balance ?? 0;
+
+  const getReservedBalance = useCallback((accountId: string) => getTrackedReservedForAccount(loanPayoffState.plans, loanPayoffState.movements, accountId), [loanPayoffState]);
+  const getSpendableBalance = useCallback((accountId: string) => {
+    const account = accounts.find(item => item.id === accountId);
+    return account ? getSpendableAccountBalance(account, getReservedBalance(accountId)) : 0;
+  }, [accounts, getReservedBalance]);
+  const getLoanPayoffPlanForLiability = useCallback((accountId: string) => getActiveLoanPayoffPlan(loanPayoffState.plans, accountId), [loanPayoffState.plans]);
+  const getLoanPayoffReservedForAccount = useCallback((liabilityAccountId: string, assetAccountId: string) => {
+    const plan = getActiveLoanPayoffPlan(loanPayoffState.plans, liabilityAccountId);
+    return plan ? getLoanPayoffTrackedReservedForAccount(plan.id, assetAccountId, loanPayoffState.movements) : 0;
+  }, [loanPayoffState]);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -526,6 +569,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSharedFinance(await loadSharedFinanceState(driver));
   };
 
+  const refreshLoanPayoff = async (driver: SqlJsDatabaseDriver) => {
+    setLoanPayoffState(await loadLoanPayoffState(driver));
+  };
+
   const verifyDataIntegrity = async (): Promise<DataIntegrityAuditResult> => {
     if (!dbDriver) throw new Error('Database is not ready yet.');
     const result = await auditDatabaseIntegrity(dbDriver);
@@ -578,6 +625,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await restoreRecoverySnapshot(dbDriver, snapshots[0]);
     await refreshStateFromDatabase(dbDriver);
     await refreshSharedFinance(dbDriver);
+    await refreshLoanPayoff(dbDriver);
     const settings = await loadAppSettings(dbDriver);
     setAffordabilitySettingsState(normalizeAffordabilitySettings(settings[AFFORDABILITY_SETTINGS_KEY]));
     setSavingsGoals(normalizeSavingsGoals(settings[SAVINGS_GOALS_KEY]));
@@ -627,6 +675,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
   };
+
+  const persistLoanPayoffAction = async (action: () => Promise<unknown>): Promise<boolean> => {
+    if (!dbDriver) return false;
+    try {
+      await runAtomicDatabaseAction(dbDriver, action);
+      await refreshLoanPayoff(dbDriver);
+      return true;
+    } catch (error) {
+      console.error('Loan payoff persistence failed:', error);
+      await refreshLoanPayoff(dbDriver).catch(() => undefined);
+      window.alert(`Loan payoff change was not saved: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+  const saveLoanPayoffPlan = (input: { id?: string; liabilityAccountId: string; targetAmount: number; targetDate: string; payoffType: LoanPayoffType; responsibilities: Array<{ personId: string; targetAmount: number }> }): Promise<boolean> =>
+    persistLoanPayoffAction(() => saveLoanPayoffPlanRow(dbDriver!, input));
+  const reserveLoanPayoffFunds = (input: { planId: string; personId: string; holdingType: LoanPayoffHoldingType; assetAccountId?: string; amount: number }): Promise<boolean> =>
+    persistLoanPayoffAction(() => reserveLoanPayoffFundsRow(dbDriver!, input));
+  const releaseLoanPayoffFunds = (input: { planId: string; personId: string; holdingType: LoanPayoffHoldingType; assetAccountId?: string; amount: number }): Promise<boolean> =>
+    persistLoanPayoffAction(() => releaseLoanPayoffFundsRow(dbDriver!, input));
+  const cancelLoanPayoffPlan = (planId: string): Promise<boolean> => persistLoanPayoffAction(() => cancelLoanPayoffPlanRow(dbDriver!, planId));
+  const completeLoanPayoffPlan = (planId: string): Promise<boolean> => persistLoanPayoffAction(() => completeLoanPayoffPlanRow(dbDriver!, planId));
 
   const addSharedPerson = async (name: string, relationship?: string): Promise<boolean> =>
     persistSharedAction(() => createSharedPersonRow(dbDriver!, { name, relationship }));
@@ -689,10 +760,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const recordExternalLoanPayment = async (input: { accountId: string; personId: string; amount: number; paidAt: string }): Promise<boolean> => {
     if (!dbDriver) return false;
     try {
-      await addExternalLoanContribution(dbDriver, input);
-      await persistDatabase(dbDriver);
+      await runAtomicDatabaseAction(dbDriver, async () => {
+        const contribution = await addExternalLoanContribution(dbDriver, input);
+        await consumeExternalReservedForLoanPayment(dbDriver, {
+          liabilityAccountId: input.accountId,
+          personId: input.personId,
+          amount: input.amount,
+          externalLoanContributionId: contribution.id,
+        });
+      });
       await refreshStateFromDatabase(dbDriver);
       await refreshSharedFinance(dbDriver);
+      await refreshLoanPayoff(dbDriver);
       return true;
     } catch (error) {
       console.error('External loan contribution failed:', error);
@@ -724,6 +803,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await ensureSelfPerson(driver, 'Me');
         await generateDueSharedObligations(driver);
         await refreshSharedFinance(driver);
+        await refreshLoanPayoff(driver);
         const integrity = await auditDatabaseIntegrity(driver);
         if (integrity.hasCriticalIssues) setIntegrityWarning(`Data integrity warning: ${integrity.issues.filter(issue => issue.severity === 'error').length} critical issue(s) detected. Open Settings → Verify Data Integrity for details.`);
         const settings = await loadAppSettings(driver);
@@ -805,7 +885,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const validateTransaction = (
     tx: Omit<Transaction, 'id'>, 
     currentAccounts: Account[], 
-    existingTx?: Transaction
+    existingTx?: Transaction,
+    ignoreReservedFunds = false
   ): { valid: boolean; error?: string } => {
     const numAmount = Math.abs(Number(tx.amount));
     const ledgerType = (tx.transaction_type ?? tx.type).toUpperCase();
@@ -843,6 +924,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       nextTxs = transactions.filter(t => t.id !== existingTx.id);
     }
     const effectiveAccounts = recomputeAllAccountBalances(currentAccounts, nextTxs);
+
+    if (!ignoreReservedFunds && tx.is_verified !== 0 && (tx.type === 'expense' || tx.type === 'transfer')) {
+      const sourceId = tx.type === 'transfer' ? tx.fromAccountId : (tx.fromAccountId || tx.account);
+      const sourceAcc = sourceId ? effectiveAccounts.find(account => account.id === sourceId) : undefined;
+      if (sourceAcc?.type === 'asset') {
+        const reserved = getReservedBalance(sourceAcc.id);
+        if (reserved > 0.009 && sourceAcc.balance - numAmount < reserved - 0.009) {
+          const spendable = Math.max(0, sourceAcc.balance - reserved);
+          return { valid: false, error: `${sourceAcc.name} has ${reserved.toFixed(2)} reserved for a loan payoff plan. Only ${spendable.toFixed(2)} is available for normal spending.` };
+        }
+      }
+    }
 
     if (tx.is_verified !== 0 && tx.type === 'expense') {
       const sourceId = tx.fromAccountId || tx.account || 'cash';
@@ -1345,7 +1438,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return transferFunds(amount, defaultAsset, cardId);
   };
 
-  const payLiability = async (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string): Promise<MutationResult> => {
+  const payLiability = async (id: string, amount: number, principalAmount?: number, interestAmount?: number, fromAccountId?: string, useReservedFunds = false): Promise<MutationResult> => {
     if (pendingLiabilityPayments.current.has(id)) return { success: false, error: 'A payment for this liability is already being saved.' };
     pendingLiabilityPayments.current.add(id);
     try {
@@ -1361,75 +1454,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const split = calculateEmiSplit(liabilityAcc.balance, liabilityAcc.interestRate ?? 0, amount, liabilityAcc.interestCalculationType || 'REDUCING');
           pAmount = split.principalAmount;
           iAmount = split.interestAmount;
-        } else {
-          pAmount = amount;
-          iAmount = 0;
-        }
+        } else { pAmount = amount; iAmount = 0; }
       }
 
       const principal = Math.max(0, Number(pAmount ?? 0));
       const interest = Math.max(0, Number(iAmount ?? 0));
-      if (!Number.isFinite(principal) || !Number.isFinite(interest) || principal + interest <= 0) return { success: false, error: 'Payment amount must be a positive number.' };
+      const totalPayment = principal + interest;
+      if (!Number.isFinite(principal) || !Number.isFinite(interest) || totalPayment <= 0) return { success: false, error: 'Payment amount must be a positive number.' };
 
       const sourceAccount = accounts.find(account => account.id === defaultAsset);
       if (!sourceAccount) return { success: false, error: 'Payment source account could not be found.' };
-      if (sourceAccount.type === 'asset') {
-        const subtype = sourceAccount.group?.trim().toUpperCase();
-        const minimumBalance = subtype === 'BANK' || subtype === 'BANK ACCOUNT' ? -Math.max(0, sourceAccount.overdraftLimit ?? 0) : 0;
-        if (sourceAccount.balance - (principal + interest) < minimumBalance) {
-          return { success: false, error: minimumBalance === 0
-            ? `Insufficient funds in ${sourceAccount.name}. Asset balance cannot drop below 0.`
-            : `Insufficient funds in ${sourceAccount.name}. Bank balance cannot drop below its overdraft limit of ${Math.abs(minimumBalance)}.` };
-        }
+      const reservedForThisLoan = useReservedFunds ? getLoanPayoffReservedForAccount(id, defaultAsset) : 0;
+      const allReserved = getReservedBalance(defaultAsset);
+      const protectedOtherReserves = Math.max(0, allReserved - reservedForThisLoan);
+      if (sourceAccount.type === 'asset' && sourceAccount.balance - totalPayment < protectedOtherReserves - 0.009) {
+        const allowed = Math.max(0, sourceAccount.balance - protectedOtherReserves);
+        return { success: false, error: `Only ${allowed.toFixed(2)} is available from ${sourceAccount.name} after protecting other reserved funds.` };
       }
 
       const now = new Date();
       const subtitle = `Today • ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       const paymentTransactions: Transaction[] = [];
       if (principal > 0) {
-        const principalTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: `Transfer: ${sourceAccount.name} to ${liabilityAcc.name}`,
-          subtitle,
-          amount: principal,
-          date: now.toISOString(),
-          category: '#transfer',
-          icon: 'ArrowRightLeft',
-          type: 'transfer',
-          fromAccountId: defaultAsset,
-          toAccountId: id,
-        };
-        const validation = validateTransaction(principalTx, accounts);
+        const principalTx: Transaction = { id: crypto.randomUUID(), title: `Transfer: ${sourceAccount.name} to ${liabilityAcc.name}`, subtitle, amount: principal, date: now.toISOString(), category: '#transfer', icon: 'ArrowRightLeft', type: 'transfer', fromAccountId: defaultAsset, toAccountId: id };
+        const validation = validateTransaction(principalTx, accounts, undefined, true);
         if (!validation.valid) return { success: false, error: validation.error || 'The principal payment is invalid.' };
         paymentTransactions.push(principalTx);
       }
       if (interest > 0) {
-        const interestTx: Transaction = {
-          id: crypto.randomUUID(),
-          title: `Interest Payment: ${liabilityAcc.name}`,
-          subtitle,
-          amount: interest,
-          date: now.toISOString(),
-          category: '#interest',
-          icon: 'Flame',
-          type: 'expense',
-          fromAccountId: defaultAsset,
-          account: id,
-          toAccountId: id,
-          isInterestOnly: true,
-        };
-        const validation = validateTransaction(interestTx, accounts);
+        const interestTx: Transaction = { id: crypto.randomUUID(), title: `Interest Payment: ${liabilityAcc.name}`, subtitle, amount: interest, date: now.toISOString(), category: '#interest', icon: 'Flame', type: 'expense', fromAccountId: defaultAsset, account: id, toAccountId: id, isInterestOnly: true };
+        const validation = validateTransaction(interestTx, accounts, undefined, true);
         if (!validation.valid) return { success: false, error: validation.error || 'The interest payment is invalid.' };
         paymentTransactions.push(interestTx);
       }
 
-      const saved = await persistDbAction(() => insertLiabilityPaymentRows(dbDriver, paymentTransactions));
+      let consumedReserved = 0;
+      const saved = await persistDbAction(async () => {
+        await insertLiabilityPaymentRows(dbDriver, paymentTransactions);
+        if (useReservedFunds) consumedReserved = await consumeTrackedReservedForLoanPayment(dbDriver, { liabilityAccountId: id, assetAccountId: defaultAsset, amount: totalPayment, transactionId: paymentTransactions[0]?.id });
+      });
       if (!saved) return { success: false, error: 'The liability payment could not be saved.' };
-      pushCommand({ entityType: 'transactionBatch', actionType: 'add', previousState: null, newState: paymentTransactions });
+      if (consumedReserved > 0.009) {
+        await refreshLoanPayoff(dbDriver);
+        clearStacks();
+      } else {
+        pushCommand({ entityType: 'transactionBatch', actionType: 'add', previousState: null, newState: paymentTransactions });
+      }
       return { success: true };
-    } finally {
-      pendingLiabilityPayments.current.delete(id);
-    }
+    } finally { pendingLiabilityPayments.current.delete(id); }
   };
 
   const deleteCreditCard = async (cardId: string): Promise<MutationResult> => {
@@ -1608,6 +1680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecurringRules([]);
     setSavingsGoals([]);
     setSharedFinance(EMPTY_SHARED_FINANCE);
+    setLoanPayoffState(EMPTY_LOAN_PAYOFF_STATE);
     setAffordabilitySettingsState({ ...DEFAULT_AFFORDABILITY_SETTINGS });
     setIntegrityWarning(null);
     clearStacks();
@@ -1630,6 +1703,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStateFromDbState(refreshed);
       await ensureSelfPerson(dbDriver, 'Me');
       await refreshSharedFinance(dbDriver);
+      await refreshLoanPayoff(dbDriver);
       const restoredAppSettings = await loadAppSettings(dbDriver);
       setAffordabilitySettingsState(normalizeAffordabilitySettings(restoredAppSettings[AFFORDABILITY_SETTINGS_KEY]));
       setSavingsGoals(normalizeSavingsGoals(restoredAppSettings[SAVINGS_GOALS_KEY]));
@@ -1662,7 +1736,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const exportLedgerData = () => ({
-    schemaVersion: 'coinbuddy-ledger-v5',
+    schemaVersion: 'coinbuddy-ledger-v6',
     exportedAt: new Date().toISOString(),
     accounts,
     transactions,
@@ -1684,6 +1758,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sharedObligationTemplates,
     sharedTemplateResponsibilities,
     externalLoanContributions,
+    loanPayoffPlans,
+    loanPayoffResponsibilities,
+    loanPayoffFundMovements,
     currency,
   });
 
@@ -1714,7 +1791,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accounts, calculateEmiSplit, addAccount, updateAccount, deleteAccount, editingAccount, setEditingAccount, editingCreditCard, setEditingCreditCard, transferFunds, netWorth,
       widgets, addWidget, removeWidget,
       transactions, addTransaction, updateTransaction, deleteTransaction, approveTransaction, rejectTransaction, editingTransaction, setEditingTransaction, recurringRules, affordabilitySettings, setAffordabilitySettings, savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
-      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
+      people, sharedObligations, sharedResponsibilities, sharedPayments, sharedSettlements, loanSharingRules, loanContributionRules, sharedObligationTemplates, sharedTemplateResponsibilities, externalLoanContributions,
+      loanPayoffPlans, loanPayoffResponsibilities, loanPayoffFundMovements, getReservedBalance, getSpendableBalance, getLoanPayoffPlanForLiability, getLoanPayoffReservedForAccount, saveLoanPayoffPlan, reserveLoanPayoffFunds, releaseLoanPayoffFunds, cancelLoanPayoffPlan, completeLoanPayoffPlan, personalExpenseRecords, addSharedPerson, archiveSharedPerson, createSharedExpense, recordSharedPayment, recordSharedSettlement, configureLoanSharing, settleSharedBalance, recordExternalLoanPayment, setSharedTemplateActive,
       updateRecurringRule, deleteRecurringRule, skipRecurringRule, 
       biometric, setBiometric, passcode, setPasscode, verifyPasscode, isUnlocked, setUnlocked, isAddModalOpen, setAddModalOpen, isOnboardingOpen, setOnboardingOpen, isButtonTourOpen, setButtonTourOpen,
       isManageCategoriesOpen, setManageCategoriesOpen,

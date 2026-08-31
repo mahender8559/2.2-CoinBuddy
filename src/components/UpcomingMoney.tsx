@@ -16,7 +16,7 @@ const kindMeta: Record<UpcomingMoneyKind, { label: string; icon: typeof ArrowUpR
 };
 
 export function UpcomingMoney() {
-  const { accounts, transactions, recurringRules, creditCards, savingsGoals, monthCycleDay, formatCurrency } = useAppContext();
+  const { accounts, transactions, recurringRules, creditCards, savingsGoals, monthCycleDay, formatCurrency, getSpendableBalance } = useAppContext();
   const [expanded, setExpanded] = useState(true);
   const horizon = useMemo(() => {
     const today = new Date();
@@ -25,7 +25,8 @@ export function UpcomingMoney() {
     const range = getCycleRange(next.year, next.month, monthCycleDay);
     return { asOfDate: localDateKey(today), startDate: localDateKey(range.start), endDate: localDateKey(range.end), label: `${range.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${range.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` };
   }, [monthCycleDay]);
-  const projection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, accounts, transactions, recurringRules, creditCards, savingsGoals]);
+  const planningAccounts = useMemo(() => accounts.map(account => account.type === 'asset' ? { ...account, balance: getSpendableBalance(account.id) } : account), [accounts, getSpendableBalance]);
+  const projection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, planningAccounts, transactions, recurringRules, creditCards, savingsGoals]);
 
   return (
     <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-low overflow-hidden shadow-sm" data-testid="upcoming-money">

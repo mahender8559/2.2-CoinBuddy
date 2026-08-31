@@ -21,7 +21,7 @@ function statusCopy(status: AffordabilityPlannerResult['projection']['status']) 
 }
 
 export function AffordabilityPlanner() {
-  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, personalExpenseRecords, sharedObligationTemplates, sharedTemplateResponsibilities, monthCycleDay, formatCurrency } = useAppContext();
+  const { accounts, transactions, recurringRules, categories, creditCards, affordabilitySettings, savingsGoals, people, loanSharingRules, loanContributionRules, personalExpenseRecords, sharedObligationTemplates, sharedTemplateResponsibilities, monthCycleDay, formatCurrency, getSpendableBalance } = useAppContext();
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [result, setResult] = useState<AffordabilityPlannerResult | null>(null);
@@ -39,6 +39,8 @@ export function AffordabilityPlanner() {
     return { asOfDate: localDateKey(today), endDate: localDateKey(range.end), startDate: localDateKey(range.start), label: `${range.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${range.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` };
   }, [monthCycleDay]);
 
+  const planningAccounts = useMemo(() => accounts.map(account => account.type === 'asset' ? { ...account, balance: getSpendableBalance(account.id) } : account), [accounts, getSpendableBalance]);
+
   const run = () => {
     const amount = Number(purchaseAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -50,7 +52,7 @@ export function AffordabilityPlanner() {
     setResult(projectAffordabilityWithHistory({
       asOfDate: horizon.asOfDate,
       endDate: horizon.endDate,
-      accounts,
+      accounts: planningAccounts,
       transactions,
       recurringRules,
       categories,
@@ -68,7 +70,7 @@ export function AffordabilityPlanner() {
     }));
   };
 
-  const sourceProjection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, accounts, transactions, recurringRules, creditCards, savingsGoals]);
+  const sourceProjection = useMemo(() => buildUpcomingMoneyProjection({ ...horizon, accounts: planningAccounts, transactions, recurringRules, creditCards, savingsGoals }), [horizon, planningAccounts, transactions, recurringRules, creditCards, savingsGoals]);
   const copy = result ? statusCopy(result.projection.status) : null;
   const amount = Number(purchaseAmount) || 0;
   const safeDifference = result ? amount - result.projection.safePurchaseCapacity : 0;
@@ -79,7 +81,7 @@ export function AffordabilityPlanner() {
     return myShare > 0 ? `${template.title} · ${formatCurrency(myShare)} your ${template.frequency.toLowerCase()} share` : null;
   }).filter((value): value is string => Boolean(value));
   const breakdownRows = result ? [
-    { key: 'cash', label: 'Liquid cash now', raw: result.projection.openingCash, sign: '+', sources: accounts.filter(account => account.type === 'asset' && account.is_archived !== 1 && isLiquidCashAccount(account)).map(account => `${account.name} · ${formatCurrency(account.balance)}`) },
+    { key: 'cash', label: 'Liquid cash now', raw: result.projection.openingCash, sign: '+', sources: planningAccounts.filter(account => account.type === 'asset' && account.is_archived !== 1 && isLiquidCashAccount(account)).map(account => `${account.name} · ${formatCurrency(account.balance)}`) },
     { key: 'income', label: 'Expected income', raw: result.projection.expectedIncome + result.projection.otherCashInflows, sign: '+', sources: sourceProjection.items.filter(item => item.kind === 'INCOME').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`) },
     { key: 'expenses', label: 'Known scheduled expenses', raw: Math.max(0, result.projection.expectedExpenses - result.projection.creditCardOutstandingReserve), sign: '-', sources: [...sourceProjection.items.filter(item => item.kind === 'OBLIGATION').map(item => `${item.date} · ${item.title} · ${formatCurrency(item.amount)}`), ...sharedTemplateSources] },
     { key: 'cards', label: 'Credit-card outstanding still to cover', raw: result.projection.creditCardOutstandingReserve, sign: '-', sources: creditCards.filter(card => card.balance > 0 || card.dueAmount > 0).map(card => `${card.name} · outstanding ${formatCurrency(card.balance)}${card.dueAmount > 0 ? ` · due ${formatCurrency(card.dueAmount)}` : ''}`) },

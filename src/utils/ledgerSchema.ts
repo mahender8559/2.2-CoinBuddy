@@ -2,8 +2,8 @@ import { recomputeAllAccountBalances, syncCreditCardsWithAccounts } from './bala
 import { DEFAULT_AFFORDABILITY_SETTINGS, normalizeAffordabilitySettings } from '../domain/affordabilitySettings';
 import { normalizeSavingsGoals } from '../domain/savingsGoals';
 
-export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v5';
-export const PREVIOUS_LEDGER_SCHEMA_VERSIONS = ['coinbuddy-ledger-v4', 'coinbuddy-ledger-v3'] as const;
+export const LEDGER_SCHEMA_VERSION = 'coinbuddy-ledger-v6';
+export const PREVIOUS_LEDGER_SCHEMA_VERSIONS = ['coinbuddy-ledger-v5', 'coinbuddy-ledger-v4', 'coinbuddy-ledger-v3'] as const;
 
 export function validateLedgerSchema(data: unknown): string | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'Backup must be a JSON object.';
@@ -15,7 +15,7 @@ export function validateLedgerSchema(data: unknown): string | null {
   if (ledger.recurringRules !== undefined && !Array.isArray(ledger.recurringRules)) return 'Backup field \"recurringRules\" must be an array when present.';
   if (ledger.affordabilitySettings !== undefined && (!ledger.affordabilitySettings || typeof ledger.affordabilitySettings !== 'object' || Array.isArray(ledger.affordabilitySettings))) return 'Backup field \"affordabilitySettings\" must be an object when present.';
   if (ledger.savingsGoals !== undefined && !Array.isArray(ledger.savingsGoals)) return 'Backup field \"savingsGoals\" must be an array when present.';
-  for (const key of ['people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements', 'loanSharingRules', 'loanContributionRules', 'sharedObligationTemplates', 'sharedTemplateResponsibilities', 'externalLoanContributions']) {
+  for (const key of ['people', 'sharedObligations', 'sharedResponsibilities', 'sharedPayments', 'sharedSettlements', 'loanSharingRules', 'loanContributionRules', 'sharedObligationTemplates', 'sharedTemplateResponsibilities', 'externalLoanContributions', 'loanPayoffPlans', 'loanPayoffResponsibilities', 'loanPayoffFundMovements']) {
     if (ledger[key] !== undefined && !Array.isArray(ledger[key])) return `Backup field "${key}" must be an array when present.`;
   }
   if (!(ledger.accounts as unknown[]).every(value => value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string')) return 'Every imported account must have an id.';
@@ -61,6 +61,9 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
       sharedObligationTemplates: Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : [],
       sharedTemplateResponsibilities: Array.isArray(data.sharedTemplateResponsibilities) ? data.sharedTemplateResponsibilities : [],
       externalLoanContributions: Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : [],
+      loanPayoffPlans: Array.isArray(data.loanPayoffPlans) ? data.loanPayoffPlans : [],
+      loanPayoffResponsibilities: Array.isArray(data.loanPayoffResponsibilities) ? data.loanPayoffResponsibilities : [],
+      loanPayoffFundMovements: Array.isArray(data.loanPayoffFundMovements) ? data.loanPayoffFundMovements : [],
       currency: data.currency || 'INR',
     };
   }
@@ -94,7 +97,7 @@ export function migrateBackupDataToLatest(rawJsonString: string, options: { reco
     schemaVersion: LEDGER_SCHEMA_VERSION, exportedAt: data.exportedAt || data.lastUpdated || new Date().toISOString(), accounts: migratedAccounts, transactions, categories,
     creditCards: migratedCards, events: Array.isArray(data.events) ? data.events : [], widgets: Array.isArray(data.widgets) ? data.widgets : [],
     loanRevisions: Array.isArray(data.loanRevisions) ? data.loanRevisions : [], recurringRules: Array.isArray(data.recurringRules) ? data.recurringRules : [], affordabilitySettings: { ...DEFAULT_AFFORDABILITY_SETTINGS }, savingsGoals: [],
-    people: [], sharedObligations: [], sharedResponsibilities: [], sharedPayments: [], sharedSettlements: [], loanSharingRules: [], loanContributionRules: [], sharedObligationTemplates: [], sharedTemplateResponsibilities: [], externalLoanContributions: [],
+    people: [], sharedObligations: [], sharedResponsibilities: [], sharedPayments: [], sharedSettlements: [], loanSharingRules: [], loanContributionRules: [], sharedObligationTemplates: [], sharedTemplateResponsibilities: [], externalLoanContributions: [], loanPayoffPlans: [], loanPayoffResponsibilities: [], loanPayoffFundMovements: [],
     currency: data.currency || '$', lastUpdated: new Date().toISOString(),
   };
 }

@@ -125,6 +125,8 @@ export function AddTransactionModal() {
     setEditingTransaction,
     getCurrencySymbol,
     formatCurrency,
+    getSpendableBalance,
+    getReservedBalance,
     accounts,
     categories,
     events,
@@ -267,18 +269,18 @@ export function AddTransactionModal() {
     if (!shouldRemainPending && type === 'expense') {
       const selected = accounts.find(item => item.id === account);
       if (selected?.type === 'asset') {
-        let available = selected.balance;
+        let available = getSpendableBalance(selected.id);
         if (editingTransaction?.type === 'expense' && (editingTransaction.account || editingTransaction.fromAccountId) === selected.id) available += Math.abs(editingTransaction.amount);
-        if (numAmount > available) return showError(`Insufficient funds in ${selected.name}.`);
+        if (numAmount > available) return showError(getReservedBalance(selected.id) > 0 ? `${formatCurrency(getReservedBalance(selected.id))} is reserved for a loan payoff plan. Only ${formatCurrency(Math.max(0, available))} is available.` : `Insufficient funds in ${selected.name}.`);
       }
     }
 
     if (!shouldRemainPending && type === 'transfer') {
       const source = accounts.find(item => item.id === fromAccountId);
       if (source?.type === 'asset') {
-        let available = source.balance;
+        let available = getSpendableBalance(source.id);
         if (editingTransaction?.type === 'transfer' && editingTransaction.fromAccountId === source.id) available += Math.abs(editingTransaction.amount);
-        if (numAmount > available) return showError(`Insufficient funds in ${source.name}.`);
+        if (numAmount > available) return showError(getReservedBalance(source.id) > 0 ? `${formatCurrency(getReservedBalance(source.id))} is reserved for a loan payoff plan. Only ${formatCurrency(Math.max(0, available))} is available.` : `Insufficient funds in ${source.name}.`);
       }
     }
 

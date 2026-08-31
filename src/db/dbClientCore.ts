@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import demoData from '../../DemoData.json';
 import { CREATE_TABLES_SQL, SQLITE_MIGRATIONS, SQLITE_PRAGMA_SETUP } from './sqliteSchema';
-import { Account, Category, CreditCardInfo, Event, LoanRevision, RecurrenceFrequency, RecurringRule, Transaction, Widget, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution } from '../types';
+import { Account, Category, CreditCardInfo, Event, LoanRevision, RecurrenceFrequency, RecurringRule, Transaction, Widget, Person, SharedObligation, SharedResponsibility, SharedPayment, SharedSettlement, LoanSharingRule, LoanContributionRule, SharedObligationTemplate, SharedTemplateResponsibility, ExternalLoanContribution, LoanPayoffPlan, LoanPayoffResponsibility, LoanPayoffFundMovement } from '../types';
 import { calculateEmiSplit } from '../utils/emi';
 import { bufferToBase64, base64ToUint8Array } from '../utils/encoding';
 import { validateLedgerSchema } from '../utils/ledgerSchema';
@@ -686,7 +686,7 @@ export async function deleteTransactionRow(driver: SqlJsDatabaseDriver, id: stri
 }
 
 export async function clearDatabase(driver: SqlJsDatabaseDriver): Promise<void> {
-  await driver.execute(`DELETE FROM external_loan_contributions; DELETE FROM shared_settlements; DELETE FROM shared_payments; DELETE FROM shared_responsibilities; DELETE FROM shared_template_responsibilities; DELETE FROM loan_contribution_rules; DELETE FROM loan_sharing_rules; DELETE FROM shared_obligations; DELETE FROM shared_obligation_templates; DELETE FROM people; DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
+  await driver.execute(`DELETE FROM loan_payoff_fund_movements; DELETE FROM loan_payoff_responsibilities; DELETE FROM loan_payoff_plans; DELETE FROM external_loan_contributions; DELETE FROM shared_settlements; DELETE FROM shared_payments; DELETE FROM shared_responsibilities; DELETE FROM shared_template_responsibilities; DELETE FROM loan_contribution_rules; DELETE FROM loan_sharing_rules; DELETE FROM shared_obligations; DELETE FROM shared_obligation_templates; DELETE FROM people; DELETE FROM transactions; DELETE FROM recurring_rules; DELETE FROM credit_cards; DELETE FROM widgets; DELETE FROM loan_revisions; DELETE FROM categories; DELETE FROM events; DELETE FROM accounts; DELETE FROM users_config; DELETE FROM app_settings;`);
 }
 
 export async function createRecurringRule(
@@ -927,6 +927,9 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     const sharedObligationTemplates: SharedObligationTemplate[] = Array.isArray(data.sharedObligationTemplates) ? data.sharedObligationTemplates : [];
     const sharedTemplateResponsibilities: SharedTemplateResponsibility[] = Array.isArray(data.sharedTemplateResponsibilities) ? data.sharedTemplateResponsibilities : [];
     const externalLoanContributions: ExternalLoanContribution[] = Array.isArray(data.externalLoanContributions) ? data.externalLoanContributions : [];
+    const loanPayoffPlans: LoanPayoffPlan[] = Array.isArray(data.loanPayoffPlans) ? data.loanPayoffPlans : [];
+    const loanPayoffResponsibilities: LoanPayoffResponsibility[] = Array.isArray(data.loanPayoffResponsibilities) ? data.loanPayoffResponsibilities : [];
+    const loanPayoffFundMovements: LoanPayoffFundMovement[] = Array.isArray(data.loanPayoffFundMovements) ? data.loanPayoffFundMovements : [];
     const userConfig = Array.isArray(data.users_config) ? data.users_config[0] : undefined;
 
     executePreparedRows(driver, `INSERT INTO categories (id, name, type, icon_name, budget, is_rollover, rollover_account_id, tags_json, group_name, affordability_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, categories.map(category => [category.id, category.name, category.type?.toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', category.icon, category.budget ?? 0, category.isRollover ? 1 : 0, category.rolloverAccountId ?? null, category.tags ? JSON.stringify(category.tags) : null, category.group ?? null, normalizeAffordabilityClass(category.affordabilityClass, category.group, category.type)]));
@@ -956,6 +959,9 @@ export async function importLedgerToDatabase(driver: SqlJsDatabaseDriver, data: 
     executePreparedRows(driver, `INSERT INTO loan_sharing_rules (account_id, personal_responsibility_percent, is_shared) VALUES (?, ?, ?);`, loanSharingRules.map(item => [item.accountId, Number(item.personalResponsibilityPercent), item.isShared ? 1 : 0]));
     executePreparedRows(driver, `INSERT INTO loan_contribution_rules (id, account_id, person_id, mode, value, is_active) VALUES (?, ?, ?, ?, ?, ?);`, loanContributionRules.map(item => [item.id, item.accountId, item.personId, item.mode, Number(item.value), item.isActive ? 1 : 0]));
     executePreparedRows(driver, `INSERT INTO external_loan_contributions (id, account_id, person_id, adjustment_transaction_id, amount, principal_amount, interest_amount, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`, externalLoanContributions.map(item => [item.id, item.accountId, item.personId, item.adjustmentTransactionId ?? null, Number(item.amount), Number(item.principalAmount), Number(item.interestAmount), item.paidAt]));
+    executePreparedRows(driver, `INSERT INTO loan_payoff_plans (id, liability_account_id, target_amount, target_date, payoff_type, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?);`, loanPayoffPlans.map(item => [item.id, item.liabilityAccountId, Number(item.targetAmount), item.targetDate, item.payoffType, item.status, item.createdAt]));
+    executePreparedRows(driver, `INSERT INTO loan_payoff_responsibilities (id, plan_id, person_id, target_amount) VALUES (?, ?, ?, ?);`, loanPayoffResponsibilities.map(item => [item.id, item.planId, item.personId, Number(item.targetAmount)]));
+    executePreparedRows(driver, `INSERT INTO loan_payoff_fund_movements (id, plan_id, person_id, asset_account_id, holding_type, movement_type, amount, transaction_id, external_loan_contribution_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, loanPayoffFundMovements.map(item => [item.id, item.planId, item.personId, item.assetAccountId ?? null, item.holdingType, item.movementType, Number(item.amount), item.transactionId ?? null, item.externalLoanContributionId ?? null, item.createdAt]));
 
     if (userConfig) {
       await upsertUserConfig(driver, {

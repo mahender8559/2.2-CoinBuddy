@@ -16,6 +16,9 @@ export function PayCardModal() {
     payLiability,
     formatCurrency,
     getCurrencySymbol,
+    getSpendableBalance,
+    getLoanPayoffPlanForLiability,
+    getLoanPayoffReservedForAccount,
   } = useAppContext();
 
   const [amount, setAmount] = useState('');
@@ -26,6 +29,7 @@ export function PayCardModal() {
   const [paymentMode, setPaymentMode] = useState<'SCHEDULED' | 'PREPAYMENT'>('SCHEDULED');
   const [isRateUpdateOpen, setIsRateUpdateOpen] = useState(false);
   const [fromAccountId, setFromAccountId] = useState('');
+  const [useReservedFunds, setUseReservedFunds] = useState(true);
   const celebrationTimeout = useRef<number | null>(null);
   const initializedPaymentTarget = useRef<string | null>(null);
 
@@ -41,6 +45,8 @@ export function PayCardModal() {
     selectedLiability.interestRate !== undefined
   ));
   const annualRate = selectedLiability?.interestRate ?? 0;
+  const payoffPlan = selectedLiability ? getLoanPayoffPlanForLiability(selectedLiability.id) : undefined;
+  const reservedForSelectedLoan = selectedLiability && fromAccountId ? getLoanPayoffReservedForAccount(selectedLiability.id, fromAccountId) : 0;
 
   const showError = (message: string) => setError({ message, id: Date.now() });
 
@@ -159,8 +165,9 @@ export function PayCardModal() {
     }
 
     const asset = accounts.find(account => account.id === fromAccountId);
-    if (!asset || paymentAmount > asset.balance) {
-      showError(`Insufficient funds in ${asset?.name || 'selected account'}. Cannot process transaction.`);
+    const allowedFromSource = asset ? getSpendableBalance(asset.id) + (useReservedFunds ? reservedForSelectedLoan : 0) : 0;
+    if (!asset || paymentAmount > allowedFromSource + 0.009) {
+      showError(`Only ${formatCurrency(Math.max(0, allowedFromSource))} is available in ${asset?.name || 'selected account'} after protected reserves.`);
       return;
     }
 
@@ -168,7 +175,7 @@ export function PayCardModal() {
     const result = selectedCard
       ? await payCreditCard(selectedCard.id, paymentAmount, fromAccountId)
       : selectedLiability
-        ? await payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId)
+        ? await payLiability(selectedLiability.id, paymentAmount, pAmount, iAmount, fromAccountId, useReservedFunds)
         : { success: false, error: 'Payment target could not be found.' };
     if (!result.success) return showError(result.error || 'Unable to save this payment.');
 
@@ -229,7 +236,8 @@ export function PayCardModal() {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f8fa4]" />
               </div>
-              {sourceAccount ? <p className="mt-1 text-[9.5px] text-[#8191a6]">Available <span className="font-semibold text-emerald-400">{formatCurrency(sourceAccount.balance)}</span></p> : null}
+              {sourceAccount ? <p className="mt-1 text-[9.5px] text-[#8191a6]">Spendable <span className="font-semibold text-emerald-400">{formatCurrency(getSpendableBalance(sourceAccount.id))}</span>{reservedForSelectedLoan > 0 ? <> · <span className="text-blue-300">{formatCurrency(reservedForSelectedLoan)} reserved for this loan</span></> : null}</p> : null}
+            {isLoan && payoffPlan && reservedForSelectedLoan > 0 ? <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-blue-500/25 bg-blue-500/8 px-3 py-2.5 text-[10.5px] text-[#b9c5d5]"><input type="checkbox" checked={useReservedFunds} onChange={event => setUseReservedFunds(event.target.checked)} className="mt-0.5" /><span><strong className="text-blue-300">Use reserved payoff funds</strong><br/>This payment may consume up to {formatCurrency(reservedForSelectedLoan)} reserved for {selectedLiability?.name}.</span></label> : null}
             </div>
 
             <div>
