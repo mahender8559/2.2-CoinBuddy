@@ -1,0 +1,64 @@
+name: Verify loan payoff reserved funds
+
+on:
+  push:
+    branches:
+      - feature/loan-payoff-reserved-funds
+
+permissions:
+  contents: write
+
+concurrency:
+  group: loan-payoff-reserved-funds
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply feature patch
+        run: |
+          python scripts/apply_loan_payoff_reserved_funds.py
+          python scripts/fix_loan_payoff_patch_order.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Diff sanity check
+        run: git diff --check
+
+      # Tests are intentionally NOT executed in this workflow. The requested
+      # Vitest/Playwright coverage is committed for local execution later.
+      - name: Commit verified feature changes
+        shell: bash
+        run: |
+          if git diff --quiet -- src e2e; then
+            echo "No generated product changes to commit."
+            exit 0
+          fi
+          git config user.name "offtimeresearch"
+          git config user.email "offtimeresearch@gmail.com"
+          git add src e2e
+          git commit -m "feat: add loan payoff reserved funds [skip ci]"
+          git push origin HEAD:feature/loan-payoff-reserved-funds
