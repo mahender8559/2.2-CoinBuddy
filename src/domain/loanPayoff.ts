@@ -1,4 +1,4 @@
-import type { Account, LoanPayoffFundMovement, LoanPayoffPlan, LoanPayoffResponsibility } from '../types';
+import type { Account, LoanPayoffFundMovement, LoanPayoffPlan, LoanPayoffResponsibility, SavingsGoal } from '../types';
 
 const money = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -82,4 +82,37 @@ export function getLoanPayoffFundingSummary(plan: LoanPayoffPlan, responsibiliti
     funded: remaining <= 0.009,
     contributorTargetTotal: money(responsibilities.filter(row => row.planId === plan.id).reduce((sum, row) => sum + row.targetAmount, 0)),
   };
+}
+
+export function getLoanPayoffRequiredMonthlyContribution(plan: LoanPayoffPlan, responsibilities: LoanPayoffResponsibility[], movements: LoanPayoffFundMovement[], asOf = new Date()): number {
+  const { remaining } = getLoanPayoffFundingSummary(plan, responsibilities, movements);
+  if (remaining <= 0.009) return 0;
+  const target = new Date(`${plan.targetDate}T12:00:00`);
+  const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate(), 12, 0, 0);
+  if (Number.isNaN(target.getTime()) || target <= today) return remaining;
+  const months = Math.max(1, Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)));
+  return money(remaining / months);
+}
+
+/**
+ * Planning adapter only: active payoff plans are exposed to existing forecasting
+ * as ephemeral savings commitments. Nothing is stored as a fake SavingsGoal.
+ */
+export function loanPayoffPlansToPlanningGoals(plans: LoanPayoffPlan[], responsibilities: LoanPayoffResponsibility[], movements: LoanPayoffFundMovement[], asOf = new Date()): SavingsGoal[] {
+  return plans.filter(plan => plan.status === 'ACTIVE').map(plan => {
+    const summary = getLoanPayoffFundingSummary(plan, responsibilities, movements);
+    return {
+      id: `loan-payoff:${plan.id}`,
+      name: 'Loan payoff reserve',
+      type: 'OTHER',
+      targetAmount: plan.targetAmount,
+      targetDate: plan.targetDate,
+      monthlyContribution: getLoanPayoffRequiredMonthlyContribution(plan, responsibilities, movements, asOf),
+      manualSavedAmount: summary.fundedAmount,
+      protectLinkedBalance: false,
+      priority: 'HIGH',
+      isActive: summary.remaining > 0.009,
+      createdAt: plan.createdAt,
+    };
+  });
 }
