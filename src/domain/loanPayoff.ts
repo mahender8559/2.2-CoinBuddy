@@ -2,6 +2,7 @@ import type { Account, LoanPayoffFundMovement, LoanPayoffPlan, LoanPayoffRespons
 
 const money = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
+/** Current reserve-position delta. CONSUME removes money from the reserve because it was actually paid. */
 export function loanPayoffMovementDelta(movement: LoanPayoffFundMovement): number {
   return movement.movementType === 'RESERVE' ? money(movement.amount) : -money(movement.amount);
 }
@@ -10,12 +11,27 @@ export function getActiveLoanPayoffPlan(plans: LoanPayoffPlan[], liabilityAccoun
   return plans.find(plan => plan.liabilityAccountId === liabilityAccountId && plan.status === 'ACTIVE');
 }
 
+/** Money still sitting aside and available to be used for this plan. */
 export function getLoanPayoffPlanReservedAmount(planId: string, movements: LoanPayoffFundMovement[]): number {
   return money(movements.filter(item => item.planId === planId).reduce((sum, item) => sum + loanPayoffMovementDelta(item), 0));
 }
 
 export function getLoanPayoffPersonReservedAmount(planId: string, personId: string, movements: LoanPayoffFundMovement[]): number {
   return money(movements.filter(item => item.planId === planId && item.personId === personId).reduce((sum, item) => sum + loanPayoffMovementDelta(item), 0));
+}
+
+/** Money already consumed by a real lender payment. It continues to count toward the payoff objective. */
+export function getLoanPayoffConsumedAmount(planId: string, movements: LoanPayoffFundMovement[]): number {
+  return money(movements.filter(item => item.planId === planId && item.movementType === 'CONSUME').reduce((sum, item) => sum + Math.max(0, Number(item.amount) || 0), 0));
+}
+
+export function getLoanPayoffPersonConsumedAmount(planId: string, personId: string, movements: LoanPayoffFundMovement[]): number {
+  return money(movements.filter(item => item.planId === planId && item.personId === personId && item.movementType === 'CONSUME').reduce((sum, item) => sum + Math.max(0, Number(item.amount) || 0), 0));
+}
+
+/** Current reserve plus money already paid is the contributor's fulfilled portion of the target. */
+export function getLoanPayoffPersonFundedAmount(planId: string, personId: string, movements: LoanPayoffFundMovement[]): number {
+  return money(Math.max(0, getLoanPayoffPersonReservedAmount(planId, personId, movements)) + getLoanPayoffPersonConsumedAmount(planId, personId, movements));
 }
 
 export function getLoanPayoffTrackedReservedForAccount(planId: string, assetAccountId: string, movements: LoanPayoffFundMovement[]): number {
@@ -51,12 +67,16 @@ export function validateLoanPayoffResponsibilitySplit(targetAmount: number, rows
 
 export function getLoanPayoffFundingSummary(plan: LoanPayoffPlan, responsibilities: LoanPayoffResponsibility[], movements: LoanPayoffFundMovement[]) {
   const reserved = Math.max(0, getLoanPayoffPlanReservedAmount(plan.id, movements));
+  const consumed = Math.max(0, getLoanPayoffConsumedAmount(plan.id, movements));
+  const fundedAmount = money(reserved + consumed);
   const target = money(plan.targetAmount);
-  const remaining = Math.max(0, money(target - reserved));
-  const progress = target > 0 ? Math.min(100, Math.max(0, reserved / target * 100)) : 0;
+  const remaining = Math.max(0, money(target - fundedAmount));
+  const progress = target > 0 ? Math.min(100, Math.max(0, fundedAmount / target * 100)) : 0;
   return {
     target,
     reserved,
+    consumed,
+    fundedAmount,
     remaining,
     progress,
     funded: remaining <= 0.009,
